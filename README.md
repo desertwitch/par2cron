@@ -451,7 +451,7 @@ the need to achieve complex setups through the command-line arguments entirely.
 You should verify the configuration using `par2cron check-config`, as malformed
 configuration will prevent the program from starting (bad invocation exit code).
 
-**For a full configuration example, check [par2cron.yaml](par2cron.yaml) in the repository root.**
+**For a full configuration example, refer to the [par2cron.yaml](par2cron.yaml) file.**
 
 ## Limitations
 
