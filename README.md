@@ -26,14 +26,14 @@ any given directory tree. It is designed for use with non-changing WORM-type of
 files, perfect for adding a degree of protection to media libraries or backups.
 
 The driving idea is that you do not need to invest in a filesystem (like ZFS)
-that protects all your data at the disadvantage of additional complexities,
+that protects all your data, at the disadvantage of additional complexities,
 when you really only care that important subsets of your data remain protected.
 
-Instead, use any filesystem. A given directory tree is scanned for marker files,
-a PAR2 set created for every directory containing such a `_par2cron` file. For
-verification it loads the PAR2 sets and verifies that the data which they are
-protecting is healthy, otherwise flagging the PAR2 set for later repair. Once
-repair runs, any corrupted or missing files are recovered. Useful command-line
+A given directory tree on any filesystem is scanned for marker files, and a
+PAR2 set created for every directory containing such a `_par2cron` file. For
+verification the program loads the PAR2 sets and verifies that the data which
+they are protecting is healthy, otherwise flagging the PAR2 set for repair.
+Once repair runs, corrupted or missing files are recovered. Many command-line
 tunables, as well as configuration directives, are offered for more granular
 adjustment of how to create, when to verify and in what situation to repair.
 
@@ -59,9 +59,11 @@ Once configured, protecting a new folder is as simple as:
 
 - Navigating to any directory within `/mnt/storage`
 
-- Creating a file named `_par2cron`
+- Creating an empty "marker" file named `_par2cron`
 
 - Done - your files are protected after the next scheduled run!
+
+**A condensed quick guide and cheatsheet can be found in the [README](README).**
 
 ## Installation
 
@@ -361,10 +363,10 @@ are part of the marker filename, but only for that individual creation job.
 
 | Marker filename   | Default arguments | Resulting arguments |
 | :---------------- | :---------------- | :------------------ |
-| _par2cron         | -r15 -n1          | -r15 -n1            |
-| _par2cron_q       | -r15 -n1          | -r15 -n1 -q         |
-| _par2cron_r30     | -r15 -n1          | -r30 -n1            |
-| _par2cron_r30_q   | -r15 -n1          | -r30 -n1 -q         |
+| `_par2cron`       | `-r15 -n1`        | `-r15 -n1`          |
+| `_par2cron_q`     | `-r15 -n1`        | `-r15 -n1 -q`       |
+| `_par2cron_r30`   | `-r15 -n1`        | `-r30 -n1`          |
+| `_par2cron_r30_q` | `-r15 -n1`        | `-r30 -n1 -q`       |
 
 The use case for this is being able to fine-tune individual creation jobs by
 just memorizing the often-used, important arguments for e.g. redundancy without

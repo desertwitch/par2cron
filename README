@@ -45,6 +45,7 @@ Protecting a folder:
   3. Done - a PAR2 set is created on the next scheduled run!
 
 After creation of the PAR2 set, the marker file is deleted automatically.
+PAR2 sets are periodically verified and repaired with by the set up commands.
 
 ================================================================================
 Marker file name modifiers (optional):
@@ -113,4 +114,4 @@ Pictures/
 |-- Pictures.par2.json      # par2cron manifest
 +-- Pictures.par2.lock      # par2cron lockfile
 
-If the amount of visible files bothers you, you can switch on hidden creation.
+If the amount of visible files bothers you, switch on --hidden creation.

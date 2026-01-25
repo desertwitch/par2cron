@@ -5,14 +5,14 @@ any given directory tree. It is designed for use with non-changing WORM-type of
 files, perfect for adding a degree of protection to media libraries or backups.
 
 The driving idea is that you do not need to invest in a filesystem (like ZFS)
-that protects all your data at the disadvantage of additional complexities,
+that protects all your data, at the disadvantage of additional complexities,
 when you really only care that important subsets of your data remain protected.
 
-Instead, use any filesystem. A given directory tree is scanned for marker files,
-a PAR2 set created for every directory containing such a "_par2cron" file. For
-verification it loads the PAR2 sets and verifies that the data which they are
-protecting is healthy, otherwise flagging the PAR2 set for later repair. Once
-repair runs, any corrupted or missing files are recovered. Useful command-line
+A given directory tree on any filesystem is scanned for marker files, and a
+PAR2 set created for every directory containing such a "_par2cron" file. For
+verification the program loads the PAR2 sets and verifies that the data which
+they are protecting is healthy, otherwise flagging the PAR2 set for repair.
+Once repair runs, corrupted or missing files are recovered. Many command-line
 tunables, as well as configuration directives, are offered for more granular
 adjustment of how to create, when to verify and in what situation to repair.
 
