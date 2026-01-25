@@ -1,5 +1,9 @@
 github_checks: false
 
+ignore:
+  - "cmd"
+  - "assets"
+
 coverage:
   status:
     project: off
