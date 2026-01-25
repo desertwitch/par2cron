@@ -48,21 +48,51 @@ After creation of the PAR2 set, the marker file is deleted automatically.
 PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
 ================================================================================
-Marker file name modifiers (optional):
+Arguments for PAR2 creation (recommended):
 ================================================================================
 
-Append par2 arguments to the marker file name to override creation defaults
-for that folder: (https://github.com/Parchive/par2cmdline#using-par2cmdline)
+By default no additional arguments are given to the par2 program for the
+three calling par2cron operations. However, it is strongly recommended to
+set default par2 arguments for the "create" command, to be reflecting your
+personal needs and situation. You can decide the default set of arguments to
+give to par2 for any of the par2cron commands using either the configuration
+file or appending them as "[-- par2-args...]". An example of the latter below:
 
-Marker file name         | Resulting arguments (assuming defaults: -r15 -n1)
+  par2cron create /mnt/storage -- -r15 -n1
+  par2cron verify /mnt/storage -- -q
+  par2cron repair /mnt/storage -- -m512
+
+As you can see, anything following "--" are treated as default arguments to
+pass to the par2 program for that par2cron operation/command. For the "create"
+operation, this can then be influenced for individual creation jobs by use of
+the marker filename or marker configuration (read more about this below).
+
+A list for all the possible par2 arguments can be found here:
+
+  https://github.com/Parchive/par2cmdline#using-par2cmdline
+
+================================================================================
+Marker filename modifiers (optional):
+================================================================================
+
+Append par2 arguments to the marker filename to influence creation defaults,
+this applies only for the individual creation job (the folder with the marker).
+
+Marker file name         | Resulting arguments (assuming you set: -r15 -n1)
 -------------------------|---------------------------------------------------
 _par2cron                | Uses defaults: -r15 -n1
 _par2cron_r30            | 30% redundancy: -r30 -n1
 _par2cron_q              | Quiet mode added: -r15 -n1 -q
 _par2cron_r30_q          | Both changes: -r30 -n1 -q
 
+Above examples assume you set the par2 default arguments to "-r15 -n1" with:
+
+  par2cron create /mnt/storage -- -r15 -n1
+
+However, it applies for any combination of creation arguments passed to par2.
+
 ================================================================================
-Marker file content modifiers (optional):
+Marker content modifiers (optional):
 ================================================================================
 
 For full override control, you can put YAML directives inside the marker file:
@@ -98,20 +128,20 @@ Re-creating a PAR2 set:
 
 If you added/changed/removed protected files:
 
-1. Delete existing PAR2-related files (see below)
-2. Create again a marker file named "_par2cron"
-3. Done - a new PAR2 set is created on the next scheduled run
+  1. Delete existing PAR2-related files (see below)
+  2. Create again a marker file named "_par2cron"
+  3. Done - a new PAR2 set is created on the next scheduled run
 
 ================================================================================
 Explanation of the generated files:
 ================================================================================
 
-Pictures/
-|-- beach.jpg
-|-- sunset.jpg
-|-- Pictures.par2           # PAR2 index file
-|-- Pictures.vol00+01.par2  # PAR2 recovery data
-|-- Pictures.par2.json      # par2cron manifest
-+-- Pictures.par2.lock      # par2cron lockfile
+  Pictures/
+  |-- beach.jpg
+  |-- sunset.jpg
+  |-- Pictures.par2           # PAR2 index file
+  |-- Pictures.vol00+01.par2  # PAR2 recovery data
+  |-- Pictures.par2.json      # par2cron manifest
+  +-- Pictures.par2.lock      # par2cron lockfile
 
 If the amount of visible files bothers you, switch on --hidden creation.

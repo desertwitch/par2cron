@@ -114,7 +114,6 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron info`         | Shows verification cycle and configuration statistics  |
 | `par2cron check-config` | Validates a par2cron YAML configuration file           |
 
-
 ### `par2cron create`
 
 ```
@@ -294,6 +293,30 @@ rebuilding corrupted or missing manifests (read more about manifests below)
 wherever possible. Failure-related exit codes usually directly relate to
 encountered errors requiring some degree of manual inspection by the user.
 
+## Creation Arguments
+
+By default, no additional arguments are given to the `par2` program for the
+three calling par2cron operations. However, it is strongly recommended to
+set default `par2` arguments for the `create` command, to be reflecting your
+personal needs and situation. You can decide the default set of arguments to
+give to `par2` for any of the par2cron commands using either the configuration
+file or appending them as `[-- par2-args...]`. An example of the latter below:
+
+```bash
+par2cron create /mnt/storage -- -r15 -n1
+par2cron verify /mnt/storage -- -q
+par2cron repair /mnt/storage -- -m512
+```
+
+As you can see, anything following `--` are treated as default arguments to
+pass to the `par2` program for that par2cron operation. For the `create`
+operation, this can then be influenced for individual creation jobs by use
+of the marker filename or marker configuration (read more about this below).
+
+A list for all the possible `par2` arguments can be found here:
+
+https://github.com/Parchive/par2cmdline#using-par2cmdline
+
 ## State Management
 
 The program aims to off-load all state directly next to the protected files.
@@ -349,19 +372,19 @@ they simply need to delete it and place a new marker file into the directory.
 You can *modify* the default arguments that are given to `par2`, settable
 through the command-line arguments or configuration file (see *Usage* and
 *Configuration* sections), for individual creation jobs. An example would be
-that you set a default of `-r15 -n1` for 15% redundancy and 1 recovery file. Now
+that your defaults are `-r15 -n1`, for 15% redundancy and 1 recovery file. Now
 you have an especially important dataset that you would like to have 30% of
-redundancy for, without wanting to change your `crontab` and affecting other
+redundancy for, without wanting to change your configuration or affecting other
 creations. This can simply be realized by creating a marker file with the name
 `_par2cron_r30`, which will then create the PAR2 set using `-r30 -n1`, so
 leaving in place the other default arguments (in this case `-n1`).
 
 If an argument provided as part of a marker filename is not among the default
 arguments given to `par2`, it is simply added for that creation job. An example
-would be wanting to add `-q` to the `-r15 -n1` defaults, in which case you would
+would be wanting to add `-q` to your `-r15 -n1` default, in which case you would
 simply create a marker file named `_par2cron_q`. This also applies if no default
 arguments to be given to `par2` were set, effectively adding any arguments that
-are part of the marker filename, but only for that individual creation job.
+are part of the marker filename, again - only for that individual creation job.
 
 | Marker filename   | Default arguments | Resulting arguments |
 | :---------------- | :---------------- | :------------------ |
@@ -373,6 +396,10 @@ are part of the marker filename, but only for that individual creation job.
 The use case for this is being able to fine-tune individual creation jobs by
 just memorizing the often-used, important arguments for e.g. redundancy without
 having to remember the entire (set as default) collection of `par2` arguments.
+
+Above examples assumed `-r15 -n1` were set as the `par2` default arguments for
+the creation task (using `par2cron create /mnt/storage -- -r15 -n1`). However,
+it applies for any combination of default creation arguments passed to `par2`.
 
 For more control, or *replacing* the entire default arguments that are given
 to `par2` (again only for the individual creation job), read below about marker
@@ -451,7 +478,7 @@ the need to achieve complex setups through the command-line arguments entirely.
 You should verify the configuration using `par2cron check-config`, as malformed
 configuration will prevent the program from starting (bad invocation exit code).
 
-**For a full configuration example, check [par2cron.yaml](par2cron.yaml) in the repository root.**
+**For a full configuration example, refer to the [par2cron.yaml](par2cron.yaml) file.**
 
 ## Limitations
 
