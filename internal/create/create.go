@@ -390,7 +390,8 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, files []schema.Pro
 	}
 	defer unlock()
 
-	cmdArgs := []string{"create"}
+	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1+len(files))
+	cmdArgs = append(cmdArgs, "create")
 	cmdArgs = append(cmdArgs, job.par2Args...)
 	cmdArgs = append(cmdArgs, "--")
 	cmdArgs = append(cmdArgs, job.par2Path)

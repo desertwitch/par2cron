@@ -284,7 +284,8 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
-	cmdArgs := []string{"repair"}
+	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)
+	cmdArgs = append(cmdArgs, "repair")
 	cmdArgs = append(cmdArgs, job.par2Args...)
 	cmdArgs = append(cmdArgs, "--")
 	cmdArgs = append(cmdArgs, job.par2Path)

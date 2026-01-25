@@ -327,7 +327,8 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 		job.manifest.Verification = &schema.VerificationManifest{}
 	}
 
-	cmdArgs := []string{"verify"}
+	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)
+	cmdArgs = append(cmdArgs, "verify")
 	cmdArgs = append(cmdArgs, job.par2Args...)
 	cmdArgs = append(cmdArgs, "--")
 	cmdArgs = append(cmdArgs, job.par2Path)
