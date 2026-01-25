@@ -22,16 +22,15 @@ An example setup involves adding three crontab entries:
   0 3 * * * par2cron verify /mnt/storage
   0 5 * * * par2cron repair /mnt/storage
 
-Where "/mnt/storage" is the directory tree you want protection for.
+Where "/mnt/storage" is the directory tree you want protection within.
 Ensure enough time between commands, so resource consumption stays minimal.
 
 ================================================================================
-Getting started with protection:
+Getting started with protecting:
 ================================================================================
 
 Place a "_par2cron" marker file in any folder you want protected. par2cron
-will create PAR2 parity data, periodically verify integrity, and repair
-corruption.
+creates parity data, periodically verifies integrity, and repairs corruption.
 
 par2cron is suitable mostly only for non-changing content (such as
 media/backups). You should use other solutions for often changing content.
