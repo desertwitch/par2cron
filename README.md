@@ -1,6 +1,6 @@
 <div align="center">
     <img alt="Logo" src="assets/par2cron.png" width="150">
-    <br><br>
+    <br>
     <h1>par2cron</h1>
     <p>PAR2 Integrity & Self-Repair Engine<br>Selective automated protection for directory trees</p>
 </div>
