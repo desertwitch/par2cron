@@ -63,9 +63,9 @@ Once configured, protecting a new folder is as simple as:
 
 - Done - your files are protected after the next scheduled run!
 
-PAR2 sets are verified and repaired with by the set up commands.
+PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
-**A condensed quick guide and cheatsheet can be found in the [README](README).**
+**A condensed quick guide and cheatsheet can be found in the [README](README) file.**
 
 ## Installation
 

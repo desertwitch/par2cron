@@ -44,7 +44,7 @@ Protecting a folder:
   3. Done - a PAR2 set is created on the next scheduled run!
 
 After creation of the PAR2 set, the marker file is deleted automatically.
-PAR2 sets are periodically verified and repaired with by the set up commands.
+PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
 ================================================================================
 Marker file name modifiers (optional):
