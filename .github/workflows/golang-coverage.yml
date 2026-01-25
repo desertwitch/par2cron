@@ -1,0 +1,34 @@
+name: golang-coverage
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  golang:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.5
+          cache: false
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Clean the environment
+        run: make clean
+
+      - name: Run all Go tests
+        run: make test-coverage
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: desertwitch/par2cron

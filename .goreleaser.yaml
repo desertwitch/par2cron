@@ -1,0 +1,56 @@
+version: 2
+
+project_name: par2cron
+
+before:
+  hooks:
+    - make clean
+    - make vendor
+    - make lint
+    - make test
+
+builds:
+  - id: par2cron
+    main: ./cmd/par2cron
+    binary: par2cron
+    env:
+      - CGO_ENABLED=0
+      - GOFLAGS=-mod=vendor
+    flags:
+      - -trimpath
+    ldflags:
+      - -w
+      - -s
+      - -X main.Version={{.Version}}
+      - -buildid=
+    goos:
+      - linux
+    goarch:
+    - amd64
+    - arm
+    - arm64
+    - 386
+
+source:
+  enabled: true
+
+archives:
+  -
+    files:
+      - README
+      - LICENSE
+      - par2cron.yaml
+
+signs:
+  - artifacts: checksum
+
+release:
+  footer: |
+    Files without an extension are all static binaries for the most common architectures.  
+    Most users will want the `linux_amd64` package (see installation instructions in `README`).  
+
+    `.txz`, `.asc` and `.md5` files are part of the Slackware distribution package.  
+    These specific packages are offered as a service for fellow Unraid OS enthusiasts.  
+
+    Do note that any release files are unattended builds and served without any warranties.
+

@@ -1,0 +1,230 @@
+# par2cron configuration file
+# All options can also be set via CLI (CLI has precedence over configuration)
+
+# ==============================================================================
+# CREATE COMMAND SETTINGS
+# ==============================================================================
+create:
+  # args: Set arguments passed directly to the par2 command
+  # Changeable as needed for individual sets using the marker configuration
+  #
+  # Example: ["-r15", "-n1"] (15% redundancy, 1 recovery file)
+  # Default: [] (empty)
+  args: []
+
+  # glob: File matching pattern for files to include in PAR2 sets
+  # Changeable as needed for individual sets using the marker configuration
+  #
+  # Default: "*" (all files)
+  glob: "*"
+
+  # duration: Time budget per run (best effort/soft limit)
+  # This is a best-effort limit; overshooting creations won't be interrupted
+  #
+  # Format: Go duration string (e.g., "1h", "30m", "2h30m")
+  # Default: "" (no time limit)
+  duration: ""
+
+  # mode: PAR2 creation mode; per-file or per-folder
+  # Changeable as needed for individual sets using the marker configuration
+  #
+  # Options: "file" (one PAR2 set per file), "folder" (one PAR2 set per folder)
+  # Default: "folder"
+  mode: "folder"
+
+  # verify: PAR2 sets must pass verification as part of creation
+  # Changeable as needed for individual sets using the marker configuration
+  # Recommended to enable this when using --duration for the "verify" command
+  #
+  # Default: false
+  verify: false
+
+  # hidden: Create all PAR2 sets and their related files as hidden (dotfiles)
+  # Changeable as needed for individual sets using the marker configuration
+  #
+  # Default: false
+  hidden: false
+
+  # log-level: Minimum level of emitted logs
+  #
+  # Options: "debug", "info", "warn", "error"
+  # Default: "info"
+  log-level: "info"
+
+  # json: Output structured logs in JSON format
+  #
+  # Default: false
+  json: false
+
+# ==============================================================================
+# VERIFY COMMAND SETTINGS
+# ==============================================================================
+verify:
+  # args: Set arguments passed directly to the par2 command
+  #
+  # Example: ["-m500", "-q"] (memory ceiling 500MB, quiet mode)
+  # Default: [] (empty)
+  args: []
+
+  # age: Minimum time between re-verifications (skip if verified within this period)
+  # Any PAR2 sets verified more recently than this will be skipped over instead
+  #
+  # Format: Go duration string (e.g., "12h", "2d", "7d")
+  # Default: "" (always verify every set)
+  age: ""
+
+  # duration: Time budget per run (best effort/soft limit)
+  # This is a best-effort limit; overshooting verifications won't be interrupted
+  #
+  # Format: Go duration string (e.g., "1h", "30m", "2h30m")
+  # Default: "" (no time limit)
+  duration: ""
+
+  # include-external: Include (external) PAR2 files without a par2cron manifest
+  # When enabled, it also verifies PAR2 sets which were not created by par2cron
+  # You can also utilize the par2cron-ignore files to exclude certain folders
+  #
+  # Default: false
+  include-external: false
+
+  # skip-not-created: Skip PAR2 files without a par2cron creation record
+  # Generally not recommended, even more strict than --include-external
+  # Requires both a manifest and a creation record within that manifest
+  # Useful if you used to --include-external and want to change it back now
+  # You can also utilize the par2cron-ignore files to exclude certain folders
+  #
+  # Default: false
+  skip-not-created: false
+
+  # calc-run-interval: How often you run par2cron verify (for backlog calculations)
+  # Used to calculate and warn about verification backlog growing out of control
+  # Set this to the interval you run your verify cronjobs at (usually daily)
+  #
+  # Format: Go duration string (e.g., "12h", "24h", "7d")
+  # Default: "24h"
+  calc-run-interval: "24h"
+
+  # log-level: Minimum level of emitted logs
+  #
+  # Options: "debug", "info", "warn", "error"
+  # Default: "info"
+  log-level: "info"
+
+  # json: Output structured logs in JSON format
+  #
+  # Default: false
+  json: false
+
+# ==============================================================================
+# REPAIR COMMAND SETTINGS
+# ==============================================================================
+repair:
+  # args: Set arguments passed directly to the par2 command
+  #
+  # Example: ["-m500", "-q"] (memory ceiling 500MB, quiet mode)
+  # Default: [] (empty)
+  args: []
+
+  # verify: PAR2 sets must pass verification as part of repair
+  # Recommended to ensure that performed repairs were successful
+  #
+  # Default: false
+  verify: false
+
+  # duration: Time budget per run (best effort/soft limit)
+  # This is a best-effort limit; overshooting repairs won't be interrupted
+  #
+  # Format: Go duration string (e.g., "1h", "30m", "2h30m")
+  # Default: "" (no time limit)
+  duration: ""
+
+  # min-tested: Repair only when verified as corrupted at least X times
+  # Helps to avoid false positives by requiring multiple such verifications
+  #
+  # Default: 0
+  min-tested: 0
+
+  # skip-not-created: Skip PAR2 files without a par2cron creation record
+  # Generally not recommended, even more strict than --include-external
+  # Requires both a manifest and a creation record within that manifest
+  # Useful if you used to --include-external and want to change it back now
+  # You can also utilize the par2cron-ignore files to exclude certain folders
+  #
+  # Default: false
+  skip-not-created: false
+
+  # attempt-unrepairables: Attempt to repair PAR2 sets verified as unrepairable
+  # Use with caution as will result in non-zero exit codes on (partial) failure
+  #
+  # Default: false
+  attempt-unrepairables: false
+
+  # purge-backups: Remove backup files (.1, .2, ...) after successful repair
+  # These backup files are created by par2cmdline when repairing damaged files
+  # Use at your own risk, recommended to keep disabled and do deletion manually
+  #
+  # Default: false
+  purge-backups: false
+
+  # log-level: Minimum level of emitted logs
+  #
+  # Options: "debug", "info", "warn", "error"
+  # Default: "info"
+  log-level: "info"
+
+  # json: Output structured logs in JSON format
+  #
+  # Default: false
+  json: false
+
+# ==============================================================================
+# INFO COMMAND SETTINGS
+# Set always to the same values used for "verify" settings (where applicable)
+# ==============================================================================
+info:
+  # age: Target cycle length (time between re-verifications)
+  #
+  # Format: Go duration string (e.g., "12h", "2d", "7d")
+  # Default: "" (always verify every set)
+  age: ""
+
+  # duration: Target time budget per each verification run (soft limit)
+  #
+  # Format: Go duration string (e.g., "1h", "30m", "2h30m")
+  # Default: "" (no time limit)
+  duration: ""
+
+  # include-external: Include (external) PAR2 files without a par2cron manifest
+  # When enabled, it also verifies PAR2 sets which were not created by par2cron
+  # You can also utilize the par2cron-ignore files to exclude certain folders
+  #
+  # Default: false
+  include-external: false
+
+  # skip-not-created: Skip PAR2 files without a par2cron creation record
+  # Generally not recommended, even more strict than --include-external
+  # Requires both a manifest and a creation record within that manifest
+  # Useful if you used to --include-external and want to change it back now
+  # You can also utilize the par2cron-ignore files to exclude certain folders
+  #
+  # Default: false
+  skip-not-created: false
+
+  # calc-run-interval: How often you run par2cron verify (for backlog calculations)
+  # Used to calculate and warn about verification backlog growing out of control
+  # Set this to the interval you run your verify cronjobs at (usually daily)
+  #
+  # Format: Go duration string (e.g., "12h", "24h", "7d")
+  # Default: "24h"
+  calc-run-interval: "24h"
+
+  # log-level: Minimum level of emitted logs
+  #
+  # Options: "debug", "info", "warn", "error"
+  # Default: "info"
+  log-level: "info"
+
+  # json: Output in JSON format (result to stdout, logs to stderr)
+  #
+  # Default: false
+  json: false
