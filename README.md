@@ -293,10 +293,10 @@ rebuilding corrupted or missing manifests (read more about manifests below)
 wherever possible. Failure-related exit codes usually directly relate to
 encountered errors requiring some degree of manual inspection by the user.
 
-## `par2` Arguments
+## Creation Arguments
 
 By default, no additional arguments are given to the `par2` program for the
-three upstream par2cron operations. However, it is strongly recommended to
+three calling par2cron operations. However, it is strongly recommended to
 set default `par2` arguments for the `create` command, to be reflecting your
 personal needs and situation. You can decide the default set of arguments to
 give to `par2` for any of the par2cron commands using either the configuration
