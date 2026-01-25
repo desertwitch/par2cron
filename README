@@ -68,7 +68,8 @@ operation, this can then be influenced for individual creation jobs by use of
 the marker filename or marker configuration (read more about this below).
 
 A list for all the possible par2 arguments can be found here:
-https://github.com/Parchive/par2cmdline#using-par2cmdline
+
+  https://github.com/Parchive/par2cmdline#using-par2cmdline
 
 ================================================================================
 Marker filename modifiers (optional):
