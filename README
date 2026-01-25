@@ -98,20 +98,20 @@ Re-creating a PAR2 set:
 
 If you added/changed/removed protected files:
 
-1. Delete existing PAR2-related files (see below)
-2. Create again a marker file named "_par2cron"
-3. Done - a new PAR2 set is created on the next scheduled run
+  1. Delete existing PAR2-related files (see below)
+  2. Create again a marker file named "_par2cron"
+  3. Done - a new PAR2 set is created on the next scheduled run
 
 ================================================================================
 Explanation of the generated files:
 ================================================================================
 
-Pictures/
-|-- beach.jpg
-|-- sunset.jpg
-|-- Pictures.par2           # PAR2 index file
-|-- Pictures.vol00+01.par2  # PAR2 recovery data
-|-- Pictures.par2.json      # par2cron manifest
-+-- Pictures.par2.lock      # par2cron lockfile
+  Pictures/
+  |-- beach.jpg
+  |-- sunset.jpg
+  |-- Pictures.par2           # PAR2 index file
+  |-- Pictures.vol00+01.par2  # PAR2 recovery data
+  |-- Pictures.par2.json      # par2cron manifest
+  +-- Pictures.par2.lock      # par2cron lockfile
 
 If the amount of visible files bothers you, switch on --hidden creation.
