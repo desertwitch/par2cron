@@ -63,6 +63,8 @@ Once configured, protecting a new folder is as simple as:
 
 - Done - your files are protected after the next scheduled run!
 
+Existing PAR2 sets are verified and repaired with by the set up commands.
+
 **A condensed quick guide and cheatsheet can be found in the [README](README).**
 
 ## Installation
