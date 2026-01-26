@@ -492,6 +492,19 @@ func Test_NewRepairCmd_HasPurgeBackupsFlag_Success(t *testing.T) {
 	require.Equal(t, "false", flag.DefValue)
 }
 
+// Expectation: The "repair" command should have a "restore-backups" flag.
+func Test_NewRepairCmd_HasRestoreBackupsFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRepairCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("restore-backups")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.DefValue)
+}
+
 // Expectation: The "repair" command should have a "verify" flag.
 func Test_NewRepairCmd_HasVerifyFlag_Success(t *testing.T) {
 	t.Parallel()

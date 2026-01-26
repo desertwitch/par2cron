@@ -205,6 +205,7 @@ Flags:
   -l, --log-level level         minimum level of emitted logs (debug|info|warn|error) (default info)
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove backup files (.1, .2, ...) after successful repair
+  -r, --restore-backups         restore backup files (.1, .2, ...) after unsuccessful repair
       --skip-not-created        skip PAR2 files without a par2cron manifest containing a creation record
   -v, --verify                  PAR2 sets must pass verification as part of repair
 ```

@@ -96,6 +96,20 @@ func (f *FailingStatFs) Stat(name string) (os.FileInfo, error) {
 	return f.Fs.Stat(name)
 }
 
+type FailingRenameFs struct {
+	afero.Fs
+
+	FailPattern string
+}
+
+func (f *FailingRenameFs) Rename(oldname, newname string) error {
+	if strings.Contains(oldname, f.FailPattern) || strings.Contains(newname, f.FailPattern) {
+		return errors.New("rename failed")
+	}
+
+	return f.Fs.Rename(oldname, newname)
+}
+
 type FailingRemoveFs struct {
 	afero.Fs
 

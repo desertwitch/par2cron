@@ -51,6 +51,7 @@ repair:
   log-level: "warn"
   json: true
   purge-backups: true
+  restore-backups: true
 info:
   duration: "1h"
   age: "14d"
@@ -515,6 +516,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 		WantJSON:             util.Ptr(true),
 		AttemptUnrepairables: util.Ptr(true),
 		PurgeBackups:         util.Ptr(true),
+		RestoreBackups:       util.Ptr(true),
 		Par2Verify:           util.Ptr(true),
 	}
 
@@ -543,6 +545,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 	require.True(t, cfg.AttemptUnrepairables)
 	require.True(t, cfg.Par2Verify)
 	require.True(t, cfg.PurgeBackups)
+	require.True(t, cfg.RestoreBackups)
 }
 
 // Expectation: External args should take precedence over YAML config for repair.
@@ -585,6 +588,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		WantJSON:             util.Ptr(true),
 		AttemptUnrepairables: util.Ptr(true),
 		PurgeBackups:         util.Ptr(true),
+		RestoreBackups:       util.Ptr(true),
 		Par2Verify:           util.Ptr(true),
 	}
 
@@ -610,6 +614,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"json":                  true,
 		"attempt-unrepairables": true,
 		"purge-backups":         true,
+		"restore-backups":       true,
 	}
 
 	yamlCfg.Merge(&cfg, &logs, false, setFlags)
@@ -622,6 +627,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.False(t, cfg.AttemptUnrepairables)
 	require.False(t, cfg.Par2Verify)
 	require.False(t, cfg.PurgeBackups)
+	require.False(t, cfg.RestoreBackups)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values for repair.
