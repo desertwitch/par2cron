@@ -349,13 +349,14 @@ func Test_backupPurger_Purge_PostReadDirError_Error(t *testing.T) {
 	require.ErrorContains(t, err, "failed to establish after-state")
 }
 
-// Expectation: Purge should return error when checking original file fails with stat error.
+// Expectation: Purge should continue when an element has a stat failure.
 func Test_backupPurger_Purge_StatError_Error(t *testing.T) {
 	t.Parallel()
 
 	baseFs := afero.NewMemMapFs()
 	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(baseFs, "/data/file.txt", []byte("original"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/file2.txt", []byte("original"), 0o644))
 
 	log := slog.New(slog.DiscardHandler)
 	purger, err := newBackupPurger(baseFs, log, "/data")
@@ -369,12 +370,19 @@ func Test_backupPurger_Purge_StatError_Error(t *testing.T) {
 	purger.fsys = fs
 
 	// Create backup
-	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.1", []byte("backup"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/file.txt.1", []byte("backup"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/file2.txt.1", []byte("backup"), 0o644))
 
 	err = purger.Purge()
+	require.NoError(t, err)
 
-	require.ErrorContains(t, err, "failed to check original file")
-	require.ErrorContains(t, err, "stat failed")
+	// Backup 1 should not be removed (stat failure)
+	exists, _ := afero.Exists(baseFs, "/data/file.txt.1")
+	require.True(t, exists)
+
+	// Backup 2 should be removed (no stat failure)
+	exists, _ = afero.Exists(baseFs, "/data/file2.txt.1")
+	require.False(t, exists)
 }
 
 // Expectation: getNumberExtensions should only match files ending with numeric extensions.

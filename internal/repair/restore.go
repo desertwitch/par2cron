@@ -69,14 +69,14 @@ func (r *backupRestorer) Restore() error {
 		}
 
 		if err := r.fsys.Rename(currentRecord.path, beforeRecord.path); err != nil {
-			r.log.Warn("Failed to restore backup file (needs manual restoration)",
+			r.log.Warn("Failed to restore backup (needs manual restoration)",
 				"path", currentRecord.path,
 				"error", err)
 
 			continue
 		}
 
-		r.log.Debug("Restored pre-repair state from backup file",
+		r.log.Debug("Restored pre-repair state from backup",
 			"path", beforeRecord.path)
 	}
 

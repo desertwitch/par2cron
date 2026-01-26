@@ -47,7 +47,10 @@ func (p *backupPurger) Purge() error {
 		if _, existed := p.before[f]; !existed {
 			valid, err := p.hasValidOriginal(f)
 			if err != nil {
-				return fmt.Errorf("failed to check original file: %w", err)
+				p.log.Warn("Failed to check for original file (not purging backup)",
+					"path", f, "error", err)
+
+				continue
 			}
 			if valid {
 				if err := p.fsys.Remove(f); err != nil {
