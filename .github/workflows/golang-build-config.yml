@@ -21,6 +21,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install par2cmdline
+        run: sudo apt-get update && sudo apt-get install -y par2
+
       - name: Clean the environment
         run: make clean
 
