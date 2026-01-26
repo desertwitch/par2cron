@@ -21,9 +21,10 @@ func Test_NewRepairJob_Success(t *testing.T) {
 	t.Parallel()
 
 	args := Options{
-		Par2Args:     []string{"-v"},
-		Par2Verify:   true,
-		PurgeBackups: true,
+		Par2Args:       []string{"-v"},
+		Par2Verify:     true,
+		PurgeBackups:   true,
+		RestoreBackups: true,
 	}
 
 	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
@@ -38,6 +39,7 @@ func Test_NewRepairJob_Success(t *testing.T) {
 	require.Equal(t, "/data/test"+schema.Par2Extension+schema.ManifestExtension, job.manifestPath)
 	require.Equal(t, "/data/test"+schema.Par2Extension+schema.LockExtension, job.lockPath)
 	require.True(t, job.purgeBackups)
+	require.True(t, job.restoreBackups)
 
 	require.Equal(t, mf, job.manifest)
 }
@@ -1099,6 +1101,87 @@ func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
 
 	backup3Exists, _ := afero.Exists(fs, "/data/old.file.1")
 	require.True(t, backup3Exists)
+}
+
+// Expectation: The repair should fail and the backup files be restored after.
+func Test_Service_runRepair_RestoreBackups_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+
+	require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("original file"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/other.txt", []byte("other original"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/old.file.1", []byte("unrelated backup"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			// Simulate par2 renaming originals to backups and creating corrupt reconstructions
+			require.NoError(t, fs.Rename(dir+"/test.txt", dir+"/test.txt.1"))
+			require.NoError(t, fs.Rename(dir+"/other.txt", dir+"/other.txt.1"))
+			require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("corrupt"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, dir+"/other.txt", []byte("corrupt"), 0o644))
+
+			return testutil.CreateExitError(t, ctx, 1)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:     dir,
+		par2Name:       "test" + schema.Par2Extension,
+		par2Path:       dir + "/test" + schema.Par2Extension,
+		par2Args:       []string{"-v"},
+		par2Verify:     false,
+		restoreBackups: true,
+		manifestName:   "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath:   dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:       dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:       mf,
+	}
+
+	err := prog.runRepair(t.Context(), job)
+	require.ErrorContains(t, err, "par2cmdline:")
+	require.Equal(t, 1, called)
+
+	// Original files should be restored from backups
+	testContent, err := afero.ReadFile(fs, dir+"/test.txt")
+	require.NoError(t, err)
+	require.Equal(t, "original file", string(testContent))
+
+	otherContent, err := afero.ReadFile(fs, dir+"/other.txt")
+	require.NoError(t, err)
+	require.Equal(t, "other original", string(otherContent))
+
+	// Backup files should be gone (renamed back to originals)
+	backup1Exists, _ := afero.Exists(fs, dir+"/test.txt.1")
+	require.False(t, backup1Exists)
+
+	backup2Exists, _ := afero.Exists(fs, dir+"/other.txt.1")
+	require.False(t, backup2Exists)
+
+	// Unrelated old backup should remain untouched
+	oldBackupExists, _ := afero.Exists(fs, dir+"/old.file.1")
+	require.True(t, oldBackupExists)
 }
 
 // Expectation: The repair should use the correct arguments.

@@ -128,6 +128,7 @@ type configFileRepair struct {
 	SkipNotCreated       *bool           `yaml:"skip-not-created"`
 	AttemptUnrepairables *bool           `yaml:"attempt-unrepairables"`
 	PurgeBackups         *bool           `yaml:"purge-backups"`
+	RestoreBackups       *bool           `yaml:"restore-backups"`
 
 	LogLevel *flags.LogLevel `yaml:"log-level"`
 	WantJSON *bool           `yaml:"json"`
@@ -154,6 +155,9 @@ func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, logs *logging.Option
 	}
 	if yamlCfg.PurgeBackups != nil && !setFlags["purge-backups"] {
 		cfg.PurgeBackups = *yamlCfg.PurgeBackups
+	}
+	if yamlCfg.RestoreBackups != nil && !setFlags["restore-backups"] {
+		cfg.RestoreBackups = *yamlCfg.RestoreBackups
 	}
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
 		logs.LogLevel = *yamlCfg.LogLevel

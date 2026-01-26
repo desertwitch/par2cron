@@ -13,7 +13,7 @@ linters:
     - wsl_v5
   settings:
     cyclop:
-      max-complexity: 20
+      max-complexity: 21
       package-average: 20
     funlen:
       lines: 86

@@ -31,7 +31,7 @@ when you really only care that important subsets of your data remain protected.
 
 A given directory tree on any filesystem is scanned for marker files, and a
 PAR2 set created for every directory containing such a `_par2cron` file. For
-verification the program loads the PAR2 sets and verifies that the data which
+verification, the program loads the PAR2 sets and verifies that the data which
 they are protecting is healthy, otherwise flagging the PAR2 set for repair.
 Once repair runs, corrupted or missing files are recovered. Many command-line
 tunables, as well as configuration directives, are offered for more granular
@@ -205,6 +205,7 @@ Flags:
   -l, --log-level level         minimum level of emitted logs (debug|info|warn|error) (default info)
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove backup files (.1, .2, ...) after successful repair
+  -r, --restore-backups         restore backup files (.1, .2, ...) after unsuccessful repair
       --skip-not-created        skip PAR2 files without a par2cron manifest containing a creation record
   -v, --verify                  PAR2 sets must pass verification as part of repair
 ```

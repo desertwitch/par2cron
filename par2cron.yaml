@@ -160,11 +160,18 @@ repair:
   attempt-unrepairables: false
 
   # purge-backups: Remove backup files (.1, .2, ...) after successful repair
-  # These backup files are created by par2cmdline when repairing damaged files
+  # These backup files are created by par2cmdline before repairing damaged files
   # Use at your own risk, recommended to keep disabled and do deletion manually
   #
   # Default: false
   purge-backups: false
+
+  # restore-backups: Restore backup files (.1, .2, ...) after unsuccessful repair
+  # These backup files are created by par2cmdline before repairing damaged files
+  # Use at your own risk, recommended to keep disabled and do restoring manually
+  #
+  # Default: false
+  restore-backups: false
 
   # log-level: Minimum level of emitted logs
   #

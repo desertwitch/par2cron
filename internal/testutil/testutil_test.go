@@ -302,6 +302,86 @@ func Test_FailingStatFs_Stat_UnderlyingError_Passthrough_Error(t *testing.T) {
 	require.NotContains(t, err.Error(), "stat failed")
 }
 
+// Expectation: The failing fs should fail to rename files matching the pattern in oldname.
+func Test_FailingRenameFs_Rename_MatchingOldname_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(baseFs, "/data/test.txt", []byte("content"), 0o644))
+
+	fs := &FailingRenameFs{
+		Fs:          baseFs,
+		FailPattern: "test.txt",
+	}
+
+	err := fs.Rename("/data/test.txt", "/data/renamed.txt")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "rename failed")
+}
+
+// Expectation: The failing fs should fail to rename files matching the pattern in newname.
+func Test_FailingRenameFs_Rename_MatchingNewname_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(baseFs, "/data/source.txt", []byte("content"), 0o644))
+
+	fs := &FailingRenameFs{
+		Fs:          baseFs,
+		FailPattern: "target.txt",
+	}
+
+	err := fs.Rename("/data/source.txt", "/data/target.txt")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "rename failed")
+}
+
+// Expectation: The failing fs should successfully rename files not matching the pattern.
+func Test_FailingRenameFs_Rename_NonMatchingPattern_Success(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(baseFs, "/data/source.txt", []byte("content"), 0o644))
+
+	fs := &FailingRenameFs{
+		Fs:          baseFs,
+		FailPattern: "nomatch",
+	}
+
+	err := fs.Rename("/data/source.txt", "/data/target.txt")
+
+	require.NoError(t, err)
+
+	exists, err := afero.Exists(fs, "/data/target.txt")
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	exists, err = afero.Exists(fs, "/data/source.txt")
+	require.NoError(t, err)
+	require.False(t, exists)
+}
+
+// Expectation: The failing fs should match patterns anywhere in the path.
+func Test_FailingRenameFs_Rename_PatternInPath_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/secret", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/secret/file.txt", []byte("content"), 0o644))
+
+	fs := &FailingRenameFs{
+		Fs:          baseFs,
+		FailPattern: "secret",
+	}
+
+	err := fs.Rename("/data/secret/file.txt", "/data/other/file.txt")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "rename failed")
+}
+
 // Expectation: The failing fs should fail to remove files with the specified suffix.
 func Test_FailingRemoveFs_Remove_MatchingSuffix_Error(t *testing.T) {
 	t.Parallel()

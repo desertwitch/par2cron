@@ -26,6 +26,7 @@ type Options struct {
 	SkipNotCreated       bool
 	AttemptUnrepairables bool
 	PurgeBackups         bool
+	RestoreBackups       bool
 }
 
 type Service struct {
@@ -53,15 +54,16 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 }
 
 type Job struct {
-	workingDir   string
-	par2Name     string
-	par2Path     string
-	par2Args     []string
-	par2Verify   bool
-	manifestName string
-	manifestPath string
-	lockPath     string
-	purgeBackups bool
+	workingDir     string
+	par2Name       string
+	par2Path       string
+	par2Args       []string
+	par2Verify     bool
+	manifestName   string
+	manifestPath   string
+	lockPath       string
+	purgeBackups   bool
+	restoreBackups bool
 
 	manifest *schema.Manifest
 }
@@ -78,6 +80,7 @@ func NewRepairJob(par2Path string, args Options, mf *schema.Manifest) *Job {
 	rj.manifestPath = rj.par2Path + schema.ManifestExtension
 	rj.lockPath = rj.par2Path + schema.LockExtension
 	rj.purgeBackups = args.PurgeBackups
+	rj.restoreBackups = args.RestoreBackups
 
 	rj.manifest = mf
 
@@ -305,18 +308,34 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 		}
 	}
 
+	var needsRestore bool
+	if job.restoreBackups {
+		restorer, err := newBackupRestorer(prog.fsys, prog.repairLogger(ctx, job, nil), job.workingDir)
+		if err != nil {
+			logger.Warn("Failed to create backup file restorer (cannot --restore-backups)", "error", err)
+		} else {
+			defer func() {
+				if needsRestore {
+					if err := restorer.Restore(); err != nil {
+						logger.Warn("Failed to restore backup files (cannot --restore-backups)", "error", err)
+					}
+				}
+			}()
+		}
+	}
+
 	job.manifest.Repair.Time = time.Now()
 	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
 	job.manifest.Repair.Duration = time.Since(job.manifest.Repair.Time)
 
 	if err != nil {
-		err = fmt.Errorf("par2cmdline: %w", err)
+		needsRestore = true
 
+		err = fmt.Errorf("par2cmdline: %w", err)
 		c := util.AsExitCode(err)
 		if c != nil {
 			err = fmt.Errorf("%w (%d)", err, *c)
 		}
-
 		logger.Error("Failed to repair PAR2", "error", err)
 
 		return err

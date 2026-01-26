@@ -10,7 +10,7 @@ when you really only care that important subsets of your data remain protected.
 
 A given directory tree on any filesystem is scanned for marker files, and a
 PAR2 set created for every directory containing such a "_par2cron" file. For
-verification the program loads the PAR2 sets and verifies that the data which
+verification, the program loads the PAR2 sets and verifies that the data which
 they are protecting is healthy, otherwise flagging the PAR2 set for repair.
 Once repair runs, corrupted or missing files are recovered. Many command-line
 tunables, as well as configuration directives, are offered for more granular
@@ -341,6 +341,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 	repairCmd.Flags().BoolVarP(&repairArgs.AttemptUnrepairables, "attempt-unrepairables", "u", false, "attempt to repair PAR2 sets marked as unrepairable")
 	repairCmd.Flags().BoolVarP(&repairArgs.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of repair")
 	repairCmd.Flags().BoolVarP(&repairArgs.PurgeBackups, "purge-backups", "p", false, "remove backup files (.1, .2, ...) after successful repair")
+	repairCmd.Flags().BoolVarP(&repairArgs.RestoreBackups, "restore-backups", "r", false, "restore backup files (.1, .2, ...) after unsuccessful repair")
 	repairCmd.Flags().IntVarP(&repairArgs.MinTestedCount, "min-tested", "t", 0, "repair only when verified as corrupted at least X times")
 	repairCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	repairCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
