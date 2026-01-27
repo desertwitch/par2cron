@@ -1,5 +1,9 @@
 package main
 
+const rootUsage = "par2cron"
+
+const rootHelpShort = "PAR2 Integrity & Self-Repair Engine"
+
 const rootHelpLong = `par2cron - PAR2 Integrity & Self-Repair Engine
 Selective automated protection for directory trees
 

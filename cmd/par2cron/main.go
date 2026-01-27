@@ -62,8 +62,8 @@ func wrapArgsError(validator cobra.PositionalArgs) cobra.PositionalArgs {
 // newRootCmd returns the primary [cobra.Command] pointer for the program.
 func newRootCmd(ctx context.Context) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:               "par2cron",
-		Short:             "PAR2 Integrity & Self-Repair Engine",
+		Use:               rootUsage,
+		Short:             rootHelpShort,
 		Long:              rootHelpLong,
 		Version:           schema.ProgramVersion,
 		SilenceUsage:      true,
