@@ -67,6 +67,10 @@ PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
 **A condensed quick guide and cheatsheet can be found in the [README](README) file.**
 
+> **One PAR2 per folder:** To keep your mental model simple, PAR2 creation does not
+> recurse into subfolders. This flat scope ensures you always know exactly which
+> files a PAR2 covers, without needing to remember any directory tree complexities.
+
 ## Installation
 
 To build from source, a `Makefile` is included with the project's source code.
@@ -488,6 +492,13 @@ data. It simply has no concept of data being updated, instead flagging such
 updates as possible corruption. If you need to update any protected files,
 you will need to manually delete the PAR2 set and then have it recreated using
 the marker file approach (equals the process for new sets of protectable data).
+
+A marker file only triggers PAR2 creation for files in its immediate directory.
+It will not recurse/traverse into subdirectories. To protect a directory tree,
+you must place a marker file in each specific folder you wish to secure. This
+is to promote a clear mental model: "One PAR2 per folder", spontaneously being
+able to mentally link a PAR2 set to the immediate files that it is protecting.
+As a result, the `par2` argument `-R` has no effect with the `create` command.
 
 par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in
