@@ -65,7 +65,7 @@ Once configured, protecting a new folder is as simple as:
 
 PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
-**A condensed quick guide and cheatsheet can be found in the [README](README) file.**
+**A condensed quick guide and cheatsheet can be found in the [QUICKGUIDE](QUICKGUIDE) file.**
 
 > **One PAR2 per folder:** To keep your mental model simple, PAR2 creation does
 > not recurse into subfolders. The flat protection scope ensures that you
