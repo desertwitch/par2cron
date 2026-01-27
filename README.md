@@ -67,9 +67,10 @@ PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
 **A condensed quick guide and cheatsheet can be found in the [README](README) file.**
 
-> **One PAR2 per folder:** To keep your mental model simple, PAR2 creation does not
-> recurse into subfolders. This flat scope ensures you always know exactly which
-> files a PAR2 covers, without needing to remember any directory tree complexities.
+> **One PAR2 per folder:** To keep your mental model simple, PAR2 creation does
+> not recurse into subfolders. The flat protection scope ensures that you
+> always know exactly which files a PAR2 covers, without needing to remember
+> any directory tree complexities (avoiding surprises during data recovering).
 
 ## Installation
 
@@ -181,7 +182,7 @@ Flags:
       --skip-not-created             skip PAR2 files without a par2cron manifest containing a creation record
 ```
 
-> **External PAR2 Sets**: While par2cron creates flat sets, it can verify existing
+> **External PAR2**: While par2cron creates flat sets, it can verify existing
 > sets (even recursive ones) created by other tools. Use the `--include-external`
 > flag to pull these into par2cron's verification cycle (manifests will be created).
 
