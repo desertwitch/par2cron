@@ -319,7 +319,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	if job.manifest == nil {
-		job.manifest = schema.NewManifest(ctx, job.par2Name)
+		job.manifest = schema.NewManifest(job.par2Name)
 		job.manifest.SHA256 = par2Hash
 	}
 

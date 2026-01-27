@@ -1,11 +1,7 @@
 package schema
 
-const (
-	MposKey    ctxKey = iota
-	PosKey     ctxKey = iota
-	PrioKey    ctxKey = iota
-	VersionKey ctxKey = iota
-)
+// ProgramVersion is the program version as filled in by the Makefile.
+var ProgramVersion = "devel"
 
 const (
 	ExitCodeSuccess        int = 0
@@ -33,3 +29,9 @@ const (
 )
 
 type ctxKey int
+
+const (
+	PosKey  ctxKey = iota
+	MposKey ctxKey = iota
+	PrioKey ctxKey = iota
+)

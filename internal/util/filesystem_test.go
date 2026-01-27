@@ -59,7 +59,7 @@ func Test_WriteManifest_Success(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
 	err := WriteManifest(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf)
@@ -73,6 +73,48 @@ func Test_WriteManifest_Success(t *testing.T) {
 	require.True(t, json.Valid(by))
 }
 
+// Expectation: The manifest version should be updated to current schema version on write.
+func Test_WriteManifest_UpdatesManifestVersion_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.ManifestVersion = "0" // simulate old version
+
+	err := WriteManifest(fsys, "/data/test"+schema.ManifestExtension, mf)
+	require.NoError(t, err)
+
+	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
+	require.NoError(t, err)
+
+	var written schema.Manifest
+	require.NoError(t, json.Unmarshal(by, &written))
+	require.Equal(t, schema.ManifestVersion, written.ManifestVersion)
+}
+
+// Expectation: The program version should be updated on write.
+func Test_WriteManifest_UpdatesProgramVersion_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.ProgramVersion = "0.0.0" // simulate old version
+
+	err := WriteManifest(fsys, "/data/test"+schema.ManifestExtension, mf)
+	require.NoError(t, err)
+
+	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
+	require.NoError(t, err)
+
+	var written schema.Manifest
+	require.NoError(t, json.Unmarshal(by, &written))
+	require.Equal(t, schema.ProgramVersion, written.ProgramVersion)
+}
+
 // Expectation: A write failure should fail the function and return an error.
 func Test_WriteManifest_WriteFails_Error(t *testing.T) {
 	t.Parallel()
@@ -81,7 +123,7 @@ func Test_WriteManifest_WriteFails_Error(t *testing.T) {
 
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
 	err := WriteManifest(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf)

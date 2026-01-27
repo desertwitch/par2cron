@@ -63,6 +63,9 @@ func HashFile(fsys afero.Fs, filePath string) (string, error) {
 }
 
 func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
+	m.ProgramVersion = schema.ProgramVersion
+	m.ManifestVersion = schema.ManifestVersion
+
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal: %w", err)

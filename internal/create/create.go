@@ -397,7 +397,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, files []schema.Pro
 	cmdArgs = append(cmdArgs, job.par2Path)
 	cmdArgs = append(cmdArgs, getPaths(files)...)
 
-	mf := schema.NewManifest(ctx, job.par2Name)
+	mf := schema.NewManifest(job.par2Name)
 	mf.Creation = &schema.CreationManifest{}
 	mf.Creation.Args = slices.Clone(job.par2Args)
 	mf.Creation.Files = files

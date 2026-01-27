@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"context"
 	"io/fs"
 	"time"
 )
@@ -20,14 +19,9 @@ type Manifest struct {
 	Repair          *RepairManifest       `json:"repair,omitempty"`
 }
 
-func NewManifest(ctx context.Context, par2Name string) *Manifest {
-	var programVersion string
-	if v, ok := ctx.Value(VersionKey).(string); ok {
-		programVersion = v
-	}
-
+func NewManifest(par2Name string) *Manifest {
 	return &Manifest{
-		ProgramVersion:  programVersion,
+		ProgramVersion:  ProgramVersion,
 		ManifestVersion: ManifestVersion,
 		Name:            par2Name,
 	}

@@ -21,7 +21,7 @@ builds:
     ldflags:
       - -w
       - -s
-      - -X main.Version={{.Version}}
+      - -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion={{.Version}}
       - -buildid=
     goos:
       - linux

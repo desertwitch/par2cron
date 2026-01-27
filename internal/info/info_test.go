@@ -34,7 +34,7 @@ func Test_Service_Info_JSON_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,
@@ -143,7 +143,7 @@ func Test_Service_Info_WithJobs_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,
@@ -178,7 +178,7 @@ func Test_Service_Info_WithAgeFlag_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,
@@ -214,7 +214,7 @@ func Test_Service_Info_WithDurationFlag_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,
@@ -249,7 +249,7 @@ func Test_Service_Info_HealthyBacklog_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,
@@ -286,7 +286,7 @@ func Test_Service_Info_HealthyBacklog_UnknownDurations_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/test2"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,
@@ -322,7 +322,7 @@ func Test_Service_Info_UnhealthyBacklog_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 2 * time.Hour,
@@ -359,7 +359,7 @@ func Test_Service_Info_LargeJobWarning_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 2 * time.Hour,
@@ -828,7 +828,7 @@ func Test_Service_printCycleInfo_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,
@@ -872,7 +872,7 @@ func Test_Service_printCycleInfo_UnknownDurations_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
-	manifest := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
 	manifest.Verification = &schema.VerificationManifest{
 		Time:     time.Now(),
 		Duration: 5 * time.Minute,

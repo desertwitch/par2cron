@@ -13,7 +13,7 @@ VERSION := $(shell \
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
 $(BINARY): ## Builds the application
-	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -ldflags="-w -s -X main.Version=$(VERSION) -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -ldflags="-w -s -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION) -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
 
 benchmark: ## Runs the benchmark script
@@ -28,7 +28,7 @@ clean: ## Returns the application build stage to its original state (deleting fi
 	@rm -vf $(BINARY) || true
 
 debug: ## Builds the application in debug mode (with symbols, race checks, ...)
-	CGO_ENABLED=1 GOFLAGS="-mod=vendor" go build -ldflags="-X main.Version=$(VERSION)-DBG" -trimpath -race -o $(BINARY) $(SRC_DIR)
+	CGO_ENABLED=1 GOFLAGS="-mod=vendor" go build -ldflags="-X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)-DBG" -trimpath -race -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
 
 help: ## Shows all build related commands of the Makefile
