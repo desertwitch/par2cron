@@ -63,6 +63,8 @@ func HashFile(fsys afero.Fs, filePath string) (string, error) {
 }
 
 func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
+	// Update versions here, as we un- and re-marshalled to a possibly
+	// new manifest format (adding new fields and dropping old fields).
 	m.ProgramVersion = schema.ProgramVersion
 	m.ManifestVersion = schema.ManifestVersion
 
