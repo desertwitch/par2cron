@@ -27,7 +27,7 @@ func Test_NewRepairJob_Success(t *testing.T) {
 		RestoreBackups: true,
 	}
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	job := NewRepairJob("/data/test"+schema.Par2Extension, args, mf)
 
 	require.Equal(t, "/data", job.workingDir)
@@ -54,7 +54,7 @@ func Test_NewRepairJob_ArgsCloned_Success(t *testing.T) {
 		Par2Verify: true,
 	}
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	job := NewRepairJob("/data/test"+schema.Par2Extension, args, mf)
 
 	// Modify original args
@@ -72,7 +72,7 @@ func Test_Service_Repair_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -114,7 +114,7 @@ func Test_Service_Repair_FileLocked_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -156,7 +156,7 @@ func Test_Service_Repair_Generic_Error(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -197,7 +197,7 @@ func Test_Service_Repair_MultipleJobs_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test2"+schema.Par2Extension, []byte("par2data"), 0o644))
 
 	for _, name := range []string{"test", "test2"} {
-		mf := schema.NewManifest(t.Context(), name+schema.Par2Extension)
+		mf := schema.NewManifest(name + schema.Par2Extension)
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -242,7 +242,7 @@ func Test_Service_Repair_MultipleJobs_OneFails_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test2"+schema.Par2Extension, []byte("par2data"), 0o644))
 
 	for _, name := range []string{"test", "test2"} {
-		mf := schema.NewManifest(t.Context(), name+schema.Par2Extension)
+		mf := schema.NewManifest(name + schema.Par2Extension)
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -292,7 +292,7 @@ func Test_Service_Repair_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(baseFs, "/data/test2"+schema.Par2Extension, []byte("par2"), 0o644))
 
 	for _, name := range []string{"test1", "test2"} {
-		mf := schema.NewManifest(t.Context(), name+schema.Par2Extension)
+		mf := schema.NewManifest(name + schema.Par2Extension)
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -367,7 +367,7 @@ func Test_Service_Repair_CtxCancel_Error(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -405,7 +405,7 @@ func Test_Service_Repair_MaxDuration_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test2"+schema.Par2Extension, []byte("par2data"), 0o644))
 
 	for _, name := range []string{"test", "test2"} {
-		mf := schema.NewManifest(t.Context(), name+schema.Par2Extension)
+		mf := schema.NewManifest(name + schema.Par2Extension)
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -453,7 +453,7 @@ func Test_Service_Enumerate_RepairNeeded_RepairPossible_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -490,7 +490,7 @@ func Test_Service_Enumerate_RepairNotNeeded_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   false,
 		RepairPossible: true,
@@ -527,7 +527,7 @@ func Test_Service_Enumerate_RepairNeeded_RepairImpossible_Success(t *testing.T) 
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: false,
@@ -567,7 +567,7 @@ func Test_Service_Enumerate_RepairNeeded_MinTestedCount_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		CountCorrupted: 1,
 		RepairNeeded:   true,
@@ -607,7 +607,7 @@ func Test_Service_Enumerate_RepairNeeded_MinTestedCount_NotMet_Success(t *testin
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		CountCorrupted: 1,
 		RepairNeeded:   true,
@@ -648,7 +648,7 @@ func Test_Service_Enumerate_AttemptUnrepairables_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: false,
@@ -687,7 +687,7 @@ func Test_Service_Enumerate_NoVerificationManifest_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = nil
 
 	mfData, err := json.Marshal(mf)
@@ -774,7 +774,7 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = nil
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
@@ -815,7 +815,7 @@ func Test_Service_Enumerate_ReadManifestFailure_Error(t *testing.T) {
 	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -882,7 +882,7 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 
 	// Create manifests for both PAR2 files
 	for _, path := range []string{"/data/ignored", "/data/subdir/notignored"} {
-		mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+		mf := schema.NewManifest("test" + schema.Par2Extension)
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -921,7 +921,7 @@ func Test_Service_Enumerate_IgnoreAllFile_Success(t *testing.T) {
 
 	// Create manifests for all PAR2 files
 	for _, path := range []string{"/data/normal/test", "/data/ignored/test", "/data/ignored/sub/test"} {
-		mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+		mf := schema.NewManifest("test" + schema.Par2Extension)
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -1000,7 +1000,7 @@ func Test_Service_runRepair_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1062,7 +1062,7 @@ func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1140,7 +1140,7 @@ func Test_Service_runRepair_RestoreBackups_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1213,7 +1213,7 @@ func Test_Service_runRepair_CorrectArgs_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1267,7 +1267,7 @@ func Test_Service_runRepair_IncrementCount_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1317,7 +1317,7 @@ func Test_Service_runRepair_GenericError_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1363,7 +1363,7 @@ func Test_Service_runRepair_NonZeroExitCode_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1411,7 +1411,7 @@ func Test_Service_runRepair_ManifestWriteError_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1462,7 +1462,7 @@ func Test_Service_runRepair_WithVerify_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1518,7 +1518,7 @@ func Test_Service_runRepair_VerifyFails_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1563,7 +1563,7 @@ func Test_Service_runRepair_StoresArgs_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1610,7 +1610,7 @@ func Test_Service_runRepair_ArgsCloned_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,

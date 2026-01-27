@@ -20,7 +20,7 @@ import (
 func createWithManifest(t *testing.T, fs afero.Fs, path string) {
 	t.Helper()
 
-	mf := schema.NewManifest(t.Context(), filepath.Base(path))
+	mf := schema.NewManifest(filepath.Base(path))
 
 	mf.Creation = &schema.CreationManifest{}
 	mf.Creation.Time = time.Now()
@@ -51,7 +51,7 @@ func Test_NewJob_Success(t *testing.T) {
 		Par2Args: []string{"-v"},
 	}
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	job := NewJob("/data/test"+schema.Par2Extension, args, mf)
 
 	require.Equal(t, "/data", job.workingDir)
@@ -748,7 +748,7 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	createWithManifest(t, fs, "/data/with-creation")
 
-	mfNoCreation := schema.NewManifest(t.Context(), "no-creation"+schema.Par2Extension)
+	mfNoCreation := schema.NewManifest("no-creation" + schema.Par2Extension)
 	mfNoCreation.Creation = nil
 	mfNoCreationData, err := json.Marshal(mfNoCreation)
 	require.NoError(t, err)
@@ -812,7 +812,7 @@ func Test_Service_Enumerate_NoSkipNotCreated_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	mfNoCreation := schema.NewManifest(t.Context(), "no-creation"+schema.Par2Extension)
+	mfNoCreation := schema.NewManifest("no-creation" + schema.Par2Extension)
 	mfNoCreation.Creation = nil
 	mfNoCreationData, err := json.Marshal(mfNoCreation)
 	require.NoError(t, err)
@@ -851,7 +851,7 @@ func Test_Service_Enumerate_BothSkipOptions_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/no-manifest"+schema.Par2Extension, []byte("par2"), 0o644))
 
 	// PAR2 with manifest but no creation info
-	mfNoCreation := schema.NewManifest(t.Context(), "no-creation"+schema.Par2Extension)
+	mfNoCreation := schema.NewManifest("no-creation" + schema.Par2Extension)
 	mfNoCreation.Creation = nil
 	mfNoCreationData, err := json.Marshal(mfNoCreation)
 	require.NoError(t, err)
@@ -1033,7 +1033,7 @@ func Test_Service_RunVerify_KeepCreateManifest_Success(t *testing.T) {
 		par2Args:     []string{"-v", "-q"},
 		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
 		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
-		manifest:     schema.NewManifest(t.Context(), "test"+schema.Par2Extension),
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
 	}
 	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
 	job.manifest.Creation = &schema.CreationManifest{Time: time.Now()}
@@ -1077,7 +1077,7 @@ func Test_Service_RunVerify_HashMismatch_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
 
 	job := &Job{
@@ -1121,7 +1121,7 @@ func Test_Service_RunVerify_GenericError_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
 
 	job := &Job{
@@ -1160,7 +1160,7 @@ func Test_Service_RunVerify_ManifestWriteError_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
-	mf := schema.NewManifest(t.Context(), "test"+schema.Par2Extension)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
 
 	job := &Job{

@@ -1,7 +1,6 @@
 package schema
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -18,12 +17,11 @@ func Test_ManifestVersion_Constant_Success(t *testing.T) {
 func Test_NewManifest_Success(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.WithValue(t.Context(), VersionKey, "0.1.2")
-	mf := NewManifest(ctx, "test"+Par2Extension)
+	mf := NewManifest("test" + Par2Extension)
 
 	require.Equal(t, "test"+Par2Extension, mf.Name)
+	require.Equal(t, ProgramVersion, mf.ProgramVersion)
 	require.Equal(t, ManifestVersion, mf.ManifestVersion)
-	require.Equal(t, "0.1.2", mf.ProgramVersion)
 
 	require.Empty(t, mf.SHA256)
 	require.Nil(t, mf.Creation)

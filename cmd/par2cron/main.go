@@ -49,9 +49,6 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// Version is the program version as filled in by the Makefile.
-var Version string
-
 func wrapArgsError(validator cobra.PositionalArgs) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if err := validator(cmd, args); err != nil {
@@ -65,10 +62,10 @@ func wrapArgsError(validator cobra.PositionalArgs) cobra.PositionalArgs {
 // newRootCmd returns the primary [cobra.Command] pointer for the program.
 func newRootCmd(ctx context.Context) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:               "par2cron",
-		Short:             "PAR2 Integrity & Self-Repair Engine",
+		Use:               rootUsage,
+		Short:             rootHelpShort,
 		Long:              rootHelpLong,
-		Version:           Version,
+		Version:           schema.ProgramVersion,
 		SilenceUsage:      true,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
@@ -443,7 +440,6 @@ func main() {
 	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	ctx = context.WithValue(ctx, schema.VersionKey, Version)
 	defer cancel()
 
 	sigs := make(chan os.Signal, 1)

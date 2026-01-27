@@ -1,11 +1,7 @@
 package schema
 
-const (
-	MposKey    ctxKey = iota
-	PosKey     ctxKey = iota
-	PrioKey    ctxKey = iota
-	VersionKey ctxKey = iota
-)
+// ProgramVersion is the program version as filled in by the Makefile.
+var ProgramVersion = "devel"
 
 const (
 	ExitCodeSuccess        int = 0
@@ -15,7 +11,7 @@ const (
 	ExitCodeUnrepairable   int = 4 // ErrExitUnrepairable
 	ExitCodeUnclassified   int = 5 // ErrExitUnclassified
 
-	// https://github.com/Parchive/par2cmdline/blob/master/src/libpar2.h#L111
+	// https://github.com/Parchive/par2cmdline/blob/master/src/libpar2.h
 
 	Par2ExitCodeSuccess          int = 0
 	Par2ExitCodeRepairPossible   int = 1
@@ -33,3 +29,9 @@ const (
 )
 
 type ctxKey int
+
+const (
+	PosKey  ctxKey = iota
+	MposKey ctxKey = iota
+	PrioKey ctxKey = iota
+)
