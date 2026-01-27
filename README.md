@@ -181,6 +181,10 @@ Flags:
       --skip-not-created             skip PAR2 files without a par2cron manifest containing a creation record
 ```
 
+> **External PAR2 Sets**: While par2cron creates flat sets, it can verify existing
+> sets (even recursive ones) created by other tools. Use the `--include-external`
+> flag to pull these into par2cron's verification cycle (manifests will be created).
+
 ### `par2cron repair`
 ```
 Repair all data flagged as repairable during verification
