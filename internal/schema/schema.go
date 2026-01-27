@@ -11,7 +11,7 @@ const (
 	ExitCodeUnrepairable   int = 4 // ErrExitUnrepairable
 	ExitCodeUnclassified   int = 5 // ErrExitUnclassified
 
-	// https://github.com/Parchive/par2cmdline/blob/master/src/libpar2.h#L111
+	// https://github.com/Parchive/par2cmdline/blob/master/src/libpar2.h
 
 	Par2ExitCodeSuccess          int = 0
 	Par2ExitCodeRepairPossible   int = 1
