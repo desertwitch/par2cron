@@ -60,7 +60,7 @@ func (r *backupRestorer) Restore() error {
 		}
 
 		if currentRecord.size != beforeRecord.size {
-			r.log.Warn("Backup mismatches before-size (not restoring backup)",
+			r.log.Warn("Backup file mismatches before size (not restoring backup)",
 				"path", currentRecord.path,
 				"beforeSize", beforeRecord.size,
 				"afterSize", currentRecord.size)
@@ -99,7 +99,8 @@ func (r *backupRestorer) getFilesWithInodes() (map[uint64]fileRecord, error) {
 		path := filepath.Join(r.dir, entry.Name())
 		inode, err := r.getInode(path)
 		if err != nil {
-			r.log.Debug("Failed to get inode", "path", path, "error", err)
+			r.log.Debug("Failed to get inode (excluding for --restore-backups)",
+				"path", path, "error", err)
 
 			continue
 		}
@@ -133,7 +134,8 @@ func (r *backupRestorer) getNumberedFilesWithInodes() (map[uint64]fileRecord, er
 		path := filepath.Join(r.dir, entry.Name())
 		inode, err := r.getInode(path)
 		if err != nil {
-			r.log.Debug("Failed to get inode", "path", path, "error", err)
+			r.log.Debug("Failed to get inode (excluding for --restore-backups)",
+				"path", path, "error", err)
 
 			continue
 		}

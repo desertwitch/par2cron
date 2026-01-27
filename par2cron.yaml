@@ -8,6 +8,9 @@ create:
   # args: Set arguments passed directly to the par2 command
   # Changeable as needed for individual sets using the marker configuration
   #
+  # See here for a list of possible arguments:
+  # https://github.com/Parchive/par2cmdline?tab=readme-ov-file#using-par2cmdline
+  #
   # Example: ["-r15", "-n1"] (15% redundancy, 1 recovery file)
   # Default: [] (empty)
   args: []
@@ -61,6 +64,9 @@ create:
 # ==============================================================================
 verify:
   # args: Set arguments passed directly to the par2 command
+  #
+  # See here for a list of possible arguments:
+  # https://github.com/Parchive/par2cmdline?tab=readme-ov-file#using-par2cmdline
   #
   # Example: ["-m500", "-q"] (memory ceiling 500MB, quiet mode)
   # Default: [] (empty)
@@ -121,6 +127,9 @@ verify:
 repair:
   # args: Set arguments passed directly to the par2 command
   #
+  # See here for a list of possible arguments:
+  # https://github.com/Parchive/par2cmdline?tab=readme-ov-file#using-par2cmdline
+  #
   # Example: ["-m500", "-q"] (memory ceiling 500MB, quiet mode)
   # Default: [] (empty)
   args: []
@@ -161,14 +170,14 @@ repair:
 
   # purge-backups: Remove backup files (.1, .2, ...) after successful repair
   # These backup files are created by par2cmdline before repairing damaged files
-  # Use at your own risk, recommended to keep disabled and do deletion manually
+  # When enabled obsolete backup files will be removed as being no longer needed
   #
   # Default: false
   purge-backups: false
 
   # restore-backups: Restore backup files (.1, .2, ...) after unsuccessful repair
   # These backup files are created by par2cmdline before repairing damaged files
-  # Use at your own risk, recommended to keep disabled and do restoring manually
+  # When enabled the protected files will be rolled back to the pre-repair state
   #
   # Default: false
   restore-backups: false

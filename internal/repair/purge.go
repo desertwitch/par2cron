@@ -47,7 +47,10 @@ func (p *backupPurger) Purge() error {
 		if _, existed := p.before[f]; !existed {
 			valid, err := p.hasValidOriginal(f)
 			if err != nil {
-				return fmt.Errorf("failed to check original file: %w", err)
+				p.log.Warn("Failed to check for original file (not purging backup)",
+					"path", f, "error", err)
+
+				continue
 			}
 			if valid {
 				if err := p.fsys.Remove(f); err != nil {
@@ -86,7 +89,7 @@ func (p *backupPurger) hasValidOriginal(backupPath string) (bool, error) {
 	originalPath := numberedFilePattern.ReplaceAllString(backupPath, "")
 
 	if originalPath == backupPath {
-		p.log.Warn("Same-path original and backup (not purging backup)",
+		p.log.Warn("Same-path original and backup file (not purging backup)",
 			"path", backupPath)
 
 		return false, nil
@@ -105,7 +108,7 @@ func (p *backupPurger) hasValidOriginal(backupPath string) (bool, error) {
 	}
 
 	if info.Size() <= 0 {
-		p.log.Warn("Invalid-size original file (not purging backup)",
+		p.log.Warn("Invalid original file size (not purging backup)",
 			"path", backupPath)
 
 		return false, nil
