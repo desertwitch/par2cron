@@ -480,9 +480,8 @@ func (prog *Service) considerRecursive(ctx context.Context, jobs []*Job) {
 		for _, arg := range job.par2Args {
 			if arg == "-R" || arg == "--recursive" {
 				logger := prog.creationLogger(ctx, job, nil)
-				logger.Warn("par2 creation argument -R has no effect; " +
-					"par2cron creates flat (non-recursive) PAR2 sets by design - " +
-					"please refer to the par2cron documentation for more information")
+				logger.Warn("par2 argument -R has no effect; " +
+					"par2cron creates flat (non-recursive) PAR2 sets by design (see documentation)")
 
 				return
 			}
