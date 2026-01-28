@@ -86,18 +86,19 @@ verify:
   # Default: "" (no time limit)
   duration: ""
 
-  # include-external: Include (external) PAR2 files without a par2cron manifest
-  # When enabled, it also verifies PAR2 sets which were not created by par2cron
-  # You can also utilize the par2cron-ignore files to exclude certain folders
+  # include-external: Include (external) PAR2 sets without a par2cron manifest
+  # When enabled, found PAR2 sets which were not par2cron-created are imported
+  # As part of the process, a par2cron manifest is created for these PAR2 sets
+  # Use par2cron-ignore files to exclude certain folders (see documentation)
   #
   # Default: false
   include-external: false
 
-  # skip-not-created: Skip PAR2 files without a par2cron creation record
+  # skip-not-created: Skip PAR2 sets without a par2cron creation record
   # Generally not recommended, even more strict than --include-external
   # Requires both a manifest and a creation record within that manifest
   # Useful if you used to --include-external and want to change it back now
-  # You can also utilize the par2cron-ignore files to exclude certain folders
+  # Use par2cron-ignore files to exclude certain folders (see documentation)
   #
   # Default: false
   skip-not-created: false
@@ -153,11 +154,11 @@ repair:
   # Default: 0
   min-tested: 0
 
-  # skip-not-created: Skip PAR2 files without a par2cron creation record
+  # skip-not-created: Skip PAR2 sets without a par2cron creation record
   # Generally not recommended, even more strict than --include-external
   # Requires both a manifest and a creation record within that manifest
   # Useful if you used to --include-external and want to change it back now
-  # You can also utilize the par2cron-ignore files to exclude certain folders
+  # Use par2cron-ignore files to exclude certain folders (see documentation)
   #
   # Default: false
   skip-not-created: false
@@ -210,18 +211,18 @@ info:
   # Default: "" (no time limit)
   duration: ""
 
-  # include-external: Include (external) PAR2 files without a par2cron manifest
-  # When enabled, it also verifies PAR2 sets which were not created by par2cron
-  # You can also utilize the par2cron-ignore files to exclude certain folders
+  # include-external: Include (external) PAR2 sets without a par2cron manifest
+  # When enabled, it also includes PAR2 sets which were not created by par2cron
+  # Use par2cron-ignore files to exclude certain folders (see documentation)
   #
   # Default: false
   include-external: false
 
-  # skip-not-created: Skip PAR2 files without a par2cron creation record
+  # skip-not-created: Skip PAR2 sets without a par2cron creation record
   # Generally not recommended, even more strict than --include-external
   # Requires both a manifest and a creation record within that manifest
   # Useful if you used to --include-external and want to change it back now
-  # You can also utilize the par2cron-ignore files to exclude certain folders
+  # Use par2cron-ignore files to exclude certain folders (see documentation)
   #
   # Default: false
   skip-not-created: false

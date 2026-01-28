@@ -129,6 +129,7 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) e
 		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
 		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 	}
+	prog.considerRecursive(ctx, jobs)
 
 	results := util.NewResultTracker(logger)
 	defer results.PrintCompletionInfo(len(jobs))
@@ -470,6 +471,20 @@ func (prog *Service) cleanupAfterFailure(ctx context.Context, job *Job) {
 		if err := prog.fsys.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			logger := prog.creationLogger(ctx, job, f)
 			logger.Warn("Failed to cleanup a file after failure (needs manual deletion)", "error", err)
+		}
+	}
+}
+
+func (prog *Service) considerRecursive(ctx context.Context, jobs []*Job) {
+	for _, job := range jobs {
+		for _, arg := range job.par2Args {
+			if arg == "-R" || arg == "--recursive" {
+				logger := prog.creationLogger(ctx, job, nil)
+				logger.Warn("par2 argument -R has no effect; " +
+					"par2cron creates flat (non-recursive) PAR2 sets by design (see documentation)")
+
+				return
+			}
 		}
 	}
 }

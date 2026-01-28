@@ -2076,3 +2076,96 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 
 	require.Contains(t, logBuf.String(), "Failed to cleanup a file after failure")
 }
+
+// Expectation: The program should warn when -R/--recursive flag is present in job args.
+func Test_Service_considerRecursive_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	jobs := []*Job{
+		{
+			workingDir: "/data/folder1",
+			par2Args:   []string{"-r10", "-n5"},
+		},
+		{
+			workingDir: "/data/folder2",
+			par2Args:   []string{"-R", "-r15"},
+		},
+	}
+
+	prog.considerRecursive(t.Context(), jobs)
+
+	require.Contains(t, logBuf.String(), "-R has no effect")
+	require.Equal(t, 1, strings.Count(logBuf.String(), "-R has no effect"))
+}
+
+// Expectation: The program should not warn when no -R/--recursive flag is present.
+func Test_Service_considerRecursive_NoFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	jobs := []*Job{
+		{
+			workingDir: "/data/folder1",
+			par2Args:   []string{"-r10", "-n5"},
+		},
+		{
+			workingDir: "/data/folder2",
+			par2Args:   []string{"-r15"},
+		},
+	}
+
+	prog.considerRecursive(t.Context(), jobs)
+
+	require.NotContains(t, logBuf.String(), "-R has no effect")
+}
+
+// Expectation: The program should also detect --recursive long form.
+func Test_Service_considerRecursive_LongForm_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	jobs := []*Job{
+		{
+			workingDir: "/data/folder1",
+			par2Args:   []string{"--recursive", "-r10"},
+		},
+	}
+
+	prog.considerRecursive(t.Context(), jobs)
+
+	require.Contains(t, logBuf.String(), "-R has no effect")
+}

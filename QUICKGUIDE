@@ -49,7 +49,7 @@ PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
 To maintain a "one PAR2 per folder" mental model, creation does not recurse
 into subfolders. By keeping the protection scope flat, you can always be sure
-which files a PAR2 file covers, without having to remember any directory trees.
+which files a PAR2 set covers, without having to remember any directory trees.
 
 ================================================================================
 Arguments for PAR2 creation (recommended):

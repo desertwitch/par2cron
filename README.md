@@ -16,7 +16,11 @@
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml"><img alt="Lint" src="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml"><img alt="Tests" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml"><img alt="Build" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml/badge.svg"></a>
-</div><br>
+</div>
+
+<div align="center">
+<sup>This software is in development, expect more frequent releases until a stable release.</sup>
+</div>
 
 ## Overview
 
@@ -65,11 +69,11 @@ Once configured, protecting a new folder is as simple as:
 
 PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
-**A condensed quick guide and cheatsheet can be found in the [README](README) file.**
+**A condensed quick guide and cheatsheet can be found in the [QUICKGUIDE](QUICKGUIDE) file.**
 
-> **One PAR2 per folder:** To keep your mental model simple, PAR2 creation does
-> not recurse into subfolders. The flat protection scope ensures that you
-> always know exactly which files a PAR2 covers, without needing to remember
+> **One PAR2 per folder:** To keep your mental model simple, marker-based PAR2
+> creation does not recurse into subfolders. The flat protection scope ensures
+> that you know exactly which files a PAR2 covers, without needing to remember
 > any directory tree complexities (avoiding surprises during data recovering).
 
 ## Installation
@@ -176,10 +180,10 @@ Flags:
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            time budget per run (best effort/soft limit)
   -h, --help                         help for verify
-  -e, --include-external             include external PAR2 files without a par2cron manifest
+  -e, --include-external             include PAR2 sets without a par2cron manifest (and create one)
       --json                         output structured logs in JSON format
   -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
-      --skip-not-created             skip PAR2 files without a par2cron manifest containing a creation record
+      --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
 > **External PAR2**: While par2cron creates flat sets, it can verify existing
@@ -215,7 +219,7 @@ Flags:
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
-      --skip-not-created        skip PAR2 files without a par2cron manifest containing a creation record
+      --skip-not-created        skip PAR2 sets without a par2cron manifest containing a creation record
   -v, --verify                  PAR2 sets must pass verification as part of repair
 ```
 
@@ -244,10 +248,10 @@ Flags:
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            target time budget for each verify run (soft limit)
   -h, --help                         help for info
-  -e, --include-external             include external PAR2 files without a par2cron manifest
+  -e, --include-external             include external PAR2 sets without a par2cron manifest
       --json                         output in JSON format (result to stdout, logs to stderr)
   -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
-      --skip-not-created             skip PAR2 files without a par2cron manifest containing a creation record
+      --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
 ### `par2cron check-config`
@@ -341,7 +345,7 @@ can run concurrently on the same directory tree without any cross-interference.
 ```
 /mnt/storage/Pictures/
 ├── beach.jpg
-├── sunset.jpg
+├── flowers.jpg
 ├── Pictures.par2          <-- par2 index file
 ├── Pictures.vol00+01.par2 <-- par2 recovery data
 ├── Pictures.par2.json     <-- par2cron manifest
@@ -364,7 +368,7 @@ should consider this when moving around par2cron-protected directory trees.
 ## Marker Files
 
 The core of the par2cron `create` operation are the marker files. A found marker
-file denotes that the directory containing it should be protected. In the most
+file denotes that **files** in the containing directory need protecting. In most
 basic form it is just an empty `_par2cron` file, with the defaults from the set
 command-line arguments or configuration file being applied, but more control for
 individual creation jobs is possible through the marker files (read more below).
@@ -374,8 +378,22 @@ of failure, the creation is retried with the next run. If a same-named PAR2 set
 is already present in the directory, the marker file is skipped and a warning
 presented to the user (not resulting in a non-zero exit code).
 
-If the user wishes to re-create any PAR2 set (having added or updated files),
-they simply need to delete it and place a new marker file into the directory.
+Subfolders are not considered for the created PAR2 set, as par2cron promotes a
+clear mental model of "One PAR2 per folder". This helps to reduce cognitive load
+and wondering "Which files did this PAR2 protect again?". If you wish to create
+recursive PAR2 sets (which we do not recommend), you can use other software and
+then import these into your par2cron verification cycle (refer to `verify` usage).
+
+```
+/mnt/storage/Pictures/
+├── Nature/
+├── _par2cron  <-- par2cron marker file
+├── beach.jpg  <-- will be protected using PAR2
+└── sunset.jpg <-- will be protected using PAR2
+```
+
+Users wanting to re-create any of their PAR2 sets (having added or updated files)
+simply need to delete that PAR2 set, placing a new marker file into the directory.
 
 ### Marker Filename
 
@@ -500,10 +518,8 @@ the marker file approach (equals the process for new sets of protectable data).
 
 A marker file only triggers PAR2 creation for files in its immediate directory.
 It will not recurse/traverse into subdirectories. To protect a directory tree,
-you must place a marker file in each specific folder you wish to secure. This
-is to promote a clear mental model: "One PAR2 per folder", spontaneously being
-able to mentally link a PAR2 set to the immediate files that it is protecting.
-As a result, the `par2` argument `-R` has no effect with the `create` command.
+you must place a marker file in each specific folder you wish to secure. As a
+result, the `par2` argument `-R` has no effect with the `create` command.
 
 par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in

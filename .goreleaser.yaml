@@ -37,7 +37,7 @@ source:
 archives:
   -
     files:
-      - README
+      - QUICKGUIDE
       - LICENSE
       - par2cron.yaml
 

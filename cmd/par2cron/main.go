@@ -260,8 +260,8 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 	verifyCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
-	verifyCmd.Flags().BoolVar(&verifyArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 files without a par2cron manifest containing a creation record")
-	verifyCmd.Flags().BoolVarP(&verifyArgs.IncludeExternal, "include-external", "e", false, "include external PAR2 files without a par2cron manifest")
+	verifyCmd.Flags().BoolVar(&verifyArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	verifyCmd.Flags().BoolVarP(&verifyArgs.IncludeExternal, "include-external", "e", false, "include PAR2 sets without a par2cron manifest (and create one)")
 	verifyCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	verifyCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 	verifyCmd.Flags().VarP(&verifyArgs.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
@@ -334,7 +334,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 	repairCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
-	repairCmd.Flags().BoolVar(&repairArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 files without a par2cron manifest containing a creation record")
+	repairCmd.Flags().BoolVar(&repairArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
 	repairCmd.Flags().BoolVarP(&repairArgs.AttemptUnrepairables, "attempt-unrepairables", "u", false, "attempt to repair PAR2 sets marked as unrepairable")
 	repairCmd.Flags().BoolVarP(&repairArgs.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of repair")
 	repairCmd.Flags().BoolVarP(&repairArgs.PurgeBackups, "purge-backups", "p", false, "remove obsolete backup files (.1, .2, ...) after successful repair")
@@ -398,8 +398,8 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 			return prog.InfoService.Info(ctx, args[0], infoArgs)
 		},
 	}
-	infoCmd.Flags().BoolVar(&infoArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 files without a par2cron manifest containing a creation record")
-	infoCmd.Flags().BoolVarP(&infoArgs.IncludeExternal, "include-external", "e", false, "include external PAR2 files without a par2cron manifest")
+	infoCmd.Flags().BoolVar(&infoArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	infoCmd.Flags().BoolVarP(&infoArgs.IncludeExternal, "include-external", "e", false, "include external PAR2 sets without a par2cron manifest")
 	infoCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	infoCmd.Flags().VarP(&infoArgs.MaxDuration, "duration", "d", "target time budget for each verify run (soft limit)")
 	infoCmd.Flags().VarP(&infoArgs.MinAge, "age", "a", "target cycle length (time between re-verifications)")
