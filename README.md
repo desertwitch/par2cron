@@ -22,6 +22,33 @@
 <sup>This software is in development, expect more frequent releases until a stable release.</sup>
 </div>
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+  - [Dependencies](#dependencies)
+  - [Building from source](#building-from-source)
+  - [Running a built executable](#running-a-built-executable)
+- [Usage](#usage)
+  - [`par2cron create`](#par2cron-create)
+  - [`par2cron verify`](#par2cron-verify)
+  - [`par2cron repair`](#par2cron-repair)
+  - [`par2cron info`](#par2cron-info)
+  - [`par2cron check-config`](#par2cron-check-config)
+- [Output Streams](#output-streams)
+- [Exit Codes](#exit-codes)
+- [Creation Arguments](#creation-arguments)
+- [State Management](#state-management)
+- [Marker Files](#marker-files)
+  - [Marker Filename](#marker-filename)
+  - [Marker Configuration](#marker-configuration)
+  - [Folder Mode vs. File Mode](#folder-mode-vs-file-mode)
+- [Ignore Files](#ignore-files)
+- [Configuration](#configuration)
+- [Limitations](#limitations)
+- [License](#license)
+
 ## Overview
 
 par2cron is a tool that wraps `par2cmdline` (a parity-based file recovery tool)
