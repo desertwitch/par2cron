@@ -51,6 +51,12 @@ To maintain a "one PAR2 per folder" mental model, creation does not recurse
 into subfolders. By keeping the protection scope flat, you can always be sure
 which files a PAR2 set covers, without having to remember any directory trees.
 
+  Pictures/
+  |-- Nature/
+  |-- _par2cron  <-- par2cron marker file
+  |-- beach.jpg  <-- will be protected using PAR2
+  +-- sunset.jpg <-- will be protected using PAR2
+
 ================================================================================
 Arguments for PAR2 creation (recommended):
 ================================================================================
