@@ -331,6 +331,8 @@ A list for all the possible `par2` arguments can be found here:
 
 https://github.com/Parchive/par2cmdline#using-par2cmdline
 
+With the exception of the `-R` argument (as par2cron allows no recursion).
+
 ## State Management
 
 The program aims to off-load all state directly next to the protected files.
