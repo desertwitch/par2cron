@@ -16,7 +16,11 @@
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml"><img alt="Lint" src="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml"><img alt="Tests" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml"><img alt="Build" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml/badge.svg"></a>
-</div><br>
+</div>
+
+<div align="center">
+<sup>This software is in development, expect more frequent releases until a stable release.</sup>
+</div>
 
 ## Overview
 
