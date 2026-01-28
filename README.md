@@ -176,10 +176,10 @@ Flags:
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            time budget per run (best effort/soft limit)
   -h, --help                         help for verify
-  -e, --include-external             include external PAR2 files without a par2cron manifest
+  -e, --include-external             include PAR2 sets without a par2cron manifest (and create one)
       --json                         output structured logs in JSON format
   -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
-      --skip-not-created             skip PAR2 files without a par2cron manifest containing a creation record
+      --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
 > **External PAR2**: While par2cron creates flat sets, it can verify existing
@@ -215,7 +215,7 @@ Flags:
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
-      --skip-not-created        skip PAR2 files without a par2cron manifest containing a creation record
+      --skip-not-created        skip PAR2 sets without a par2cron manifest containing a creation record
   -v, --verify                  PAR2 sets must pass verification as part of repair
 ```
 
@@ -244,10 +244,10 @@ Flags:
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            target time budget for each verify run (soft limit)
   -h, --help                         help for info
-  -e, --include-external             include external PAR2 files without a par2cron manifest
+  -e, --include-external             include external PAR2 sets without a par2cron manifest
       --json                         output in JSON format (result to stdout, logs to stderr)
   -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
-      --skip-not-created             skip PAR2 files without a par2cron manifest containing a creation record
+      --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
 ### `par2cron check-config`
