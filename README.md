@@ -36,10 +36,10 @@
   - [`par2cron repair`](#par2cron-repair)
   - [`par2cron info`](#par2cron-info)
   - [`par2cron check-config`](#par2cron-check-config)
-- [Output Streams](#output-streams)
 - [Exit Codes](#exit-codes)
-- [Creation Arguments](#creation-arguments)
+- [Output Streams](#output-streams)
 - [State Management](#state-management)
+- [Creation Arguments](#creation-arguments)
 - [Marker Files](#marker-files)
   - [Marker Filename](#marker-filename)
   - [Marker Configuration](#marker-configuration)
@@ -298,23 +298,6 @@ Flags:
   -h, --help   help for check-config
 ```
 
-## Output Streams
-
-As par2cron needs to coordinate between itself and the `par2` program, their
-output is clearly and cleanly separated. All par2cron logs, using structured
-logging (either text-/JSON-based), are written to standard error (`stderr`).
-Unstructured `par2` program output is written to standard output (`stdout`).
-
-The only anomaly to the above is the `info` command, which does not use the
-`par2` program. In non-JSON mode, again structured *logging* is written to
-standard error (`stderr`), and unstructured information to standard output
-(`stdout`). In JSON mode, all structured *logging* is written to standard
-error (`stderr`), and the JSON-encoded result to standard output (`stdout`).
-
-As a general rule of thumb this can be condensed into:
-- Structured *logging* goes to standard error (`stderr`)
-- Command-related *output* goes to standard output (`stdout`)
-
 ## Exit Codes
 
 Granular codes allow for integration with scripts and notification services:
@@ -334,31 +317,22 @@ rebuilding corrupted or missing manifests (read more about manifests below)
 wherever possible. Failure-related exit codes usually directly relate to
 encountered errors requiring some degree of manual inspection by the user.
 
-## Creation Arguments
+## Output Streams
 
-By default, no additional arguments are given to the `par2` program for the
-three calling par2cron operations. However, it is strongly recommended to
-set default `par2` arguments for the `create` command, to be reflecting your
-personal needs and situation. You can decide the default set of arguments to
-give to `par2` for any of the par2cron commands using either the configuration
-file or appending them as `[-- par2-args...]`. An example of the latter below:
+As par2cron needs to coordinate between itself and the `par2` program, their
+output is clearly and cleanly separated. All par2cron logs, using structured
+logging (either text-/JSON-based), are written to standard error (`stderr`).
+Unstructured `par2` program output is written to standard output (`stdout`).
 
-```bash
-par2cron create /mnt/storage -- -r15 -n1
-par2cron verify /mnt/storage -- -q
-par2cron repair /mnt/storage -- -m512
-```
+The only anomaly to the above is the `info` command, which does not use the
+`par2` program. In non-JSON mode, again structured *logging* is written to
+standard error (`stderr`), and unstructured information to standard output
+(`stdout`). In JSON mode, all structured *logging* is written to standard
+error (`stderr`), and the JSON-encoded result to standard output (`stdout`).
 
-As you can see, anything following `--` are treated as default arguments to
-pass to the `par2` program for that par2cron operation. For the `create`
-operation, this can then be influenced for individual creation jobs by use
-of the marker filename or marker configuration (read more about this below).
-
-A list for all the possible `par2` arguments can be found here:
-
-https://github.com/Parchive/par2cmdline#using-par2cmdline
-
-With the exception of the `-R` argument (as par2cron allows no recursion).
+As a general rule of thumb this can be condensed into:
+- Structured *logging* goes to standard error (`stderr`)
+- Command-related *output* goes to standard output (`stdout`)
 
 ## State Management
 
@@ -393,6 +367,32 @@ the amount of files is something that can be a bother for file organization.
 If opting for this, it should be noted that some backup programs will not
 transfer hidden files (dotfiles) without being configured to do so, so you
 should consider this when moving around par2cron-protected directory trees.
+
+## Creation Arguments
+
+By default, no additional arguments are given to the `par2` program for the
+three calling par2cron operations. However, it is strongly recommended to
+set default `par2` arguments for the `create` command, to be reflecting your
+personal needs and situation. You can decide the default set of arguments to
+give to `par2` for any of the par2cron commands using either the configuration
+file or appending them as `[-- par2-args...]`. An example of the latter below:
+
+```bash
+par2cron create /mnt/storage -- -r15 -n1
+par2cron verify /mnt/storage -- -q
+par2cron repair /mnt/storage -- -m512
+```
+
+As you can see, anything following `--` are treated as default arguments to
+pass to the `par2` program for that par2cron operation. For the `create`
+operation, this can then be influenced for individual creation jobs by use
+of the marker filename or marker configuration (read more about this below).
+
+A list for all the possible `par2` arguments can be found here:
+
+https://github.com/Parchive/par2cmdline#using-par2cmdline
+
+With the exception of the `-R` argument (as par2cron allows no recursion).
 
 ## Marker Files
 
