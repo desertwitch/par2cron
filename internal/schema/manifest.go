@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"time"
 
@@ -50,7 +51,7 @@ func (c *CreationManifest) UnmarshalJSON(data []byte) error {
 	}
 
 	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
 	if len(c.Elements) == 0 && len(aux.V1Files) > 0 {
