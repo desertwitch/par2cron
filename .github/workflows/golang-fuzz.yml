@@ -1,0 +1,28 @@
+name: golang-fuzz
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  golang:
+    name: test-fuzz-3min
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.5
+          cache: false
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Clean the environment
+        run: make clean
+
+      - name: Run Go fuzz tests (3m)
+        run: make test-fuzz-quick

@@ -8,7 +8,7 @@ VERSION := $(shell \
   if [ -n "$$tag" ]; then echo $$tag | sed 's/^v//'; \
   else git rev-parse --short=7 HEAD; fi)
 
-.PHONY: all $(BINARY) benchmark check clean debug help info lint test test-coverage vendor
+.PHONY: all $(BINARY) benchmark check clean debug help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
@@ -44,6 +44,14 @@ lint: ## Runs the linter on the application code
 
 test: ## Runs all written tests for and on the application code
 	@go test -failfast -race -covermode=atomic ./...
+
+test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3m of fuzzing
+	@go test -failfast -race ./internal/par2
+	@go test -fuzz=FuzzParse -fuzztime=3m ./internal/par2
+
+test-fuzz-long: ## Runs fuzz-related unit tests followed by 15m of fuzzing
+	@go test -failfast -race ./internal/par2
+	@go test -fuzz=FuzzParse -fuzztime=15m ./internal/par2
 
 test-coverage: ## Runs all coverage tests for and on the application code
 	@go test -failfast -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.tmp ./... && \
