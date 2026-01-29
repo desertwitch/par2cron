@@ -10,11 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime/debug"
-	"sync"
 	"syscall"
 
-	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
@@ -63,26 +60,6 @@ func HashFile(fsys afero.Fs, filePath string) (string, error) {
 	}
 
 	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-func ParsePar2To(target **par2.Archive, fsys afero.Fs, path string, log func(msg string, args ...any)) {
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log("Panic parsing PAR2 for par2cron manifest (report to developers)",
-					"panic", r, "stack", string(debug.Stack()))
-				*target = nil
-			}
-		}()
-		if parsed, err := par2.ParseFile(fsys, path); err != nil {
-			log("Failed to parse created PAR2 for par2cron manifest", "error", err)
-			*target = nil
-		} else {
-			*target = parsed
-		}
-	})
-	wg.Wait()
 }
 
 func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {

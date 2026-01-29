@@ -88,3 +88,20 @@ func Test_CreationManifest_UnmarshalJSON_Table(t *testing.T) {
 		})
 	}
 }
+
+// Expectation: UnmarshalJSON should return error on wrong type for time.
+func Test_CreationManifest_UnmarshalJSON_InvalidTime_Error(t *testing.T) {
+	t.Parallel()
+
+	jsonData := `{
+		"time": "not-a-valid-time",
+		"duration_ns": 1000000,
+		"elements": []
+	}`
+
+	var m CreationManifest
+	err := json.Unmarshal([]byte(jsonData), &m)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to unmarshal")
+}
