@@ -12,6 +12,7 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
@@ -240,9 +241,9 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 }
 
 func (prog *Service) createPar2(ctx context.Context, job *Job) error {
-	files, err := prog.findFilesToProtect(ctx, job)
+	files, err := prog.findElementsToProtect(ctx, job)
 	if err != nil {
-		return fmt.Errorf("failed to find to-protect files: %w", err)
+		return fmt.Errorf("failed to find to-protect elements: %w", err)
 	}
 
 	if job.par2Mode == schema.CreateFileMode {
@@ -265,7 +266,7 @@ func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 	return nil
 }
 
-func (prog *Service) findFilesToProtect(ctx context.Context, job *Job) ([]schema.ProtectedFile, error) {
+func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]schema.FsElement, error) {
 	dirPaths, err := afero.Glob(prog.fsys, filepath.Join(job.workingDir, job.par2Glob))
 	if err != nil {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
@@ -274,7 +275,7 @@ func (prog *Service) findFilesToProtect(ctx context.Context, job *Job) ([]schema
 		return nil, fmt.Errorf("failed to glob: %w", err)
 	}
 
-	protectedFiles := []schema.ProtectedFile{}
+	protectableElements := []schema.FsElement{}
 	for _, f := range dirPaths {
 		if f == job.markerPath {
 			continue
@@ -301,7 +302,7 @@ func (prog *Service) findFilesToProtect(ctx context.Context, job *Job) ([]schema
 			continue
 		}
 
-		protectedFiles = append(protectedFiles, schema.ProtectedFile{
+		protectableElements = append(protectableElements, schema.FsElement{
 			Path:    f,
 			Name:    fi.Name(),
 			Size:    fi.Size(),
@@ -310,17 +311,17 @@ func (prog *Service) findFilesToProtect(ctx context.Context, job *Job) ([]schema
 		})
 	}
 
-	if len(protectedFiles) == 0 {
+	if len(protectableElements) == 0 {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
 		logger.Error("No files to protect in folder (will check again next run)")
 
 		return nil, errNoFilesToProtect
 	}
 
-	return protectedFiles, nil
+	return protectableElements, nil
 }
 
-func (prog *Service) createFolderMode(ctx context.Context, job *Job, files []schema.ProtectedFile) error {
+func (prog *Service) createFolderMode(ctx context.Context, job *Job, elements []schema.FsElement) error {
 	logger := prog.creationLogger(ctx, job, job.par2Path)
 
 	if _, err := prog.fsys.Stat(job.par2Path); err == nil {
@@ -329,7 +330,7 @@ func (prog *Service) createFolderMode(ctx context.Context, job *Job, files []sch
 		return schema.ErrAlreadyExists
 	}
 
-	if err := prog.runCreate(ctx, job, files); err != nil {
+	if err := prog.runCreate(ctx, job, elements); err != nil {
 		return err
 	}
 
@@ -338,19 +339,19 @@ func (prog *Service) createFolderMode(ctx context.Context, job *Job, files []sch
 	return nil
 }
 
-func (prog *Service) createFileMode(ctx context.Context, job *Job, files []schema.ProtectedFile) error {
+func (prog *Service) createFileMode(ctx context.Context, job *Job, elements []schema.FsElement) error {
 	var errCount int
 
-	for i, f := range files {
+	for i, f := range elements {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("context error: %w", err)
 		}
 
-		mpos := fmt.Sprintf("%d/%d", i+1, len(files))
+		mpos := fmt.Sprintf("%d/%d", i+1, len(elements))
 		ctx := context.WithValue(ctx, schema.MposKey, mpos)
 
 		j := newFileModeJob(*job, f.Path)
-		jf := []schema.ProtectedFile{files[i]}
+		je := []schema.FsElement{elements[i]}
 		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
 		if _, err := prog.fsys.Stat(j.par2Path); err == nil {
@@ -359,7 +360,7 @@ func (prog *Service) createFileMode(ctx context.Context, job *Job, files []schem
 			continue
 		}
 
-		if err := prog.runCreate(ctx, &j, jf); err != nil {
+		if err := prog.runCreate(ctx, &j, je); err != nil {
 			errCount++
 
 			continue
@@ -369,13 +370,13 @@ func (prog *Service) createFileMode(ctx context.Context, job *Job, files []schem
 	}
 
 	if errCount > 0 {
-		return fmt.Errorf("%w: %d/%d failed", errSubjobFailure, errCount, len(files))
+		return fmt.Errorf("%w: %d/%d failed", errSubjobFailure, errCount, len(elements))
 	}
 
 	return nil
 }
 
-func (prog *Service) runCreate(ctx context.Context, job *Job, files []schema.ProtectedFile) error {
+func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.FsElement) error {
 	logger := prog.creationLogger(ctx, job, job.par2Path)
 
 	var needsCleanup bool
@@ -391,18 +392,17 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, files []schema.Pro
 	}
 	defer unlock()
 
-	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1+len(files))
+	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1+len(elements))
 	cmdArgs = append(cmdArgs, "create")
 	cmdArgs = append(cmdArgs, job.par2Args...)
 	cmdArgs = append(cmdArgs, "--")
 	cmdArgs = append(cmdArgs, job.par2Path)
-	cmdArgs = append(cmdArgs, getPaths(files)...)
+	cmdArgs = append(cmdArgs, getPaths(elements)...)
 
 	mf := schema.NewManifest(job.par2Name)
 	mf.Creation = &schema.CreationManifest{}
 	mf.Creation.Args = slices.Clone(job.par2Args)
-	mf.Creation.Files = files
-	mf.Creation.FilesCount = len(files)
+	mf.Creation.Elements = elements
 
 	mf.Creation.Time = time.Now()
 	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
@@ -489,7 +489,7 @@ func (prog *Service) considerRecursive(ctx context.Context, jobs []*Job) {
 	}
 }
 
-func getPaths(files []schema.ProtectedFile) []string {
+func getPaths(files []schema.FsElement) []string {
 	paths := make([]string, len(files))
 	for i, f := range files {
 		paths[i] = f.Path
