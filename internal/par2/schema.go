@@ -10,8 +10,8 @@ type Hash [HashSize]byte
 
 // Archive represents an entire PAR2 file.
 type Archive struct {
-	// Time when the struct was parsed/last modified.
-	Time time.Time
+	// Time when the struct was parsed.
+	Time time.Time `json:"time"`
 
 	// Sets represents all datasets present.
 	Sets []Set `json:"sets,omitempty"`
