@@ -28,7 +28,7 @@ jobs:
         run: make test-fuzz-long
 
       - name: Archive the testdata folder
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: par2-testdata

@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/binary"
 	"os"
+	"slices"
 	"strconv"
 	"testing"
 	"unicode/utf16"
@@ -24,26 +25,26 @@ var (
 		{"testdata/simple_par2cmdline.par2", []string{"test.txt"}},
 		{"testdata/simple_multipar.par2", []string{"test.txt"}},
 		{"testdata/recursive_par2cmdline.par2", []string{"shallow.txt", "test/test.txt"}},
-		{"testdata/recursive_multipar.par2", []string{"tool/ReadMe.txt", "Update_English.txt"}},
-		{"testdata/ns_unicode_par2cmdline.par2", []string{"日本語.txt", "emoji🎉.txt"}},
-		{"testdata/ns_unicode_multipar.par2", []string{"日本語.txt", "emoji🎉.txt"}},
+		{"testdata/recursive_multipar.par2", []string{"Update_English.txt", "tool/ReadMe.txt"}},
+		{"testdata/ns_unicode_par2cmdline.par2", []string{"emoji🎉.txt", "日本語.txt"}},
+		{"testdata/ns_unicode_multipar.par2", []string{"emoji🎉.txt", "日本語.txt"}},
 	}
 
 	syntheticSeeds = [][]byte{
 		// Valid spec: ASCII FileDesc
-		buildFileDescPacket("test.txt", 100, idA),
-		append(buildFileDescPacket("a.txt", 50, idA), buildFileDescPacket("b.txt", 75, idB)...),
-		append(buildFileDescPacket("a.txt", 50, idA), buildUnicodePacket("a.txt", idA)...),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idA}, nil), buildFileDescPacket("test.txt", 100, idA)),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idA, idB}, nil), buildFileDescPacket("a.txt", 50, idA), buildFileDescPacket("b.txt", 75, idB)),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idA}, nil), buildFileDescPacket("a.txt", 50, idA), buildUnicodePacket("a.txt", idA)),
 
 		// Valid spec: ASCII FileDesc + Unicode override
-		append(buildFileDescPacket("placeholder.txt", 50, idA), buildUnicodePacket("日本語.txt", idA)...),
-		append(buildFileDescPacket("placeholder.txt", 50, idB), buildUnicodePacket("🎉🎊🎁.txt", idB)...),
-		append(buildFileDescPacket("placeholder.txt", 50, idC), buildUnicodePacket("mixed_αβγ_🚀.txt", idC)...),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idA}, nil), buildFileDescPacket("placeholder.txt", 50, idA), buildUnicodePacket("日本語.txt", idA)),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idB}, nil), buildFileDescPacket("placeholder.txt", 50, idB), buildUnicodePacket("🎉🎊🎁.txt", idB)),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idC}, nil), buildFileDescPacket("placeholder.txt", 50, idC), buildUnicodePacket("mixed_αβγ_🚀.txt", idC)),
 
 		// Invalid spec, but done in most PAR2 software: UTF-8 in ASCII FileDesc
-		buildFileDescPacket("not_ascii_日本語.txt", 100, idA),
-		buildFileDescPacket("not_ascii_🎉🎊🎁.txt", 100, idA),
-		buildFileDescPacket("not_ascii_mixed_αβγ_🚀.txt", 100, idA),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idA}, nil), buildFileDescPacket("not_ascii_日本語.txt", 100, idA)),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idA}, nil), buildFileDescPacket("not_ascii_🎉🎊🎁.txt", 100, idA)),
+		slices.Concat(buildMainPacket(4096, [][16]byte{idA}, nil), buildFileDescPacket("not_ascii_mixed_αβγ_🚀.txt", 100, idA)),
 	}
 )
 
@@ -58,12 +59,14 @@ func Test_Parse_RealSeeds_Success(t *testing.T) {
 			require.NoError(t, err)
 			defer f.Close()
 
-			entries, err := Parse(f, true)
+			sets, err := Parse(f, true)
 			require.NoError(t, err)
-			require.Len(t, entries, len(tt.expected))
+
+			require.Len(t, sets, 1)
+			require.Len(t, sets[0].RecoverySet, len(tt.expected))
 
 			for i, name := range tt.expected {
-				require.Equal(t, name, entries[i].Name, "entry %d", i)
+				require.Equal(t, name, sets[0].RecoverySet[i].Name, "entry %d", i)
 			}
 		})
 	}
@@ -77,12 +80,9 @@ func Test_Parse_SyntheticSeeds_Success(t *testing.T) {
 			t.Parallel()
 
 			entries, err := Parse(bytes.NewReader(seed), true)
-			if err != nil {
-				t.Errorf("seed %d failed: %v", i, err)
-			}
-			if len(entries) == 0 {
-				t.Errorf("seed %d returned no entries", i)
-			}
+
+			require.NoError(t, err)
+			require.NotEmpty(t, entries)
 		})
 	}
 }
@@ -97,11 +97,7 @@ func FuzzParse(f *testing.F) {
 	// Real PAR2 files from actual PAR2 software
 	for _, r := range realSeeds {
 		content, err := os.ReadFile(r.file)
-		if err != nil {
-			f.Errorf("failed to read seed file %s: %v", r.file, err)
-
-			continue
-		}
+		require.NoError(f, err)
 
 		f.Add(content, true)
 		f.Add(content, false)
@@ -115,31 +111,36 @@ func FuzzParse(f *testing.F) {
 	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"), false)
 
 	f.Fuzz(func(t *testing.T, data []byte, checkMD5 bool) {
-		entries, err := Parse(bytes.NewReader(data), checkMD5)
+		sets1, err := Parse(bytes.NewReader(data), checkMD5)
 		if err != nil {
-			// OK to error, just don't panic.
 			return
 		}
 
-		// Re-parse and verify deterministic result
-		entries2, err := Parse(bytes.NewReader(data), checkMD5)
-		if err != nil {
-			t.Fatal("second parse failed but first succeeded")
-		}
+		sets2, err := Parse(bytes.NewReader(data), checkMD5)
+		require.NoError(t, err, "non-deterministic parse success (second failed)")
 
-		if len(entries) != len(entries2) {
-			t.Fatal("non-deterministic entry count")
-		}
-
-		for i := range entries {
-			if entries[i].Name != entries2[i].Name {
-				t.Errorf("non-deterministic name at %d: %q vs %q", i, entries[i].Name, entries2[i].Name)
-			}
-			if entries[i].Size != entries2[i].Size {
-				t.Errorf("non-deterministic size at %d", i)
-			}
-		}
+		require.Equal(t, sets1, sets2, "non-deterministic output for same input")
 	})
+}
+
+func buildMainPacket(sliceSize uint64, recoveryIDs [][16]byte, nonRecoveryIDs [][16]byte) []byte {
+	bodyLen := 12 + len(recoveryIDs)*16 + len(nonRecoveryIDs)*16
+	body := make([]byte, bodyLen)
+
+	binary.LittleEndian.PutUint64(body[0:8], sliceSize)
+	binary.LittleEndian.PutUint32(body[8:12], uint32(len(recoveryIDs))) //nolint:gosec
+
+	offset := 12
+	for _, id := range recoveryIDs {
+		copy(body[offset:offset+16], id[:])
+		offset += 16
+	}
+	for _, id := range nonRecoveryIDs {
+		copy(body[offset:offset+16], id[:])
+		offset += 16
+	}
+
+	return buildPacket(mainType, body)
 }
 
 func buildPacket(packetType []byte, body []byte) []byte {
