@@ -1,11 +1,18 @@
 package par2
 
+import (
+	"time"
+)
+
 const HashSize = 16 // Size of the MD5 hashes (File ID, Set ID, ...)
 
 type Hash [HashSize]byte
 
 // Archive represents an entire PAR2 file.
 type Archive struct {
+	// Time when the struct was parsed/last modified.
+	Time time.Time
+
 	// Sets represents all datasets present.
 	Sets []Set `json:"sets,omitempty"`
 }

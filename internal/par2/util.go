@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/afero"
 )
@@ -56,7 +57,7 @@ func ParseFile(fsys afero.Fs, filename string) (*Archive, error) {
 		return nil, fmt.Errorf("failed to parse PAR2: %w", err)
 	}
 
-	return &Archive{Sets: sets}, nil
+	return &Archive{Time: time.Now(), Sets: sets}, nil
 }
 
 func sortFilePackets(list []FilePacket) {

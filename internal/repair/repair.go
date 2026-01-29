@@ -342,6 +342,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
+	util.ParsePar2To(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)

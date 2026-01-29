@@ -18,6 +18,7 @@ type Manifest struct {
 	ManifestVersion string                `json:"manifest_version"`
 	Name            string                `json:"name"`
 	SHA256          string                `json:"sha256"`
+	Archive         *par2.Archive         `json:"archive,omitempty"`
 	Creation        *CreationManifest     `json:"creation,omitempty"`
 	Verification    *VerificationManifest `json:"verification,omitempty"`
 	Repair          *RepairManifest       `json:"repair,omitempty"`
@@ -36,7 +37,6 @@ type CreationManifest struct {
 	Args     []string      `json:"args"`
 	Duration time.Duration `json:"duration_ns"`
 	Elements []FsElement   `json:"elements,omitempty"`
-	PAR2     *par2.Archive `json:"par2,omitempty"`
 }
 
 func (c *CreationManifest) UnmarshalJSON(data []byte) error {
@@ -70,7 +70,6 @@ type VerificationManifest struct {
 	RepairNeeded   bool          `json:"repair_needed"`
 	RepairPossible bool          `json:"repair_possible"`
 	Duration       time.Duration `json:"duration_ns"`
-	PAR2           *par2.Archive `json:"par2,omitempty"`
 }
 
 type RepairManifest struct {
@@ -79,7 +78,6 @@ type RepairManifest struct {
 	Args     []string      `json:"args"`
 	ExitCode int           `json:"exit_code"`
 	Duration time.Duration `json:"duration_ns"`
-	PAR2     *par2.Archive `json:"par2,omitempty"`
 }
 
 type FsElement struct {
