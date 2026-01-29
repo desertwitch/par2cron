@@ -1,12 +1,15 @@
 package schema
 
 import (
+	"encoding/json"
 	"io/fs"
 	"time"
+
+	"github.com/desertwitch/par2cron/internal/par2"
 )
 
 const (
-	ManifestVersion = "1"
+	ManifestVersion = "2"
 )
 
 type Manifest struct {
@@ -28,11 +31,33 @@ func NewManifest(par2Name string) *Manifest {
 }
 
 type CreationManifest struct {
-	Time       time.Time       `json:"time"`
-	Args       []string        `json:"args"`
-	Files      []ProtectedFile `json:"files"`
-	FilesCount int             `json:"files_count"`
-	Duration   time.Duration   `json:"duration_ns"`
+	Time     time.Time     `json:"time"`
+	Args     []string      `json:"args"`
+	Duration time.Duration `json:"duration_ns"`
+	Elements []FsElement   `json:"elements,omitempty"`
+	PAR2     *par2.Archive `json:"par2,omitempty"`
+}
+
+func (c *CreationManifest) UnmarshalJSON(data []byte) error {
+	type Alias CreationManifest
+
+	aux := &struct {
+		*Alias
+
+		V1Files []FsElement `json:"files"`
+	}{
+		Alias: (*Alias)(c),
+	}
+
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	if len(c.Elements) == 0 && len(aux.V1Files) > 0 {
+		c.Elements = aux.V1Files
+	}
+
+	return nil
 }
 
 type VerificationManifest struct {
@@ -44,6 +69,7 @@ type VerificationManifest struct {
 	RepairNeeded   bool          `json:"repair_needed"`
 	RepairPossible bool          `json:"repair_possible"`
 	Duration       time.Duration `json:"duration_ns"`
+	PAR2           *par2.Archive `json:"par2,omitempty"`
 }
 
 type RepairManifest struct {
@@ -52,9 +78,10 @@ type RepairManifest struct {
 	Args     []string      `json:"args"`
 	ExitCode int           `json:"exit_code"`
 	Duration time.Duration `json:"duration_ns"`
+	PAR2     *par2.Archive `json:"par2,omitempty"`
 }
 
-type ProtectedFile struct {
+type FsElement struct {
 	Path string `json:"-"` // Never export this to JSON.
 
 	Name    string      `json:"name"`
