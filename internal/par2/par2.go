@@ -31,6 +31,8 @@ const (
 	fileDescSizeFixed = 56 // FileID(16) + HashFull(16) + Hash16k(16) + Length(8)
 
 	maxSets           = 10       // Sane amount of sets
+	maxIDsPerSet      = 100000   // Sane amount of IDs per set
+	maxFilesPerSet    = 100000   // Sane amount of files per set
 	maxPacketSize     = 10 << 20 // Sane packet size (10 MB)
 	maxFilenameLength = 65535    // Sane filename length
 
@@ -46,6 +48,8 @@ var (
 	errInvalidPacket    = errors.New("invalid packet structure")
 	errInvalidUnicode   = errors.New("invalid unicode data")
 	errTooManySets      = errors.New("too many sets in archive")
+	errTooManyIDs       = errors.New("too many cumulative IDs in set")
+	errTooManyFiles     = errors.New("too many cumulative files in set")
 	errSkipPacket       = errors.New("skip this packet")
 )
 
@@ -95,14 +99,26 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 		case *MainPacket:
 			group.mainPacket = e
 			for _, v := range e.RecoveryIDs {
+				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+					return nil, errTooManyIDs
+				}
 				group.recoveryIDs[v] = struct{}{}
 			}
 			for _, v := range e.NonRecoveryIDs {
+				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+					return nil, errTooManyIDs
+				}
 				group.nonRecoveryIDs[v] = struct{}{}
 			}
 		case *FilePacket:
+			if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
+				return nil, errTooManyFiles
+			}
 			group.unfilteredASCII[e.FileID] = e
 		case *UnicodePacket:
+			if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
+				return nil, errTooManyFiles
+			}
 			group.unfilteredUnicode[e.FileID] = e
 		}
 	}
