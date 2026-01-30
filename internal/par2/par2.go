@@ -434,12 +434,12 @@ func parseFileDescriptionBody(setID Hash, body []byte) (*FilePacket, error) {
 	}
 
 	return &FilePacket{
-		SetID:  setID,
-		Name:   name,
-		Size:   int64(length),
-		FileID: fileID,
-		Hash:   hashFull,
-		Hash16: hash16k,
+		SetID:   setID,
+		Name:    name,
+		Size:    int64(length),
+		FileID:  fileID,
+		Hash:    hashFull,
+		Hash16k: hash16k,
 	}, nil
 }
 

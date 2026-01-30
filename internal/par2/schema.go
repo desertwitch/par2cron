@@ -4,9 +4,10 @@ const HashSize = 16 // Size of the MD5 hashes (File ID, Set ID, ...)
 
 type Hash [HashSize]byte
 
-// Archive represents an entire PAR2 file.
-type Archive struct {
-	// Sets represents all datasets present.
+// File represents a single parsed PAR2 file.
+type File struct {
+	// Sets represents the datasets of different set IDs,
+	// though commonly there is only one dataset in a PAR2 file.
 	Sets []Set `json:"sets,omitempty"`
 }
 
@@ -45,13 +46,13 @@ type FilePacket struct {
 	Name        string `json:"name"`         // Filename of the file
 	Size        int64  `json:"size"`         // Size of the file
 	Hash        Hash   `json:"hash"`         // MD5 hash of entire file
-	Hash16      Hash   `json:"hash_16"`      // MD5 hash of first 16KB
+	Hash16k     Hash   `json:"hash_16k"`     // MD5 hash of first 16KB
 	FromUnicode bool   `json:"from_unicode"` // Name came from a Unicode packet
 }
 
 // UnicodePacket represents a unicode file description packet.
 type UnicodePacket struct {
-	SetID  Hash   `json:"set_id"`  // The recovery set the packet belongs to
-	FileID Hash   `json:"file_id"` // The ID of the file (MD5)
-	Name   string `json:"name"`    // Unicode-name of the file
+	SetID  Hash   `json:"set_id"`  // [Set] the packet belongs to
+	FileID Hash   `json:"file_id"` // ID of the file (MD5)
+	Name   string `json:"name"`    // Unicode name of the file
 }

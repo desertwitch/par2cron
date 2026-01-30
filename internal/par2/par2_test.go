@@ -737,7 +737,7 @@ func Test_parseFileDescriptionBody_AllHashes_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Hash(idA), packet.FileID)
 	require.Equal(t, Hash(idB), packet.Hash)
-	require.Equal(t, Hash(idC), packet.Hash16)
+	require.Equal(t, Hash(idC), packet.Hash16k)
 }
 
 // Expectation: parseFileDescriptionBody should handle filename at maximum allowed length.

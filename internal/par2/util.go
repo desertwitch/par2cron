@@ -59,7 +59,7 @@ func (h *Hash) UnmarshalJSON(data []byte) error {
 // panicAsErr controls if a panic should be recovered and returned as [ParserPanicError].
 //
 //nolint:nonamedreturns
-func ParseFile(fsys afero.Fs, filename string, panicAsErr bool) (a *Archive, e error) {
+func ParseFile(fsys afero.Fs, filename string, panicAsErr bool) (p *File, e error) {
 	f, err := fsys.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PAR2 file: %w", err)
@@ -69,7 +69,7 @@ func ParseFile(fsys afero.Fs, filename string, panicAsErr bool) (a *Archive, e e
 	if panicAsErr {
 		defer func() {
 			if r := recover(); r != nil {
-				a = nil
+				p = nil
 				e = &ParserPanicError{
 					Value: r,
 					Stack: debug.Stack(),
@@ -83,7 +83,7 @@ func ParseFile(fsys afero.Fs, filename string, panicAsErr bool) (a *Archive, e e
 		return nil, fmt.Errorf("failed to parse PAR2: %w", err)
 	}
 
-	return &Archive{Sets: sets}, nil
+	return &File{Sets: sets}, nil
 }
 
 func sortFilePackets(list []FilePacket) {
