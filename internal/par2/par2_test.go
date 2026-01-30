@@ -27,10 +27,14 @@ var (
 	}{
 		{"testdata/simple_par2cmdline.par2", []string{"test.txt"}},
 		{"testdata/simple_multipar.par2", []string{"test.txt"}},
+		{"testdata/simple_quickpar.par2", []string{"test.txt"}},
+		{"testdata/simple_par2cmdlineturbo.par2", []string{"test.txt"}},
 		{"testdata/recursive_par2cmdline.par2", []string{"shallow.txt", "test/test.txt"}},
 		{"testdata/recursive_multipar.par2", []string{"Update_English.txt", "tool/ReadMe.txt"}},
+		{"testdata/recursive_par2cmdlineturbo.par2", []string{"dir/test.txt", "test.txt"}},
 		{"testdata/ns_unicode_par2cmdline.par2", []string{"emoji🎉.txt", "日本語.txt"}},
 		{"testdata/ns_unicode_multipar.par2", []string{"emoji🎉.txt", "日本語.txt"}},
+		{"testdata/ns_unicode_par2cmdlineturbo.par2", []string{"dir/ascii.txt", "dir/test.txt", "dir/日本語.txt", "emoji🎉.txt"}},
 	}
 
 	syntheticSeeds = [][]byte{
