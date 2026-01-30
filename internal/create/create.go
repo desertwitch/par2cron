@@ -12,6 +12,7 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
@@ -421,7 +422,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		return err
 	}
 
-	util.ParsePar2To(&mf.Archive, prog.fsys, job.par2Path, logger.Warn)
+	par2.ParseFileToArchivePtr(&mf.Archive, prog.fsys, job.par2Path, logger.Warn)
 
 	if sha256hash, err := util.HashFile(prog.fsys, job.par2Path); err != nil {
 		logger.Warn("Failed to hash PAR2 for par2cron manifest (will retry on verify)", "error", err)
