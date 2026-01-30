@@ -61,7 +61,7 @@ func ParseFile(fsys afero.Fs, filename string) (*Archive, error) {
 	return &Archive{Time: time.Now(), Sets: sets}, nil
 }
 
-func ParseFileToArchivePtr(target **Archive, fsys afero.Fs, path string, log func(msg string, args ...any)) {
+func ParseFileToPtr(target **Archive, fsys afero.Fs, path string, log func(msg string, args ...any)) {
 	defer func() {
 		if r := recover(); r != nil {
 			if log != nil {

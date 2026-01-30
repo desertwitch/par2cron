@@ -343,7 +343,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
-	par2.ParseFileToArchivePtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
+	par2.ParseFileToPtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)

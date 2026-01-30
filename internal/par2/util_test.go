@@ -325,8 +325,8 @@ func Test_ParseFile_MultipleSets_Success(t *testing.T) {
 	require.Len(t, archive.Sets, 2)
 }
 
-// Expectation: ParseFileToArchivePtr should successfully parse a valid PAR2 file.
-func Test_ParseFileToArchivePtr_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should successfully parse a valid PAR2 file.
+func Test_ParseFileToPtr_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -337,7 +337,7 @@ func Test_ParseFileToArchivePtr_Success(t *testing.T) {
 	var archive *Archive
 	var logMessages []string
 
-	ParseFileToArchivePtr(&archive, fs, "/test.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, fs, "/test.par2", func(msg string, args ...any) {
 		logMessages = append(logMessages, fmt.Sprintf(msg, args...))
 	})
 
@@ -347,8 +347,8 @@ func Test_ParseFileToArchivePtr_Success(t *testing.T) {
 	require.Len(t, archive.Sets, 1)
 }
 
-// Expectation: ParseFileToArchivePtr should set target to nil on parse error.
-func Test_ParseFileToArchivePtr_ParseError_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should set target to nil on parse error.
+func Test_ParseFileToPtr_ParseError_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -357,7 +357,7 @@ func Test_ParseFileToArchivePtr_ParseError_Success(t *testing.T) {
 	var archive *Archive
 	var logMessages []string
 
-	ParseFileToArchivePtr(&archive, fs, "/invalid.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, fs, "/invalid.par2", func(msg string, args ...any) {
 		logMessages = append(logMessages, fmt.Sprintf("%s %v", msg, args))
 	})
 
@@ -366,8 +366,8 @@ func Test_ParseFileToArchivePtr_ParseError_Success(t *testing.T) {
 	require.Contains(t, logMessages[0], "Failed to parse PAR2")
 }
 
-// Expectation: ParseFileToArchivePtr should set target to nil when file doesn't exist.
-func Test_ParseFileToArchivePtr_FileNotFound_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should set target to nil when file doesn't exist.
+func Test_ParseFileToPtr_FileNotFound_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -375,7 +375,7 @@ func Test_ParseFileToArchivePtr_FileNotFound_Success(t *testing.T) {
 	var archive *Archive
 	var logMessages []string
 
-	ParseFileToArchivePtr(&archive, fs, "/nonexistent.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, fs, "/nonexistent.par2", func(msg string, args ...any) {
 		logMessages = append(logMessages, fmt.Sprintf("%s %v", msg, args))
 	})
 
@@ -384,8 +384,8 @@ func Test_ParseFileToArchivePtr_FileNotFound_Success(t *testing.T) {
 	require.Contains(t, logMessages[0], "Failed to parse PAR2")
 }
 
-// Expectation: ParseFileToArchivePtr should handle panic and set target to nil.
-func Test_ParseFileToArchivePtr_Panic_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should handle panic and set target to nil.
+func Test_ParseFileToPtr_Panic_Success(t *testing.T) {
 	t.Parallel()
 
 	panicFs := &panicingFs{}
@@ -393,7 +393,7 @@ func Test_ParseFileToArchivePtr_Panic_Success(t *testing.T) {
 	var archive *Archive
 	var logMessages []string
 
-	ParseFileToArchivePtr(&archive, panicFs, "/test.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, panicFs, "/test.par2", func(msg string, args ...any) {
 		logMessages = append(logMessages, fmt.Sprintf("%s %v", msg, args))
 	})
 
@@ -403,8 +403,8 @@ func Test_ParseFileToArchivePtr_Panic_Success(t *testing.T) {
 	require.Contains(t, logMessages[0], "test panic")
 }
 
-// Expectation: ParseFileToArchivePtr should log panic with stack trace.
-func Test_ParseFileToArchivePtr_PanicWithStackTrace_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should log panic with stack trace.
+func Test_ParseFileToPtr_PanicWithStackTrace_Success(t *testing.T) {
 	t.Parallel()
 
 	panicFs := &panicingFs{}
@@ -413,7 +413,7 @@ func Test_ParseFileToArchivePtr_PanicWithStackTrace_Success(t *testing.T) {
 	var logMessages []string
 	var logArgs [][]any
 
-	ParseFileToArchivePtr(&archive, panicFs, "/test.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, panicFs, "/test.par2", func(msg string, args ...any) {
 		logMessages = append(logMessages, msg)
 		logArgs = append(logArgs, args)
 	})
@@ -434,8 +434,8 @@ func Test_ParseFileToArchivePtr_PanicWithStackTrace_Success(t *testing.T) {
 	require.True(t, found, "Stack trace should be included in log args")
 }
 
-// Expectation: ParseFileToArchivePtr should handle concurrent calls safely.
-func Test_ParseFileToArchivePtr_Concurrent_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should handle concurrent calls safely.
+func Test_ParseFileToPtr_Concurrent_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -447,17 +447,17 @@ func Test_ParseFileToArchivePtr_Concurrent_Success(t *testing.T) {
 	done := make(chan bool, 3)
 
 	go func() {
-		ParseFileToArchivePtr(&archive1, fs, "/test.par2", func(msg string, args ...any) {})
+		ParseFileToPtr(&archive1, fs, "/test.par2", func(msg string, args ...any) {})
 		done <- true
 	}()
 
 	go func() {
-		ParseFileToArchivePtr(&archive2, fs, "/test.par2", func(msg string, args ...any) {})
+		ParseFileToPtr(&archive2, fs, "/test.par2", func(msg string, args ...any) {})
 		done <- true
 	}()
 
 	go func() {
-		ParseFileToArchivePtr(&archive3, fs, "/test.par2", func(msg string, args ...any) {})
+		ParseFileToPtr(&archive3, fs, "/test.par2", func(msg string, args ...any) {})
 		done <- true
 	}()
 
@@ -471,8 +471,8 @@ func Test_ParseFileToArchivePtr_Concurrent_Success(t *testing.T) {
 	require.Equal(t, archive1.Sets, archive2.Sets, archive3.Sets)
 }
 
-// Expectation: ParseFileToArchivePtr should overwrite existing archive pointer.
-func Test_ParseFileToArchivePtr_OverwritesExisting_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should overwrite existing archive pointer.
+func Test_ParseFileToPtr_OverwritesExisting_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -482,14 +482,14 @@ func Test_ParseFileToArchivePtr_OverwritesExisting_Success(t *testing.T) {
 	oldArchive := &Archive{}
 	archive := oldArchive
 
-	ParseFileToArchivePtr(&archive, fs, "/test.par2", func(msg string, args ...any) {})
+	ParseFileToPtr(&archive, fs, "/test.par2", func(msg string, args ...any) {})
 
 	require.NotNil(t, archive)
 	require.NotEqual(t, oldArchive, archive, "Should have replaced the old archive")
 }
 
-// Expectation: ParseFileToArchivePtr should set to nil when parsing fails on previously valid archive.
-func Test_ParseFileToArchivePtr_ReplacesWithNilOnError_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should set to nil when parsing fails on previously valid archive.
+func Test_ParseFileToPtr_ReplacesWithNilOnError_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -497,13 +497,13 @@ func Test_ParseFileToArchivePtr_ReplacesWithNilOnError_Success(t *testing.T) {
 
 	archive := &Archive{}
 
-	ParseFileToArchivePtr(&archive, fs, "/invalid.par2", func(msg string, args ...any) {})
+	ParseFileToPtr(&archive, fs, "/invalid.par2", func(msg string, args ...any) {})
 
 	require.Nil(t, archive, "Should have replaced archive with nil on error")
 }
 
-// Expectation: ParseFileToArchivePtr should log error details correctly.
-func Test_ParseFileToArchivePtr_LogsErrorDetails_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should log error details correctly.
+func Test_ParseFileToPtr_LogsErrorDetails_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -513,7 +513,7 @@ func Test_ParseFileToArchivePtr_LogsErrorDetails_Success(t *testing.T) {
 	var logMessage string
 	var logArgs []any
 
-	ParseFileToArchivePtr(&archive, fs, "/invalid.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, fs, "/invalid.par2", func(msg string, args ...any) {
 		logMessage = msg
 		logArgs = args
 	})
@@ -527,8 +527,8 @@ func Test_ParseFileToArchivePtr_LogsErrorDetails_Success(t *testing.T) {
 	require.Error(t, err)
 }
 
-// Expectation: ParseFileToArchivePtr should complete synchronously.
-func Test_ParseFileToArchivePtr_Synchronous_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should complete synchronously.
+func Test_ParseFileToPtr_Synchronous_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -538,15 +538,15 @@ func Test_ParseFileToArchivePtr_Synchronous_Success(t *testing.T) {
 	var archive *Archive
 	var completed bool
 
-	ParseFileToArchivePtr(&archive, fs, "/test.par2", func(msg string, args ...any) {})
+	ParseFileToPtr(&archive, fs, "/test.par2", func(msg string, args ...any) {})
 	completed = true
 
-	require.True(t, completed, "ParseFileToArchivePtr should block until completion")
+	require.True(t, completed, "ParseFileToPtr should block until completion")
 	require.NotNil(t, archive)
 }
 
-// Expectation: ParseFileToArchivePtr should handle empty PAR2 file.
-func Test_ParseFileToArchivePtr_EmptyFile_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should handle empty PAR2 file.
+func Test_ParseFileToPtr_EmptyFile_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -554,14 +554,14 @@ func Test_ParseFileToArchivePtr_EmptyFile_Success(t *testing.T) {
 
 	var archive *Archive
 
-	ParseFileToArchivePtr(&archive, fs, "/empty.par2", func(msg string, args ...any) {})
+	ParseFileToPtr(&archive, fs, "/empty.par2", func(msg string, args ...any) {})
 
 	require.NotNil(t, archive)
 	require.Empty(t, archive.Sets)
 }
 
-// Expectation: ParseFileToArchivePtr should parse real PAR2 file correctly.
-func Test_ParseFileToArchivePtr_RealFile_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should parse real PAR2 file correctly.
+func Test_ParseFileToPtr_RealFile_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewOsFs()
@@ -569,7 +569,7 @@ func Test_ParseFileToArchivePtr_RealFile_Success(t *testing.T) {
 	var archive *Archive
 	var logMessages []string
 
-	ParseFileToArchivePtr(&archive, fs, "testdata/simple_par2cmdline.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, fs, "testdata/simple_par2cmdline.par2", func(msg string, args ...any) {
 		logMessages = append(logMessages, fmt.Sprintf(msg, args...))
 	})
 
@@ -580,8 +580,8 @@ func Test_ParseFileToArchivePtr_RealFile_Success(t *testing.T) {
 	require.Equal(t, "test.txt", archive.Sets[0].RecoverySet[0].Name)
 }
 
-// Expectation: ParseFileToArchivePtr should handle panic with custom message.
-func Test_ParseFileToArchivePtr_PanicWithCustomMessage_Success(t *testing.T) {
+// Expectation: ParseFileToPtr should handle panic with custom message.
+func Test_ParseFileToPtr_PanicWithCustomMessage_Success(t *testing.T) {
 	t.Parallel()
 
 	customPanicFs := &customPanicFs{msg: "custom panic message"}
@@ -589,7 +589,7 @@ func Test_ParseFileToArchivePtr_PanicWithCustomMessage_Success(t *testing.T) {
 	var archive *Archive
 	var logMessages []string
 
-	ParseFileToArchivePtr(&archive, customPanicFs, "/test.par2", func(msg string, args ...any) {
+	ParseFileToPtr(&archive, customPanicFs, "/test.par2", func(msg string, args ...any) {
 		logMessages = append(logMessages, fmt.Sprintf("%s %v", msg, args))
 	})
 
