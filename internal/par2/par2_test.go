@@ -93,34 +93,31 @@ var (
 func FuzzParse(f *testing.F) {
 	// Synthetic PAR2 files constructed for testing
 	for _, seed := range syntheticSeeds {
-		f.Add(seed, true)
-		f.Add(seed, false)
+		f.Add(seed)
 	}
 
 	// Real PAR2 files from actual PAR2 software
 	for _, r := range realSeeds {
-		content, err := os.ReadFile(r.file)
+		seed, err := os.ReadFile(r.file)
 		require.NoError(f, err)
-
-		f.Add(content, true)
-		f.Add(content, false)
+		f.Add(seed)
 	}
 
 	// A minimal/empty packet and nothing else
-	f.Add([]byte{}, false)
-	f.Add([]byte("PAR2\x00PKT"), false)
+	f.Add([]byte{})
+	f.Add([]byte("PAR2\x00PKT"))
 
 	// A very small length packet and nothing else
-	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"), false)
+	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"))
 
-	f.Fuzz(func(t *testing.T, data []byte, checkMD5 bool) {
-		sets1, err := Parse(bytes.NewReader(data), checkMD5)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		sets1, err := Parse(bytes.NewReader(data), false)
 		if err != nil {
 			return
 		}
 
-		sets2, err := Parse(bytes.NewReader(data), checkMD5)
-		require.NoError(t, err, "non-deterministic parse success (second failed)")
+		sets2, err := Parse(bytes.NewReader(data), false)
+		require.NoError(t, err, "non-deterministic parse (first ok, second not)")
 
 		require.Equal(t, sets1, sets2, "non-deterministic output for same input")
 	})
