@@ -468,6 +468,7 @@ func Test_ParseFileToArchivePtr_Concurrent_Success(t *testing.T) {
 	require.NotNil(t, archive1)
 	require.NotNil(t, archive2)
 	require.NotNil(t, archive3)
+	require.Equal(t, archive1.Sets, archive2.Sets, archive3.Sets)
 }
 
 // Expectation: ParseFileToArchivePtr should overwrite existing archive pointer.
