@@ -26,3 +26,11 @@ jobs:
 
       - name: Run Go fuzz tests (3m)
         run: make test-fuzz-quick
+
+      - name: Archive the testdata folder
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: par2-testdata
+          path: internal/par2/testdata/
+          retention-days: 3
