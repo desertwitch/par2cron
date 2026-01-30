@@ -14,14 +14,15 @@ const (
 )
 
 type Manifest struct {
-	ProgramVersion  string                `json:"program_version"`
-	ManifestVersion string                `json:"manifest_version"`
-	Name            string                `json:"name"`
-	SHA256          string                `json:"sha256"`
-	Archive         *par2.Archive         `json:"archive,omitempty"`
-	Creation        *CreationManifest     `json:"creation,omitempty"`
-	Verification    *VerificationManifest `json:"verification,omitempty"`
-	Repair          *RepairManifest       `json:"repair,omitempty"`
+	ProgramVersion  string `json:"program_version"`
+	ManifestVersion string `json:"manifest_version"`
+	Name            string `json:"name"`
+	SHA256          string `json:"sha256"`
+
+	Archive      *ArchiveManifest      `json:"archive,omitempty"`
+	Creation     *CreationManifest     `json:"creation,omitempty"`
+	Verification *VerificationManifest `json:"verification,omitempty"`
+	Repair       *RepairManifest       `json:"repair,omitempty"`
 }
 
 func NewManifest(par2Name string) *Manifest {
@@ -30,6 +31,11 @@ func NewManifest(par2Name string) *Manifest {
 		ManifestVersion: ManifestVersion,
 		Name:            par2Name,
 	}
+}
+
+type ArchiveManifest struct {
+	Time    time.Time     `json:"time"`
+	Content *par2.Archive `json:"content,omitempty"`
 }
 
 type CreationManifest struct {

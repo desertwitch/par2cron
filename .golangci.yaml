@@ -16,7 +16,7 @@ linters:
       max-complexity: 21
       package-average: 20
     funlen:
-      lines: 87
+      lines: 85
       statements: 50
       ignore-comments: true
     gocognit:

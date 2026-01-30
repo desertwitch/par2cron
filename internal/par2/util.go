@@ -9,12 +9,22 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/spf13/afero"
 )
 
 var errUnexpectedLength = errors.New("unexpected length")
+
+// ParserPanicError is an error that is returned on a recovered parsing panic.
+// It contains the value of the panic and a byte slice containing a stack trace.
+type ParserPanicError struct {
+	Value any
+	Stack []byte
+}
+
+func (e *ParserPanicError) Error() string {
+	return fmt.Sprintf("parser panic: %v", e.Value)
+}
 
 func (h *Hash) MarshalJSON() ([]byte, error) {
 	by, err := json.Marshal(hex.EncodeToString(h[:]))
@@ -46,43 +56,34 @@ func (h *Hash) UnmarshalJSON(data []byte) error {
 }
 
 // ParseFile parses a PAR2 file into an [Archive].
-func ParseFile(fsys afero.Fs, filename string) (*Archive, error) {
+// panicAsErr controls if a panic should be recovered and returned as [ParserPanicError].
+//
+//nolint:nonamedreturns
+func ParseFile(fsys afero.Fs, filename string, panicAsErr bool) (a *Archive, e error) {
 	f, err := fsys.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PAR2 file: %w", err)
 	}
 	defer f.Close()
 
+	if panicAsErr {
+		defer func() {
+			if r := recover(); r != nil {
+				a = nil
+				e = &ParserPanicError{
+					Value: r,
+					Stack: debug.Stack(),
+				}
+			}
+		}()
+	}
+
 	sets, err := Parse(f, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse PAR2: %w", err)
 	}
 
-	return &Archive{Time: time.Now(), Sets: sets}, nil
-}
-
-func ParseFileToPtr(target **Archive, fsys afero.Fs, path string, log func(msg string, args ...any)) {
-	defer func() {
-		if r := recover(); r != nil {
-			if log != nil {
-				log("Panic while parsing PAR2 for par2cron manifest (report to developers)",
-					"panic", r, "stack", string(debug.Stack()))
-			}
-			if target != nil {
-				*target = nil
-			}
-		}
-	}()
-	if parsed, err := ParseFile(fsys, path); err != nil {
-		if log != nil {
-			log("Failed to parse PAR2 for par2cron manifest (will retry next run)", "error", err)
-		}
-		if target != nil {
-			*target = nil
-		}
-	} else if target != nil {
-		*target = parsed
-	}
+	return &Archive{Sets: sets}, nil
 }
 
 func sortFilePackets(list []FilePacket) {

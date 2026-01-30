@@ -12,7 +12,6 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
-	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
@@ -279,6 +278,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, args 
 	return nil, schema.ErrSilentSkip
 }
 
+//nolint:funlen
 func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	logger := prog.repairLogger(ctx, job, job.par2Path)
 
@@ -343,7 +343,12 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
-	par2.ParseFileToPtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
+
+	util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
+		Time:     job.manifest.Repair.Time,
+		Path:     job.par2Path,
+		Manifest: job.manifest,
+	}, logger)
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)

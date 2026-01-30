@@ -12,7 +12,6 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
-	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
@@ -349,7 +348,12 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	job.manifest.Verification.Count++
-	par2.ParseFileToPtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
+
+	util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
+		Time:     job.manifest.Verification.Time,
+		Path:     job.par2Path,
+		Manifest: job.manifest,
+	}, logger)
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.verificationLogger(ctx, job, job.manifestPath)
