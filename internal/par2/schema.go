@@ -8,35 +8,35 @@ type Hash [HashSize]byte
 type File struct {
 	// Sets represents the datasets of different set IDs,
 	// though commonly there is only one dataset in a PAR2 file.
-	Sets []Set `json:"sets,omitempty"`
+	Sets []Set `json:"sets"`
 }
 
 // Set represents a dataset with unique set ID.
 type Set struct {
-	SetID          Hash         `json:"set_id"`                     // Dataset ID
-	MainPacket     *MainPacket  `json:"main_packet,omitempty"`      // Main packet (can be nil)
-	RecoverySet    []FilePacket `json:"recovery_set,omitempty"`     // Protected (recovery) files
-	NonRecoverySet []FilePacket `json:"non_recovery_set,omitempty"` // Auxiliary (non-recovery) files
+	SetID          Hash         `json:"set_id"`                // Dataset ID
+	MainPacket     *MainPacket  `json:"main_packet,omitempty"` // Main packet (can be nil)
+	RecoverySet    []FilePacket `json:"recovery_set"`          // Protected (recovery) files
+	NonRecoverySet []FilePacket `json:"non_recovery_set"`      // Auxiliary (non-recovery) files
 
 	// StrayPackets are packets that have the right set ID,
 	// but whose file ID is not listed within the PAR2 [MainPacket].
-	StrayPackets []FilePacket `json:"stray_packets,omitempty"`
+	StrayPackets []FilePacket `json:"stray_packets"`
 
 	// MissingRecoveryPackets are recovery files that have their
 	// file ID in the PAR2 [MainPacket], but have not been found.
-	MissingRecoveryPackets []Hash `json:"missing_recovery_packets,omitempty"`
+	MissingRecoveryPackets []Hash `json:"missing_recovery_packets"`
 
 	// MissingNonRecoveryPackets are non-recovery files that have
 	// their file ID in the PAR2 [MainPacket], but have not been found.
-	MissingNonRecoveryPackets []Hash `json:"missing_non_recovery_packets,omitempty"`
+	MissingNonRecoveryPackets []Hash `json:"missing_non_recovery_packets"`
 }
 
 // MainPacket represents a main packet.
 type MainPacket struct {
-	SetID          Hash   `json:"set_id"`                     // [Set] the packet belongs to
-	SliceSize      uint64 `json:"slice_size"`                 // Recovery slice size
-	RecoveryIDs    []Hash `json:"recovery_ids,omitempty"`     // Protected (recovery) IDs
-	NonRecoveryIDs []Hash `json:"non_recovery_ids,omitempty"` // Auxiliary (non-recovery) IDs
+	SetID          Hash   `json:"set_id"`           // [Set] the packet belongs to
+	SliceSize      uint64 `json:"slice_size"`       // Recovery slice size
+	RecoveryIDs    []Hash `json:"recovery_ids"`     // Protected (recovery) IDs
+	NonRecoveryIDs []Hash `json:"non_recovery_ids"` // Auxiliary (non-recovery) IDs
 }
 
 // FilePacket represents a file description packet.
