@@ -1147,7 +1147,7 @@ func Test_Service_createPar2_CannotRemoveMarker_Error(t *testing.T) {
 }
 
 // The function should skip irrelevant files and return the correct files.
-func Test_Service_findFilesToProtect_Success(t *testing.T) {
+func Test_Service_findElementsToProtect_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1182,7 +1182,7 @@ func Test_Service_findFilesToProtect_Success(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files, err := prog.findFilesToProtect(t.Context(), job)
+	files, err := prog.findElementsToProtect(t.Context(), job)
 
 	require.NoError(t, err)
 	require.Len(t, files, 1)
@@ -1191,7 +1191,7 @@ func Test_Service_findFilesToProtect_Success(t *testing.T) {
 }
 
 // Expectation: The function should return the correct error when there's nothing to do.
-func Test_Service_findFilesToProtect_NoFilesToProtect_Error(t *testing.T) {
+func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1219,7 +1219,7 @@ func Test_Service_findFilesToProtect_NoFilesToProtect_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	_, err := prog.findFilesToProtect(t.Context(), job)
+	_, err := prog.findElementsToProtect(t.Context(), job)
 
 	require.ErrorIs(t, err, errNoFilesToProtect)
 	require.Contains(t, logBuf.String(), "No files to protect")
@@ -1266,7 +1266,7 @@ func Test_Service_createFolderMode_Success(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file1.txt", Name: "file1.txt"},
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
@@ -1310,7 +1310,7 @@ func Test_Service_createFolderMode_AlreadyExists_Error(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
@@ -1360,7 +1360,7 @@ func Test_Service_createFileMode_Success(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file1.txt", Name: "file1.txt"},
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
@@ -1417,7 +1417,7 @@ func Test_Service_createFileMode_FirstFails_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file1.txt", Name: "file1.txt"},
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
@@ -1462,7 +1462,7 @@ func Test_Service_createFileMode_AlreadyExists_Success(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
@@ -1505,7 +1505,7 @@ func Test_Service_createFileMode_CtxCancel_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file1.txt", Name: "file1.txt"},
 	}
 
@@ -1552,7 +1552,7 @@ func Test_Service_runCreate_Success(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
@@ -1615,7 +1615,7 @@ func Test_Service_runCreate_PostVerification_Success(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
@@ -1680,7 +1680,7 @@ func Test_Service_runCreate_PostVerification_Failure_Error(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
@@ -1740,7 +1740,7 @@ func Test_Service_runCreate_CorrectArgs_Success(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
@@ -1799,7 +1799,7 @@ func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) 
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
@@ -1853,7 +1853,7 @@ func Test_Service_runCreate_Par2Fails_Error(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
@@ -1907,7 +1907,7 @@ func Test_Service_runCreate_ManifestWriteFails_Success(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
@@ -1962,7 +1962,7 @@ func Test_Service_runCreate_CtxCancel_Error(t *testing.T) {
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	files := []schema.ProtectedFile{
+	files := []schema.FsElement{
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
@@ -342,6 +343,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
+	par2.ParseFileToArchivePtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)

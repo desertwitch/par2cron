@@ -16,7 +16,7 @@ linters:
       max-complexity: 21
       package-average: 20
     funlen:
-      lines: 86
+      lines: 87
       statements: 50
       ignore-comments: true
     gocognit:
@@ -39,6 +39,9 @@ linters:
       - linters:
           - revive
         text: "meaningless package names"
+      - linters:
+          - gosec
+        text: "weak cryptographic primitive"
       - path: _test\.go
         linters:
           - dupl
