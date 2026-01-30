@@ -4,6 +4,7 @@ on:
     branches:
       - master
       - main
+      - devel
   pull_request:
 
 permissions:
