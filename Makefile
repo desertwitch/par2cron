@@ -46,11 +46,11 @@ test: ## Runs all written tests for and on the application code
 	@go test -failfast -race -covermode=atomic ./...
 
 test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3m of fuzzing
-	@go test -failfast -race ./internal/par2
+	@go test -failfast ./internal/par2
 	@go test -fuzz=FuzzParse -fuzztime=3m ./internal/par2
 
 test-fuzz-long: ## Runs fuzz-related unit tests followed by 30m of fuzzing
-	@go test -failfast -race ./internal/par2
+	@go test -failfast ./internal/par2
 	@go test -fuzz=FuzzParse -fuzztime=30m ./internal/par2
 
 test-coverage: ## Runs all coverage tests for and on the application code
