@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  golang:
-    name: test-fuzz-30min
+  golang-64bit:
+    name: test-fuzz-30min-amd64
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
@@ -31,6 +31,38 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: par2-testdata
+          name: par2-testdata-amd64
+          path: internal/par2/testdata/
+          retention-days: 3
+
+  golang-32bit:
+    name: test-fuzz-30min-386
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.25.5
+          cache: false
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install 32-bit libraries
+        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
+
+      - name: Clean the environment
+        run: make clean
+
+      - name: Run Go fuzz tests (30m)
+        env:
+          GOARCH: 386
+        run: make test-fuzz-long
+
+      - name: Archive the testdata folder
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: par2-testdata-386
           path: internal/par2/testdata/
           retention-days: 3

@@ -621,7 +621,7 @@ func Test_parseMainPacketBody_InsufficientRecoveryBytes_Error(t *testing.T) {
 
 	_, err := parseMainPacketBody(Hash{}, body)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "have")
+	require.Contains(t, err.Error(), "bytes mismatch packet body")
 }
 
 // Expectation: parseMainPacketBody should fail on misaligned non-recovery IDs.
@@ -634,7 +634,7 @@ func Test_parseMainPacketBody_MisalignedNonRecovery_Error(t *testing.T) {
 
 	_, err := parseMainPacketBody(Hash{}, body)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "non-recovery IDs not aligned")
+	require.Contains(t, err.Error(), "not aligned to 4 bytes")
 }
 
 // Expectation: parseFileDescriptionBody should fail on body too short.
