@@ -5,125 +5,91 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
 
-// Expectation: Par2ToManifest should populate manifest when parsing succeeds.
-func Test_Par2ToManifest_ValidPar2_Success(t *testing.T) {
+// Expectation: Successfully parse valid PAR2 file and populate manifest.
+func Test_Par2IndexToManifest_ValidFile_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewOsFs()
-
 	var buf testutil.SafeBuffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	manifest := &schema.Manifest{}
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
-	Par2ToManifest(fsys, Par2ToManifestOptions{
+	Par2IndexToManifest(fsys, Par2ToManifestOptions{
 		Time:     testTime,
 		Path:     "testdata/simple_par2cmdline.par2",
 		Manifest: manifest,
 	}, log)
 
-	require.NotNil(t, manifest.Archive)
-	require.Equal(t, testTime, manifest.Archive.Time)
-	require.NotNil(t, manifest.Archive.Content)
-	require.Contains(t, buf.String(), "Succeeded to parse PAR2 to manifest")
+	require.NotNil(t, manifest.Par2Data)
+	require.Equal(t, testTime, manifest.Par2Data.Time)
+	require.NotNil(t, manifest.Par2Data.Index)
+	require.Contains(t, buf.String(), "Parsed PAR2 file to manifest")
 }
 
-// Expectation: Par2ToManifest should preserve existing archive and update fields.
-func Test_Par2ToManifest_ExistingArchive_Success(t *testing.T) {
+// Expectation: Reuse existing Par2Data pointer when updating existing data.
+func Test_Par2IndexToManifest_ReuseExistingPointer_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewOsFs()
-
 	var buf testutil.SafeBuffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	existingArchive := &schema.ArchiveManifest{}
-	manifest := &schema.Manifest{Archive: existingArchive}
+	existingData := &schema.Par2DataManifest{}
+	manifest := &schema.Manifest{Par2Data: existingData}
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
-	Par2ToManifest(fsys, Par2ToManifestOptions{
+	Par2IndexToManifest(fsys, Par2ToManifestOptions{
 		Time:     testTime,
 		Path:     "testdata/simple_par2cmdline.par2",
 		Manifest: manifest,
 	}, log)
 
-	require.Same(t, existingArchive, manifest.Archive)
-	require.Equal(t, testTime, manifest.Archive.Time)
+	require.Same(t, existingData, manifest.Par2Data)
+	require.Equal(t, testTime, manifest.Par2Data.Time)
 }
 
-// Expectation: Par2ToManifest should log warning when file does not exist.
-func Test_Par2ToManifest_FileNotFound_Success(t *testing.T) {
+// Expectation: Preserve existing data when parse fails.
+func Test_Par2IndexToManifest_ParseError_PreservesData_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fsys, "/invalid.par2", []byte("invalid content"), 0o644))
 
 	var buf testutil.SafeBuffer
 	log := slog.New(slog.NewTextHandler(&buf, nil))
 
-	manifest := &schema.Manifest{}
+	existingTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
+	existingData := &schema.Par2DataManifest{
+		Time: existingTime,
+		Index: &par2.File{
+			Sets: []par2.Set{{SetID: par2.Hash{1, 2, 3}}},
+		},
+	}
+	manifest := &schema.Manifest{Par2Data: existingData}
 
-	Par2ToManifest(fsys, Par2ToManifestOptions{
-		Time:     time.Now(),
-		Path:     "/nonexistent/file.par2",
-		Manifest: manifest,
-	}, log)
-
-	require.Nil(t, manifest.Archive)
-	require.Contains(t, buf.String(), "Failed to parse PAR2 for par2cron manifest")
-}
-
-// Expectation: Par2ToManifest should log warning when file is invalid PAR2.
-func Test_Par2ToManifest_InvalidPar2_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, afero.WriteFile(fsys, "/test.par2", []byte("not a valid par2 file content here"), 0o644))
-
-	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, nil))
-
-	manifest := &schema.Manifest{}
-
-	Par2ToManifest(fsys, Par2ToManifestOptions{
-		Time:     time.Now(),
-		Path:     "/test.par2",
-		Manifest: manifest,
-	}, log)
-
-	require.Nil(t, manifest.Archive)
-	require.Contains(t, buf.String(), "Failed to parse PAR2 for par2cron manifest")
-}
-
-// Expectation: Par2ToManifest should not modify manifest on parse failure.
-func Test_Par2ToManifest_ParseFailure_ManifestUnchanged_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, afero.WriteFile(fsys, "/invalid.par2", []byte("invalid par2 content"), 0o644))
-
-	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, nil))
-
-	manifest := &schema.Manifest{}
-
-	Par2ToManifest(fsys, Par2ToManifestOptions{
+	Par2IndexToManifest(fsys, Par2ToManifestOptions{
 		Time:     time.Now(),
 		Path:     "/invalid.par2",
 		Manifest: manifest,
 	}, log)
 
-	require.Nil(t, manifest.Archive)
+	require.Same(t, existingData, manifest.Par2Data)
+	require.Equal(t, existingTime, manifest.Par2Data.Time)
+	require.NotNil(t, manifest.Par2Data.Index)
+	require.Contains(t, buf.String(), "Failed to parse PAR2 for par2cron manifest")
 }
 
-// Expectation: Par2ToManifest should log warning and set archive to nil when file is empty.
-func Test_Par2ToManifest_EmptyFile_Success(t *testing.T) {
+// Expectation: Update manifest even when file has no datasets.
+func Test_Par2IndexToManifest_EmptyDatasets_UpdatesManifest_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
@@ -133,38 +99,17 @@ func Test_Par2ToManifest_EmptyFile_Success(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(&buf, nil))
 
 	manifest := &schema.Manifest{}
+	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
-	Par2ToManifest(fsys, Par2ToManifestOptions{
-		Time:     time.Now(),
+	Par2IndexToManifest(fsys, Par2ToManifestOptions{
+		Time:     testTime,
 		Path:     "/empty.par2",
 		Manifest: manifest,
 	}, log)
 
-	require.Nil(t, manifest.Archive)
-	require.Contains(t, buf.String(), "PAR2 file parsed as containing no datasets")
-}
-
-// Expectation: Par2ToManifest should clear existing archive when file parses as empty.
-func Test_Par2ToManifest_EmptyFile_ClearsExistingArchive_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, afero.WriteFile(fsys, "/empty.par2", []byte{}, 0o644))
-
-	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, nil))
-
-	existingArchive := &schema.ArchiveManifest{
-		Time: time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC),
-	}
-	manifest := &schema.Manifest{Archive: existingArchive}
-
-	Par2ToManifest(fsys, Par2ToManifestOptions{
-		Time:     time.Now(),
-		Path:     "/empty.par2",
-		Manifest: manifest,
-	}, log)
-
-	require.Nil(t, manifest.Archive)
-	require.Contains(t, buf.String(), "PAR2 file parsed as containing no datasets")
+	require.NotNil(t, manifest.Par2Data)
+	require.Equal(t, testTime, manifest.Par2Data.Time)
+	require.NotNil(t, manifest.Par2Data.Index)
+	require.Empty(t, manifest.Par2Data.Index.Sets)
+	require.Contains(t, buf.String(), "PAR2 file is syntactically valid, but seems to contain no datasets")
 }

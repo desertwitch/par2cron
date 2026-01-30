@@ -16,10 +16,11 @@ type Par2ToManifestOptions struct {
 	Manifest *schema.Manifest
 }
 
-func Par2ToManifest(fsys afero.Fs, o Par2ToManifestOptions, log *slog.Logger) {
-	archive, err := par2.ParseFile(fsys, o.Path, true)
+func Par2IndexToManifest(fsys afero.Fs, o Par2ToManifestOptions, log *slog.Logger) {
+	f, err := par2.ParseFile(fsys, o.Path, true)
 	if err != nil {
 		var pe *par2.ParserPanicError
+
 		if errors.As(err, &pe) {
 			log.Warn("Panic while parsing PAR2 for par2cron manifest (report to developers)",
 				"panic", pe.Value, "stack", pe.Stack)
@@ -31,20 +32,15 @@ func Par2ToManifest(fsys afero.Fs, o Par2ToManifestOptions, log *slog.Logger) {
 		return
 	}
 
-	if archive == nil || len(archive.Sets) == 0 {
-		log.Warn("PAR2 file parsed as containing no datasets (will retry next run)")
-
-		o.Manifest.Archive = nil
-
-		return
+	if len(f.Sets) == 0 {
+		log.Warn("PAR2 file is syntactically valid, but seems to contain no datasets")
 	}
 
-	if o.Manifest.Archive == nil {
-		o.Manifest.Archive = &schema.ArchiveManifest{}
+	if o.Manifest.Par2Data == nil {
+		o.Manifest.Par2Data = &schema.Par2DataManifest{}
 	}
+	o.Manifest.Par2Data.Time = o.Time
+	o.Manifest.Par2Data.Index = f
 
-	o.Manifest.Archive.Time = o.Time
-	o.Manifest.Archive.Content = archive
-
-	log.Debug("Succeeded to parse PAR2 to manifest")
+	log.Debug("Parsed PAR2 file to manifest")
 }
