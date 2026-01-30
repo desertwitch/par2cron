@@ -12,6 +12,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -72,7 +73,11 @@ func Test_Service_Repair_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -114,7 +119,11 @@ func Test_Service_Repair_FileLocked_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -156,7 +165,11 @@ func Test_Service_Repair_Generic_Error(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -197,7 +210,11 @@ func Test_Service_Repair_MultipleJobs_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test2"+schema.Par2Extension, []byte("par2data"), 0o644))
 
 	for _, name := range []string{"test", "test2"} {
+		hash, err := util.HashFile(fs, "/data/"+name+schema.Par2Extension)
+		require.NoError(t, err)
+
 		mf := schema.NewManifest(name + schema.Par2Extension)
+		mf.SHA256 = hash
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -242,7 +259,11 @@ func Test_Service_Repair_MultipleJobs_OneFails_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test2"+schema.Par2Extension, []byte("par2data"), 0o644))
 
 	for _, name := range []string{"test", "test2"} {
+		hash, err := util.HashFile(fs, "/data/"+name+schema.Par2Extension)
+		require.NoError(t, err)
+
 		mf := schema.NewManifest(name + schema.Par2Extension)
+		mf.SHA256 = hash
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -292,7 +313,11 @@ func Test_Service_Repair_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(baseFs, "/data/test2"+schema.Par2Extension, []byte("par2"), 0o644))
 
 	for _, name := range []string{"test1", "test2"} {
+		hash, err := util.HashFile(baseFs, "/data/"+name+schema.Par2Extension)
+		require.NoError(t, err)
+
 		mf := schema.NewManifest(name + schema.Par2Extension)
+		mf.SHA256 = hash
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -405,7 +430,11 @@ func Test_Service_Repair_MaxDuration_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test2"+schema.Par2Extension, []byte("par2data"), 0o644))
 
 	for _, name := range []string{"test", "test2"} {
+		hash, err := util.HashFile(fs, "/data/"+name+schema.Par2Extension)
+		require.NoError(t, err)
+
 		mf := schema.NewManifest(name + schema.Par2Extension)
+		mf.SHA256 = hash
 		mf.Verification = &schema.VerificationManifest{
 			RepairNeeded:   true,
 			RepairPossible: true,
@@ -443,6 +472,50 @@ func Test_Service_Repair_MaxDuration_Success(t *testing.T) {
 
 	require.GreaterOrEqual(t, called, 1)
 	require.Contains(t, logBuf.String(), "Exceeded the --duration budget")
+}
+
+// Expectation: A hash mismatch should skip the repair without failing.
+func Test_Service_Repair_HashMismatch_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = "different-hash-than-actual-file"
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+	args := Options{Par2Args: []string{"-v"}}
+	require.NoError(t, prog.Repair(t.Context(), "/data", args))
+
+	require.False(t, called)
+	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
+	require.Contains(t, logBuf.String(), "PAR2 has changed")
 }
 
 // Expectation: The correct job should be returned when manifest indicates repair is needed and possible.
@@ -984,6 +1057,9 @@ func Test_Service_runRepair_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1001,6 +1077,7 @@ func Test_Service_runRepair_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1040,6 +1117,9 @@ func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/old.file.1", []byte("unrelated file"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1063,6 +1143,7 @@ func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1115,6 +1196,9 @@ func Test_Service_runRepair_RestoreBackups_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, dir+"/old.file.1", []byte("unrelated backup"), 0o644))
 
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1141,6 +1225,7 @@ func Test_Service_runRepair_RestoreBackups_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1159,7 +1244,7 @@ func Test_Service_runRepair_RestoreBackups_Success(t *testing.T) {
 		manifest:       mf,
 	}
 
-	err := prog.runRepair(t.Context(), job)
+	err = prog.runRepair(t.Context(), job)
 	require.ErrorContains(t, err, "par2cmdline:")
 	require.Equal(t, 1, called)
 
@@ -1192,6 +1277,9 @@ func Test_Service_runRepair_CorrectArgs_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1214,6 +1302,7 @@ func Test_Service_runRepair_CorrectArgs_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1251,6 +1340,9 @@ func Test_Service_runRepair_IncrementCount_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1268,6 +1360,7 @@ func Test_Service_runRepair_IncrementCount_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1301,6 +1394,9 @@ func Test_Service_runRepair_GenericError_Error(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1318,6 +1414,7 @@ func Test_Service_runRepair_GenericError_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1347,6 +1444,9 @@ func Test_Service_runRepair_NonZeroExitCode_Error(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1364,6 +1464,7 @@ func Test_Service_runRepair_NonZeroExitCode_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1393,6 +1494,9 @@ func Test_Service_runRepair_ManifestWriteError_Success(t *testing.T) {
 	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(baseFs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	fs := &testutil.FailingWriteFs{Fs: baseFs, FailSuffix: schema.ManifestExtension}
 
 	var logBuf testutil.SafeBuffer
@@ -1412,6 +1516,7 @@ func Test_Service_runRepair_ManifestWriteError_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1441,6 +1546,9 @@ func Test_Service_runRepair_WithVerify_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1463,6 +1571,7 @@ func Test_Service_runRepair_WithVerify_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1495,6 +1604,9 @@ func Test_Service_runRepair_VerifyFails_Error(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1519,6 +1631,7 @@ func Test_Service_runRepair_VerifyFails_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1547,6 +1660,9 @@ func Test_Service_runRepair_StoresArgs_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1564,6 +1680,7 @@ func Test_Service_runRepair_StoresArgs_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1594,6 +1711,9 @@ func Test_Service_runRepair_ArgsCloned_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
 
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
 		Logout: &logBuf,
@@ -1611,6 +1731,7 @@ func Test_Service_runRepair_ArgsCloned_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
 	mf.Verification = &schema.VerificationManifest{
 		RepairNeeded:   true,
 		RepairPossible: true,
@@ -1636,4 +1757,202 @@ func Test_Service_runRepair_ArgsCloned_Success(t *testing.T) {
 
 	// Stored args should not be affected
 	require.Equal(t, []string{"-v", "-q"}, job.manifest.Repair.Args)
+}
+
+// Expectation: A hash mismatch should not write an empty manifest.
+func Test_Service_runRepair_HashMismatch_NoManifestWrite_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	originalManifest := schema.NewManifest("test" + schema.Par2Extension)
+	originalManifest.SHA256 = "stale-hash"
+	originalManifest.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+		CountCorrupted: 3,
+	}
+	mfData, err := json.Marshal(originalManifest)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     originalManifest,
+	}
+
+	err = prog.runRepair(t.Context(), job)
+	require.ErrorIs(t, err, schema.ErrManifestMismatch)
+
+	// Manifest should remain unchanged (stale, not emptied)
+	data, err := afero.ReadFile(fs, job.manifestPath)
+	require.NoError(t, err)
+
+	var readMf schema.Manifest
+	require.NoError(t, json.Unmarshal(data, &readMf))
+	require.Equal(t, "stale-hash", readMf.SHA256)
+	require.Equal(t, 3, readMf.Verification.CountCorrupted)
+}
+
+// Expectation: Hash mismatch should return ErrManifestMismatch error.
+func Test_Service_runRepair_HashMismatch_ReturnsCorrectError(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = "mismatched-hash"
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	err := prog.runRepair(t.Context(), job)
+
+	require.ErrorIs(t, err, schema.ErrManifestMismatch)
+	require.Contains(t, logBuf.String(), "needs re-verification")
+}
+
+// Expectation: Hash mismatch should not trigger par2 command.
+func Test_Service_runRepair_HashMismatch_NoPar2Call_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = "wrong-hash"
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	_ = prog.runRepair(t.Context(), job)
+
+	require.False(t, called)
+}
+
+// Expectation: Matching hash should proceed with repair.
+func Test_Service_runRepair_HashMatch_ProceedsWithRepair_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	// Calculate actual hash of the file
+	actualHash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = actualHash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.True(t, called)
 }

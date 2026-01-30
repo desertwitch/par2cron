@@ -1095,7 +1095,7 @@ func Test_Service_RunVerify_HashMismatch_Success(t *testing.T) {
 	require.NotEqual(t, "wronghash", job.manifest.SHA256)
 	require.NotEqual(t, mf, job.manifest)
 
-	require.Contains(t, logBuf.String(), "PAR2 changed since par2cron manifest creation")
+	require.Contains(t, logBuf.String(), "PAR2 has changed")
 }
 
 // Expectation: A non-exit-code related error should return early that error.

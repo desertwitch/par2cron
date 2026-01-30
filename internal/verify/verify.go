@@ -310,7 +310,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	if job.manifest != nil && par2Hash != job.manifest.SHA256 {
-		logger.Warn("PAR2 changed since par2cron manifest creation (resetting manifest)",
+		logger.Warn("PAR2 has changed (manifest out of date; resetting manifest)",
 			"currentHash", par2Hash,
 			"manifestHash", job.manifest.SHA256,
 		)

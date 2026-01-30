@@ -145,7 +145,7 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) e
 		if err := prog.runRepair(ctx, job); err == nil {
 			logger.Info("Job completed with success")
 			results.Success++
-		} else if errors.Is(err, schema.ErrFileIsLocked) {
+		} else if errors.Is(err, schema.ErrFileIsLocked) || errors.Is(err, schema.ErrManifestMismatch) {
 			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++
 		} else if !errors.Is(err, schema.ErrAlreadyExists) {
@@ -288,6 +288,22 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
+	par2Hash, err := util.HashFile(prog.fsys, job.par2Path)
+	if err != nil {
+		logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
+
+		return fmt.Errorf("failed to hash par2: %w", err)
+	}
+
+	if par2Hash != job.manifest.SHA256 {
+		logger.Warn("PAR2 has changed (needs re-verification; skipping repair)",
+			"currentHash", par2Hash,
+			"manifestHash", job.manifest.SHA256,
+		)
+
+		return fmt.Errorf("%w: par2 hash mismatch", schema.ErrManifestMismatch)
+	}
+
 	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)
 	cmdArgs = append(cmdArgs, "repair")
 	cmdArgs = append(cmdArgs, job.par2Args...)
@@ -344,11 +360,13 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
 
-	util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
-		Time:     job.manifest.Repair.Time,
-		Path:     job.par2Path,
-		Manifest: job.manifest,
-	}, logger)
+	if job.manifest.Par2Data == nil {
+		util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
+			Time:     job.manifest.Repair.Time,
+			Path:     job.par2Path,
+			Manifest: job.manifest,
+		}, logger)
+	}
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)
