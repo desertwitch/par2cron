@@ -363,7 +363,7 @@ func Test_ParseFileToArchivePtr_ParseError_Success(t *testing.T) {
 
 	require.Nil(t, archive)
 	require.Len(t, logMessages, 1)
-	require.Contains(t, logMessages[0], "Failed to parse created PAR2")
+	require.Contains(t, logMessages[0], "Failed to parse PAR2")
 }
 
 // Expectation: ParseFileToArchivePtr should set target to nil when file doesn't exist.
@@ -381,7 +381,7 @@ func Test_ParseFileToArchivePtr_FileNotFound_Success(t *testing.T) {
 
 	require.Nil(t, archive)
 	require.Len(t, logMessages, 1)
-	require.Contains(t, logMessages[0], "Failed to parse created PAR2")
+	require.Contains(t, logMessages[0], "Failed to parse PAR2")
 }
 
 // Expectation: ParseFileToArchivePtr should handle panic and set target to nil.
@@ -399,7 +399,7 @@ func Test_ParseFileToArchivePtr_Panic_Success(t *testing.T) {
 
 	require.Nil(t, archive)
 	require.Len(t, logMessages, 1)
-	require.Contains(t, logMessages[0], "Panic parsing PAR2")
+	require.Contains(t, logMessages[0], "Panic while parsing PAR2")
 	require.Contains(t, logMessages[0], "test panic")
 }
 
@@ -420,7 +420,7 @@ func Test_ParseFileToArchivePtr_PanicWithStackTrace_Success(t *testing.T) {
 
 	require.Nil(t, archive)
 	require.Len(t, logMessages, 1)
-	require.Contains(t, logMessages[0], "Panic parsing PAR2")
+	require.Contains(t, logMessages[0], "Panic while parsing PAR2")
 
 	require.NotEmpty(t, logArgs)
 	found := false
@@ -517,7 +517,7 @@ func Test_ParseFileToArchivePtr_LogsErrorDetails_Success(t *testing.T) {
 		logArgs = args
 	})
 
-	require.Equal(t, "Failed to parse created PAR2 for par2cron manifest", logMessage)
+	require.Equal(t, "Failed to parse PAR2 for par2cron manifest (will retry next run)", logMessage)
 	require.Len(t, logArgs, 2)
 	require.Equal(t, "error", logArgs[0])
 
@@ -594,7 +594,7 @@ func Test_ParseFileToArchivePtr_PanicWithCustomMessage_Success(t *testing.T) {
 
 	require.Nil(t, archive)
 	require.Len(t, logMessages, 1)
-	require.Contains(t, logMessages[0], "Panic parsing PAR2")
+	require.Contains(t, logMessages[0], "Panic while parsing PAR2")
 	require.Contains(t, logMessages[0], "custom panic message")
 }
 
