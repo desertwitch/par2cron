@@ -23,7 +23,7 @@ func Test_Par2IndexToManifest_ValidFile_Success(t *testing.T) {
 	manifest := &schema.Manifest{}
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
-	Par2IndexToManifest(fsys, Par2ToManifestOptions{
+	Par2IndexToManifest(fsys, Par2IndexToManifestOptions{
 		Time:     testTime,
 		Path:     "testdata/simple_par2cmdline.par2",
 		Manifest: manifest,
@@ -47,7 +47,7 @@ func Test_Par2IndexToManifest_ReuseExistingPointer_Success(t *testing.T) {
 	manifest := &schema.Manifest{Par2Data: existingData}
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
-	Par2IndexToManifest(fsys, Par2ToManifestOptions{
+	Par2IndexToManifest(fsys, Par2IndexToManifestOptions{
 		Time:     testTime,
 		Path:     "testdata/simple_par2cmdline.par2",
 		Manifest: manifest,
@@ -76,7 +76,7 @@ func Test_Par2IndexToManifest_ParseError_PreservesData_Success(t *testing.T) {
 	}
 	manifest := &schema.Manifest{Par2Data: existingData}
 
-	Par2IndexToManifest(fsys, Par2ToManifestOptions{
+	Par2IndexToManifest(fsys, Par2IndexToManifestOptions{
 		Time:     time.Now(),
 		Path:     "/invalid.par2",
 		Manifest: manifest,
@@ -101,7 +101,7 @@ func Test_Par2IndexToManifest_EmptyDatasets_UpdatesManifest_Success(t *testing.T
 	manifest := &schema.Manifest{}
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
 
-	Par2IndexToManifest(fsys, Par2ToManifestOptions{
+	Par2IndexToManifest(fsys, Par2IndexToManifestOptions{
 		Time:     testTime,
 		Path:     "/empty.par2",
 		Manifest: manifest,

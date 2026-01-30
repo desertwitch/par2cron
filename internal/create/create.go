@@ -421,7 +421,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		return err
 	}
 
-	util.Par2IndexToManifest(prog.fsys, util.Par2ToManifestOptions{
+	util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
 		Time:     mf.Creation.Time,
 		Path:     job.par2Path,
 		Manifest: mf,

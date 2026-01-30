@@ -350,7 +350,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	job.manifest.Verification.Count++
 
 	if job.manifest.Par2Data == nil {
-		util.Par2IndexToManifest(prog.fsys, util.Par2ToManifestOptions{
+		util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
 			Time:     job.manifest.Verification.Time,
 			Path:     job.par2Path,
 			Manifest: job.manifest,

@@ -10,13 +10,13 @@ import (
 	"github.com/spf13/afero"
 )
 
-type Par2ToManifestOptions struct {
+type Par2IndexToManifestOptions struct {
 	Time     time.Time
 	Path     string
 	Manifest *schema.Manifest
 }
 
-func Par2IndexToManifest(fsys afero.Fs, o Par2ToManifestOptions, log *slog.Logger) {
+func Par2IndexToManifest(fsys afero.Fs, o Par2IndexToManifestOptions, log *slog.Logger) {
 	f, err := par2.ParseFile(fsys, o.Path, true)
 	if err != nil {
 		var pe *par2.ParserPanicError
