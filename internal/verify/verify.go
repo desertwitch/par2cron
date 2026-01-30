@@ -349,7 +349,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	job.manifest.Verification.Count++
-	par2.ParseFileToArchivePtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
+	par2.ParseFileToPtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.verificationLogger(ctx, job, job.manifestPath)

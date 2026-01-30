@@ -9,7 +9,6 @@ import (
 	"runtime/debug"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/afero"
@@ -62,32 +61,28 @@ func ParseFile(fsys afero.Fs, filename string) (*Archive, error) {
 	return &Archive{Time: time.Now(), Sets: sets}, nil
 }
 
-func ParseFileToArchivePtr(target **Archive, fsys afero.Fs, path string, log func(msg string, args ...any)) {
-	var wg sync.WaitGroup
-	wg.Go(func() {
-		defer func() {
-			if r := recover(); r != nil {
-				if log != nil {
-					log("Panic while parsing PAR2 for par2cron manifest (report to developers)",
-						"panic", r, "stack", string(debug.Stack()))
-				}
-				if target != nil {
-					*target = nil
-				}
-			}
-		}()
-		if parsed, err := ParseFile(fsys, path); err != nil {
+func ParseFileToPtr(target **Archive, fsys afero.Fs, path string, log func(msg string, args ...any)) {
+	defer func() {
+		if r := recover(); r != nil {
 			if log != nil {
-				log("Failed to parse PAR2 for par2cron manifest (will retry next run)", "error", err)
+				log("Panic while parsing PAR2 for par2cron manifest (report to developers)",
+					"panic", r, "stack", string(debug.Stack()))
 			}
 			if target != nil {
 				*target = nil
 			}
-		} else if target != nil {
-			*target = parsed
 		}
-	})
-	wg.Wait()
+	}()
+	if parsed, err := ParseFile(fsys, path); err != nil {
+		if log != nil {
+			log("Failed to parse PAR2 for par2cron manifest (will retry next run)", "error", err)
+		}
+		if target != nil {
+			*target = nil
+		}
+	} else if target != nil {
+		*target = parsed
+	}
 }
 
 func sortFilePackets(list []FilePacket) {
