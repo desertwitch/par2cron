@@ -236,11 +236,11 @@ func Test_ParseFile_Success(t *testing.T) {
 	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
 	require.NoError(t, afero.WriteFile(fs, "/test.par2", packet, 0o644))
 
-	archive, err := ParseFile(fs, "/test.par2", false)
+	f, err := ParseFile(fs, "/test.par2", false)
 
 	require.NoError(t, err)
-	require.NotNil(t, archive)
-	require.Len(t, archive.Sets, 1)
+	require.NotNil(t, f)
+	require.Len(t, f.Sets, 1)
 }
 
 // Expectation: ParseFile should fail when file doesn't exist.
@@ -277,11 +277,11 @@ func Test_ParseFile_RealFile_Success(t *testing.T) {
 
 			fs := afero.NewOsFs()
 
-			archive, err := ParseFile(fs, tt.file, false)
+			f, err := ParseFile(fs, tt.file, false)
 			require.NoError(t, err)
-			require.NotNil(t, archive)
-			require.Len(t, archive.Sets, 1)
-			require.Len(t, archive.Sets[0].RecoverySet, len(tt.expected))
+			require.NotNil(t, f)
+			require.Len(t, f.Sets, 1)
+			require.Len(t, f.Sets[0].RecoverySet, len(tt.expected))
 		})
 	}
 }
@@ -293,10 +293,10 @@ func Test_ParseFile_EmptyFile_Success(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(fs, "/empty.par2", []byte{}, 0o644))
 
-	archive, err := ParseFile(fs, "/empty.par2", false)
+	f, err := ParseFile(fs, "/empty.par2", false)
 	require.NoError(t, err)
-	require.NotNil(t, archive)
-	require.Empty(t, archive.Sets)
+	require.NotNil(t, f)
+	require.Empty(t, f.Sets)
 }
 
 // Expectation: ParseFile should handle multiple sets in one file.
@@ -311,10 +311,10 @@ func Test_ParseFile_MultipleSets_Success(t *testing.T) {
 
 	require.NoError(t, afero.WriteFile(fs, "/multi.par2", combined, 0o644))
 
-	archive, err := ParseFile(fs, "/multi.par2", false)
+	f, err := ParseFile(fs, "/multi.par2", false)
 	require.NoError(t, err)
-	require.NotNil(t, archive)
-	require.Len(t, archive.Sets, 2)
+	require.NotNil(t, f)
+	require.Len(t, f.Sets, 2)
 }
 
 // Expectation: sortFilePackets should sort by name first.

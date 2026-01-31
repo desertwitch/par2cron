@@ -55,7 +55,7 @@ func (h *Hash) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ParseFile parses a PAR2 file into an [Archive].
+// ParseFile parses a PAR2 file into a [File] structure.
 // panicAsErr controls if a panic should be recovered and returned as [ParserPanicError].
 //
 //nolint:nonamedreturns

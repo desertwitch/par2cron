@@ -47,7 +47,7 @@ var (
 	errInvalidMagic     = errors.New("invalid PAR2 magic bytes")
 	errInvalidPacket    = errors.New("invalid packet structure")
 	errInvalidUnicode   = errors.New("invalid unicode data")
-	errTooManySets      = errors.New("too many sets in archive")
+	errTooManySets      = errors.New("too many sets in file")
 	errTooManyIDs       = errors.New("too many cumulative IDs in set")
 	errTooManyFiles     = errors.New("too many cumulative files in set")
 	errSkipPacket       = errors.New("skip this packet")
