@@ -353,7 +353,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	// 		Time:     job.manifest.Verification.Time,
 	// 		Path:     job.par2Path,
 	// 		Manifest: job.manifest,
-	// 	}, logger)
+	// 	}, prog.verificationLogger(ctx, job, nil))
 	// }
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {

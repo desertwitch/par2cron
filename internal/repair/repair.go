@@ -364,7 +364,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	// 		Time:     job.manifest.Repair.Time,
 	// 		Path:     job.par2Path,
 	// 		Manifest: job.manifest,
-	// 	}, logger)
+	// 	}, prog.repairLogger(ctx, job, nil))
 	// }
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
