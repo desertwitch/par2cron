@@ -1232,7 +1232,7 @@ func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 }
 
 // Expectation: The function should succeed in folder mode.
-func Test_Service_createFolderMode_Success(t *testing.T) {
+func Test_Service_createCombined_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1277,7 +1277,7 @@ func Test_Service_createFolderMode_Success(t *testing.T) {
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
 
-	err := prog.createFolderMode(t.Context(), job, files)
+	err := prog.createCombined(t.Context(), job, files)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, called)
@@ -1285,7 +1285,7 @@ func Test_Service_createFolderMode_Success(t *testing.T) {
 }
 
 // Expectation: The function should return the correct error when a PAR2 already exists.
-func Test_Service_createFolderMode_AlreadyExists_Error(t *testing.T) {
+func Test_Service_createCombined_AlreadyExists_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1320,13 +1320,13 @@ func Test_Service_createFolderMode_AlreadyExists_Error(t *testing.T) {
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
-	err := prog.createFolderMode(t.Context(), job, files)
+	err := prog.createCombined(t.Context(), job, files)
 	require.ErrorIs(t, err, schema.ErrAlreadyExists)
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 }
 
 // Expectation: The function should succeed when both files succeed.
-func Test_Service_createFileMode_Success(t *testing.T) {
+func Test_Service_createIndividual_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1371,7 +1371,7 @@ func Test_Service_createFileMode_Success(t *testing.T) {
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
 
-	err := prog.createFileMode(t.Context(), job, files)
+	err := prog.createIndividual(t.Context(), job, files)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, called)
@@ -1379,7 +1379,7 @@ func Test_Service_createFileMode_Success(t *testing.T) {
 }
 
 // Expectation: The function should continue to second file when first fails and return correct error.
-func Test_Service_createFileMode_FirstFails_Error(t *testing.T) {
+func Test_Service_createIndividual_FirstFails_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1428,7 +1428,7 @@ func Test_Service_createFileMode_FirstFails_Error(t *testing.T) {
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
 
-	err := prog.createFileMode(t.Context(), job, files)
+	err := prog.createIndividual(t.Context(), job, files)
 	require.Equal(t, 2, called)
 
 	require.ErrorIs(t, err, errSubjobFailure)
@@ -1437,7 +1437,7 @@ func Test_Service_createFileMode_FirstFails_Error(t *testing.T) {
 }
 
 // Expectation: The function should not fail when a same-named PAR2 already exists.
-func Test_Service_createFileMode_AlreadyExists_Success(t *testing.T) {
+func Test_Service_createIndividual_AlreadyExists_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1472,13 +1472,13 @@ func Test_Service_createFileMode_AlreadyExists_Success(t *testing.T) {
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
-	err := prog.createFileMode(t.Context(), job, files)
+	err := prog.createIndividual(t.Context(), job, files)
 	require.NoError(t, err)
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 }
 
 // Expectation: The function should respect cancellation and return the correct error.
-func Test_Service_createFileMode_CtxCancel_Error(t *testing.T) {
+func Test_Service_createIndividual_CtxCancel_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1515,7 +1515,7 @@ func Test_Service_createFileMode_CtxCancel_Error(t *testing.T) {
 		{Path: "/data/folder/file1.txt", Name: "file1.txt"},
 	}
 
-	err := prog.createFileMode(ctx, job, files)
+	err := prog.createIndividual(ctx, job, files)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -2081,97 +2081,4 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 	require.True(t, exists5)
 
 	require.Contains(t, logBuf.String(), "Failed to cleanup a file after failure")
-}
-
-// Expectation: The program should warn when -R/--recursive flag is present in job args.
-func Test_Service_considerRecursive_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
-
-	jobs := []*Job{
-		{
-			workingDir: "/data/folder1",
-			par2Args:   []string{"-r10", "-n5"},
-		},
-		{
-			workingDir: "/data/folder2",
-			par2Args:   []string{"-R", "-r15"},
-		},
-	}
-
-	prog.considerRecursive(t.Context(), jobs)
-
-	require.Contains(t, logBuf.String(), "-R has no effect")
-	require.Equal(t, 1, strings.Count(logBuf.String(), "-R has no effect"))
-}
-
-// Expectation: The program should not warn when no -R/--recursive flag is present.
-func Test_Service_considerRecursive_NoFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
-
-	jobs := []*Job{
-		{
-			workingDir: "/data/folder1",
-			par2Args:   []string{"-r10", "-n5"},
-		},
-		{
-			workingDir: "/data/folder2",
-			par2Args:   []string{"-r15"},
-		},
-	}
-
-	prog.considerRecursive(t.Context(), jobs)
-
-	require.NotContains(t, logBuf.String(), "-R has no effect")
-}
-
-// Expectation: The program should also detect --recursive long form.
-func Test_Service_considerRecursive_LongForm_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
-
-	jobs := []*Job{
-		{
-			workingDir: "/data/folder1",
-			par2Args:   []string{"--recursive", "-r10"},
-		},
-	}
-
-	prog.considerRecursive(t.Context(), jobs)
-
-	require.Contains(t, logBuf.String(), "-R has no effect")
 }

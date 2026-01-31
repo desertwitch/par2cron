@@ -28,10 +28,11 @@ create:
   # Default: "" (no time limit)
   duration: ""
 
-  # mode: PAR2 creation mode; per-file or per-folder
+  # mode: PAR2 creation mode; per-file, per-folder or recursive
   # Changeable as needed for individual sets using the marker configuration
+  # Recursive mode is best set on a per-job basis via marker configurations
   #
-  # Options: "file" (one PAR2 set per file), "folder" (one PAR2 set per folder)
+  # Options: "file" (per file), "folder" (per folder), "recursive" (per tree)
   # Default: "folder"
   mode: "folder"
 

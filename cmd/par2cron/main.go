@@ -198,7 +198,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 	createCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	createCmd.Flags().StringVarP(&createArgs.Par2Glob, "glob", "g", "*", "PAR2 set default glob (files to include)")
 	createCmd.Flags().VarP(&createArgs.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
-	createCmd.Flags().VarP(&createArgs.Par2Mode, "mode", "m", "PAR2 set default mode; per-file or per-folder (file|folder)")
+	createCmd.Flags().VarP(&createArgs.Par2Mode, "mode", "m", "PAR2 set default mode; creates a set per (file|folder|recursive)")
 	createCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return createCmd

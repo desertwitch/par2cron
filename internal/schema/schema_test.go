@@ -30,4 +30,5 @@ func Test_Constants_Success(t *testing.T) {
 
 	require.Equal(t, "file", CreateFileMode)
 	require.Equal(t, "folder", CreateFolderMode)
+	require.Equal(t, "recursive", CreateRecursiveMode)
 }

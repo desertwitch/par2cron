@@ -93,5 +93,6 @@ type FsElement struct {
 	Name    string      `json:"name"`
 	Size    int64       `json:"size"`
 	Mode    fs.FileMode `json:"mode"`
+	IsDir   bool        `json:"is_dir"`
 	ModTime time.Time   `json:"mod_time"`
 }

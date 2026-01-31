@@ -48,7 +48,7 @@ After creation of the PAR2 set, the marker file is deleted automatically.
 PAR2 sets are then verified and repaired with by the set up periodic tasks.
 
 To maintain a "one PAR2 per folder" mental model, creation does not recurse
-into subfolders. By keeping the protection scope flat, you can always be sure
+into subfolders by default. Keeping the protection scope flat, you can be sure
 which files a PAR2 set covers, without having to remember any directory trees.
 
   Pictures/
@@ -56,6 +56,8 @@ which files a PAR2 set covers, without having to remember any directory trees.
   |-- _par2cron  <-- par2cron marker file
   |-- beach.jpg  <-- will be protected using PAR2
   +-- sunset.jpg <-- will be protected using PAR2
+
+If needed, recursive mode is best set through the marker configurations.
 
 ================================================================================
 Arguments for PAR2 creation (recommended):
@@ -80,8 +82,6 @@ the marker filename or marker configuration (read more about this below).
 A list for all the possible par2 arguments can be found here:
 
   https://github.com/Parchive/par2cmdline#using-par2cmdline
-
-With the exception of the "-R" argument (as par2cron allows no recursion).
 
 ================================================================================
 Marker filename modifiers (optional):
@@ -112,7 +112,7 @@ For full override control, you can put YAML directives inside the marker file:
   name: "Ubuntu"        # PAR2 set name (folder mode only)
   args: ["-r30", "-n1"] # Replaces default par2 arguments
   glob: "*.iso"         # Protect only the matching files
-  mode: "folder"        # "folder" or "file" (see below)
+  mode: "folder"        # "folder", "file" or "recursive"
   verify: true          # Verify PAR2 set as part of creation
   hidden: true          # Create PAR2 set as hidden (dotfiles)
 
@@ -122,8 +122,9 @@ All directives are optional - only specify what you need to override.
 Creation modes:
 ================================================================================
 
-  folder (default): One PAR2 set for entire directory
-  file: Separate PAR2 set per file (useful for large files)
+  folder (default): One combined PAR2 set for all files in the directory
+  file: Creates a separate PAR2 set for each file (useful for large files)
+  recursive: One combined PAR2 set for all files and folders (directory tree)
 
 ================================================================================
 Ignoring folders:
