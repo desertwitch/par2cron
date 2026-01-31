@@ -178,8 +178,9 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
 			result, err := prog.CreationService.Create(ctx, args[0], createArgs)
 			if result != nil {
@@ -262,8 +263,9 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
 			result, err := prog.VerificationService.Verify(ctx, args[0], verifyArgs)
 			if result != nil {
@@ -344,8 +346,9 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
 			result, err := prog.RepairService.Repair(ctx, args[0], repairArgs)
 			if result != nil {
@@ -417,8 +420,9 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
 			return prog.InfoService.Info(ctx, args[0], infoArgs)
 		},
@@ -454,6 +458,14 @@ func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner) 
 		InfoService:         info.NewService(fsys, log, runner),
 
 		log: log,
+	}
+}
+
+func recoverOperationPanic(ret *error, log *logging.Logger) {
+	if r := recover(); r != nil {
+		log.Error("Operation crashed due to a panic (report to developers)",
+			"panic", r, "stack", string(debug.Stack()))
+		*ret = schema.ErrExitUnclassified
 	}
 }
 
