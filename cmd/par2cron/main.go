@@ -461,7 +461,8 @@ func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner) 
 func logOperationResult(err error, result *util.ResultTracker, log *slog.Logger) {
 	processedCount := result.Success + result.Error + result.Skipped
 
-	if err == nil && result.Error == 0 {
+	switch {
+	case err == nil && result.Error == 0:
 		log.Info(
 			fmt.Sprintf("Operation completed (%d/%d jobs processed)",
 				processedCount, result.Selected),
@@ -471,7 +472,8 @@ func logOperationResult(err error, result *util.ResultTracker, log *slog.Logger)
 			"processedCount", processedCount,
 			"selectedCount", result.Selected,
 		)
-	} else if errors.Is(err, context.Canceled) {
+
+	case errors.Is(err, context.Canceled):
 		log.Error(
 			fmt.Sprintf("Operation interrupted (%d/%d jobs processed)",
 				processedCount, result.Selected),
@@ -481,7 +483,8 @@ func logOperationResult(err error, result *util.ResultTracker, log *slog.Logger)
 			"processedCount", processedCount,
 			"selectedCount", result.Selected,
 		)
-	} else {
+
+	default:
 		log.Error(
 			fmt.Sprintf("Operation completed with errors (%d/%d jobs processed)",
 				processedCount, result.Selected),
