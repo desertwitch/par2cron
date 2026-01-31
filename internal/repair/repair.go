@@ -12,7 +12,6 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
-	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
@@ -88,8 +87,9 @@ func NewRepairJob(par2Path string, args Options, mf *schema.Manifest) *Job {
 	return rj
 }
 
-func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) error {
+func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) (*util.ResultTracker, error) {
 	errs := []error{}
+	results := util.NewResultTracker()
 
 	logger := prog.repairLogger(ctx, nil, rootDir)
 	logger.Info("Scanning filesystem for jobs...")
@@ -97,19 +97,17 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) e
 	jobs, err := prog.Enumerate(ctx, rootDir, args)
 	if err != nil {
 		if !errors.Is(err, schema.ErrNonFatal) {
-			return fmt.Errorf("failed to enumerate jobs: %w", err)
+			return results, fmt.Errorf("failed to enumerate jobs: %w", err)
 		}
 
 		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
 		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 	}
 
-	results := util.NewResultTracker(logger)
-	defer results.PrintCompletionInfo(len(jobs))
-
 	if len(jobs) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
 			"maxDuration", args.MaxDuration.Value.String())
+		results.Selected = len(jobs)
 	} else {
 		logger.Info("Nothing to do (will check again next run)")
 	}
@@ -123,7 +121,7 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) e
 
 	for i, job := range jobs {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("context error: %w", err)
+			return results, fmt.Errorf("context error: %w", err)
 		}
 
 		if deadlineCtx != nil {
@@ -146,7 +144,7 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) e
 		if err := prog.runRepair(ctx, job); err == nil {
 			logger.Info("Job completed with success")
 			results.Success++
-		} else if errors.Is(err, schema.ErrFileIsLocked) {
+		} else if errors.Is(err, schema.ErrFileIsLocked) || errors.Is(err, schema.ErrManifestMismatch) {
 			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++
 		} else if !errors.Is(err, schema.ErrAlreadyExists) {
@@ -157,10 +155,10 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) e
 	}
 
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("context error: %w", err)
+		return results, fmt.Errorf("context error: %w", err)
 	}
 
-	return util.HighestError(errs) //nolint:wrapcheck
+	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options) ([]*Job, error) {
@@ -279,6 +277,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, args 
 	return nil, schema.ErrSilentSkip
 }
 
+//nolint:funlen
 func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	logger := prog.repairLogger(ctx, job, job.par2Path)
 
@@ -287,6 +286,22 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to lock: %w", err)
 	}
 	defer unlock()
+
+	par2Hash, err := util.HashFile(prog.fsys, job.par2Path)
+	if err != nil {
+		logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
+
+		return fmt.Errorf("failed to hash par2: %w", err)
+	}
+
+	if par2Hash != job.manifest.SHA256 {
+		logger.Warn("PAR2 has changed (needs re-verification; skipping repair)",
+			"currentHash", par2Hash,
+			"manifestHash", job.manifest.SHA256,
+		)
+
+		return fmt.Errorf("%w: par2 hash mismatch", schema.ErrManifestMismatch)
+	}
 
 	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)
 	cmdArgs = append(cmdArgs, "repair")
@@ -343,7 +358,14 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
-	par2.ParseFileToPtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
+
+	// if job.manifest.Par2Data == nil {
+	// 	util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
+	// 		Time:     job.manifest.Repair.Time,
+	// 		Path:     job.par2Path,
+	// 		Manifest: job.manifest,
+	// 	}, prog.repairLogger(ctx, job, nil))
+	// }
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)

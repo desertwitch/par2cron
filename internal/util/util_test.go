@@ -1,13 +1,11 @@
 package util
 
 import (
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/schema"
-	"github.com/desertwitch/par2cron/internal/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,47 +13,11 @@ import (
 func Test_NewResultTracker_ZeroValues_Success(t *testing.T) {
 	t.Parallel()
 
-	tracker := NewResultTracker(slog.Default())
+	tracker := NewResultTracker()
+	require.Equal(t, 0, tracker.Selected)
 	require.Equal(t, 0, tracker.Success)
 	require.Equal(t, 0, tracker.Skipped)
 	require.Equal(t, 0, tracker.Error)
-}
-
-// Expectation: PrintCompletionInfo should log the correct totals.
-func Test_ResultTracker_PrintCompletionInfo_Success(t *testing.T) {
-	t.Parallel()
-
-	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, nil))
-
-	tracker := NewResultTracker(log)
-	tracker.Success = 5
-	tracker.Skipped = 2
-	tracker.Error = 1
-
-	tracker.PrintCompletionInfo(8)
-
-	output := buf.String()
-	require.Contains(t, output, "Operation complete (8/8 jobs processed)")
-	require.Contains(t, output, "successCount=5")
-	require.Contains(t, output, "skipCount=2")
-	require.Contains(t, output, "errorCount=1")
-	require.Contains(t, output, "processedCount=8")
-	require.Contains(t, output, "selectedCount=8")
-}
-
-// Expectation: PrintCompletionInfo should handle zero counts.
-func Test_ResultTracker_PrintCompletionInfo_ZeroCounts_Success(t *testing.T) {
-	t.Parallel()
-
-	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, nil))
-
-	tracker := NewResultTracker(log)
-	tracker.PrintCompletionInfo(5)
-
-	output := buf.String()
-	require.Contains(t, output, "Operation complete (0/5 jobs processed)")
 }
 
 // Expectation: The PAR2 base should be identified as case-insensitive.

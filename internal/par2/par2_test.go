@@ -93,34 +93,31 @@ var (
 func FuzzParse(f *testing.F) {
 	// Synthetic PAR2 files constructed for testing
 	for _, seed := range syntheticSeeds {
-		f.Add(seed, true)
-		f.Add(seed, false)
+		f.Add(seed)
 	}
 
 	// Real PAR2 files from actual PAR2 software
 	for _, r := range realSeeds {
-		content, err := os.ReadFile(r.file)
+		seed, err := os.ReadFile(r.file)
 		require.NoError(f, err)
-
-		f.Add(content, true)
-		f.Add(content, false)
+		f.Add(seed)
 	}
 
 	// A minimal/empty packet and nothing else
-	f.Add([]byte{}, false)
-	f.Add([]byte("PAR2\x00PKT"), false)
+	f.Add([]byte{})
+	f.Add([]byte("PAR2\x00PKT"))
 
 	// A very small length packet and nothing else
-	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"), false)
+	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"))
 
-	f.Fuzz(func(t *testing.T, data []byte, checkMD5 bool) {
-		sets1, err := Parse(bytes.NewReader(data), checkMD5)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		sets1, err := Parse(bytes.NewReader(data), false)
 		if err != nil {
 			return
 		}
 
-		sets2, err := Parse(bytes.NewReader(data), checkMD5)
-		require.NoError(t, err, "non-deterministic parse success (second failed)")
+		sets2, err := Parse(bytes.NewReader(data), false)
+		require.NoError(t, err, "non-deterministic parse (first ok, second not)")
 
 		require.Equal(t, sets1, sets2, "non-deterministic output for same input")
 	})
@@ -621,7 +618,7 @@ func Test_parseMainPacketBody_InsufficientRecoveryBytes_Error(t *testing.T) {
 
 	_, err := parseMainPacketBody(Hash{}, body)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "have")
+	require.Contains(t, err.Error(), "bytes mismatch packet body")
 }
 
 // Expectation: parseMainPacketBody should fail on misaligned non-recovery IDs.
@@ -634,7 +631,7 @@ func Test_parseMainPacketBody_MisalignedNonRecovery_Error(t *testing.T) {
 
 	_, err := parseMainPacketBody(Hash{}, body)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "non-recovery IDs not aligned")
+	require.Contains(t, err.Error(), "not aligned to 4 bytes")
 }
 
 // Expectation: parseFileDescriptionBody should fail on body too short.
@@ -737,7 +734,7 @@ func Test_parseFileDescriptionBody_AllHashes_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, Hash(idA), packet.FileID)
 	require.Equal(t, Hash(idB), packet.Hash)
-	require.Equal(t, Hash(idC), packet.Hash16)
+	require.Equal(t, Hash(idC), packet.Hash16k)
 }
 
 // Expectation: parseFileDescriptionBody should handle filename at maximum allowed length.

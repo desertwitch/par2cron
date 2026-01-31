@@ -30,6 +30,9 @@ const (
 	mainSizeFixed     = 12 // SliceSize(8) + NumFiles (4)
 	fileDescSizeFixed = 56 // FileID(16) + HashFull(16) + Hash16k(16) + Length(8)
 
+	maxSets           = 10       // Sane amount of sets
+	maxIDsPerSet      = 100000   // Sane amount of IDs per set
+	maxFilesPerSet    = 100000   // Sane amount of files per set
 	maxPacketSize     = 10 << 20 // Sane packet size (10 MB)
 	maxFilenameLength = 65535    // Sane filename length
 
@@ -44,6 +47,9 @@ var (
 	errInvalidMagic     = errors.New("invalid PAR2 magic bytes")
 	errInvalidPacket    = errors.New("invalid packet structure")
 	errInvalidUnicode   = errors.New("invalid unicode data")
+	errTooManySets      = errors.New("too many sets in file")
+	errTooManyIDs       = errors.New("too many cumulative IDs in set")
+	errTooManyFiles     = errors.New("too many cumulative files in set")
 	errSkipPacket       = errors.New("skip this packet")
 )
 
@@ -75,6 +81,9 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 		}
 
 		if _, exists := groups[setID]; !exists {
+			if len(groups) >= maxSets {
+				return nil, fmt.Errorf("%w: len=%d", errTooManySets, len(groups))
+			}
 			groups[setID] = &setGroup{
 				setID:             setID,
 				recoveryIDs:       make(map[Hash]struct{}),
@@ -90,14 +99,26 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 		case *MainPacket:
 			group.mainPacket = e
 			for _, v := range e.RecoveryIDs {
+				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+					return nil, errTooManyIDs
+				}
 				group.recoveryIDs[v] = struct{}{}
 			}
 			for _, v := range e.NonRecoveryIDs {
+				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+					return nil, errTooManyIDs
+				}
 				group.nonRecoveryIDs[v] = struct{}{}
 			}
 		case *FilePacket:
+			if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
+				return nil, errTooManyFiles
+			}
 			group.unfilteredASCII[e.FileID] = e
 		case *UnicodePacket:
+			if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
+				return nil, errTooManyFiles
+			}
 			group.unfilteredUnicode[e.FileID] = e
 		}
 	}
@@ -334,32 +355,32 @@ func parseMainPacketBody(setID Hash, body []byte) (*MainPacket, error) {
 		return nil, fmt.Errorf("%w: slice size %d not multiple of 4", errInvalidAlignment, sliceSize)
 	}
 
-	// Calculate expected size for recovery IDs vs. actual bytes in body
-	recoveryBytesLen := int(numRecoveryFiles) * HashSize
-	if len(body) < mainSizeFixed+recoveryBytesLen {
-		return nil, fmt.Errorf("%w: have %d bytes, want %d bytes for files",
-			errInvalidPacket, len(body), mainSizeFixed+recoveryBytesLen)
+	// Check expected size for recovery IDs vs. actual bytes in body
+	if uint64(numRecoveryFiles)*HashSize > uint64(len(body))-uint64(mainSizeFixed) {
+		return nil, fmt.Errorf("%w: claimed bytes mismatch packet body", errInvalidPacket)
 	}
 
 	// Now parse the recovery file IDs
 	recoveryIDs := make([]Hash, numRecoveryFiles)
 
 	curr := mainSizeFixed // Start after fixed-width fields
-	for i := range int(numRecoveryFiles) {
+	for i := range numRecoveryFiles {
 		recoveryIDs[i] = Hash(body[curr : curr+HashSize])
 		curr += HashSize
 	}
 
 	// The rest of the packet is non-recovery file IDs
-	remaining := body[curr:]
-	if len(remaining)%HashSize != 0 {
-		return nil, fmt.Errorf("%w: non-recovery IDs not aligned to %d bytes", errInvalidAlignment, HashSize)
+	remaining := len(body) - curr
+	if remaining%HashSize != 0 {
+		return nil, fmt.Errorf("%w: non-recovery section size %d", errInvalidAlignment, remaining)
 	}
 
-	numNonRecFiles := len(remaining) / HashSize
-	nonRecoveryIDs := make([]Hash, numNonRecFiles)
-	for i := range numNonRecFiles {
-		nonRecoveryIDs[i] = Hash(remaining[i*HashSize : (i+1)*HashSize])
+	numNonRecoveryFiles := remaining / HashSize
+	nonRecoveryIDs := make([]Hash, numNonRecoveryFiles)
+
+	for i := range numNonRecoveryFiles {
+		nonRecoveryIDs[i] = Hash(body[curr : curr+HashSize])
+		curr += HashSize
 	}
 
 	return &MainPacket{
@@ -413,12 +434,12 @@ func parseFileDescriptionBody(setID Hash, body []byte) (*FilePacket, error) {
 	}
 
 	return &FilePacket{
-		SetID:  setID,
-		Name:   name,
-		Size:   int64(length),
-		FileID: fileID,
-		Hash:   hashFull,
-		Hash16: hash16k,
+		SetID:   setID,
+		Name:    name,
+		Size:    int64(length),
+		FileID:  fileID,
+		Hash:    hashFull,
+		Hash16k: hash16k,
 	}, nil
 }
 
@@ -451,6 +472,11 @@ func parseUnicodeDescriptionBody(setID Hash, body []byte) (*UnicodePacket, error
 func decodeUTF16LE(b []byte) (string, error) {
 	if len(b)%2 != 0 {
 		return "", fmt.Errorf("%w: odd number of bytes for UTF-16", errInvalidUnicode)
+	}
+
+	// Check against a too long filename
+	if len(b) > maxFilenameLength*2 {
+		return "", fmt.Errorf("%w: len=%d", errFilenameTooLong, len(b))
 	}
 
 	// Pairs of two bytes for UTF16

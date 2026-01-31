@@ -12,7 +12,6 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
-	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
@@ -86,8 +85,9 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 }
 
-func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) error {
+func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) (*util.ResultTracker, error) {
 	errs := []error{}
+	results := util.NewResultTracker()
 
 	logger := prog.verificationLogger(ctx, nil, rootDir)
 	logger.Info("Scanning filesystem for jobs...")
@@ -95,7 +95,7 @@ func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) e
 	jobs, err := prog.Enumerate(ctx, rootDir, args)
 	if err != nil {
 		if !errors.Is(err, schema.ErrNonFatal) {
-			return fmt.Errorf("failed to enumerate jobs: %w", err)
+			return results, fmt.Errorf("failed to enumerate jobs: %w", err)
 		}
 
 		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
@@ -107,12 +107,10 @@ func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) e
 	prog.considerBacklog(jobs, args)
 	jobs = filterByDuration(jobs, args.MaxDuration.Value)
 
-	results := util.NewResultTracker(logger)
-	defer results.PrintCompletionInfo(len(jobs))
-
 	if len(jobs) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
 			"maxDuration", args.MaxDuration.Value.String())
+		results.Selected = len(jobs)
 	} else {
 		logger.Info("Nothing to do (will check again next run)",
 			"minAge", args.MinAge.Value.String())
@@ -122,7 +120,7 @@ func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) e
 
 	for i, job := range jobs {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("context error: %w", err)
+			return results, fmt.Errorf("context error: %w", err)
 		}
 
 		pos := fmt.Sprintf("%d/%d", i+1, len(jobs))
@@ -169,10 +167,10 @@ func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) e
 	}
 
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("context error: %w", err)
+		return results, fmt.Errorf("context error: %w", err)
 	}
 
-	return util.HighestError(errs) //nolint:wrapcheck
+	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options) ([]*Job, error) {
@@ -311,7 +309,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	if job.manifest != nil && par2Hash != job.manifest.SHA256 {
-		logger.Warn("PAR2 changed since par2cron manifest creation (resetting manifest)",
+		logger.Warn("PAR2 has changed (manifest out of date; resetting manifest)",
 			"currentHash", par2Hash,
 			"manifestHash", job.manifest.SHA256,
 		)
@@ -349,7 +347,14 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	job.manifest.Verification.Count++
-	par2.ParseFileToPtr(&job.manifest.Archive, prog.fsys, job.par2Path, logger.Warn)
+
+	// if job.manifest.Par2Data == nil {
+	// 	util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
+	// 		Time:     job.manifest.Verification.Time,
+	// 		Path:     job.par2Path,
+	// 		Manifest: job.manifest,
+	// 	}, prog.verificationLogger(ctx, job, nil))
+	// }
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.verificationLogger(ctx, job, job.manifestPath)

@@ -1,8 +1,6 @@
 package util
 
 import (
-	"fmt"
-	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -17,31 +15,14 @@ const (
 )
 
 type ResultTracker struct {
-	Success int
-	Skipped int
-	Error   int
-
-	log *slog.Logger
+	Selected int
+	Success  int
+	Skipped  int
+	Error    int
 }
 
-func NewResultTracker(log *slog.Logger) *ResultTracker {
-	return &ResultTracker{
-		log: log,
-	}
-}
-
-func (t *ResultTracker) PrintCompletionInfo(selectedCount int) {
-	processed := t.Success + t.Error + t.Skipped
-
-	t.log.Info(
-		fmt.Sprintf("Operation complete (%d/%d jobs processed)",
-			processed, selectedCount),
-		"successCount", t.Success,
-		"skipCount", t.Skipped,
-		"errorCount", t.Error,
-		"processedCount", processed,
-		"selectedCount", selectedCount,
-	)
+func NewResultTracker() *ResultTracker {
+	return &ResultTracker{}
 }
 
 // Ptr converts a value of type [T] to a pointer of type [*T].

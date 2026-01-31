@@ -6,5 +6,6 @@
 /slack-desc
 /TODO
 /vendor
+/update-devel.sh
 # Added by goreleaser init:
 dist/

@@ -14,14 +14,16 @@ const (
 )
 
 type Manifest struct {
-	ProgramVersion  string                `json:"program_version"`
-	ManifestVersion string                `json:"manifest_version"`
-	Name            string                `json:"name"`
-	SHA256          string                `json:"sha256"`
-	Archive         *par2.Archive         `json:"archive,omitempty"`
-	Creation        *CreationManifest     `json:"creation,omitempty"`
-	Verification    *VerificationManifest `json:"verification,omitempty"`
-	Repair          *RepairManifest       `json:"repair,omitempty"`
+	ProgramVersion  string `json:"program_version"`
+	ManifestVersion string `json:"manifest_version"`
+
+	Name     string            `json:"name"`
+	SHA256   string            `json:"sha256"`
+	Par2Data *Par2DataManifest `json:"par2_data,omitempty"`
+
+	Creation     *CreationManifest     `json:"creation,omitempty"`
+	Verification *VerificationManifest `json:"verification,omitempty"`
+	Repair       *RepairManifest       `json:"repair,omitempty"`
 }
 
 func NewManifest(par2Name string) *Manifest {
@@ -32,11 +34,16 @@ func NewManifest(par2Name string) *Manifest {
 	}
 }
 
+type Par2DataManifest struct {
+	Time  time.Time  `json:"time"`
+	Index *par2.File `json:"index,omitempty"`
+}
+
 type CreationManifest struct {
 	Time     time.Time     `json:"time"`
 	Args     []string      `json:"args"`
 	Duration time.Duration `json:"duration_ns"`
-	Elements []FsElement   `json:"elements,omitempty"`
+	Elements []FsElement   `json:"elements"`
 }
 
 func (c *CreationManifest) UnmarshalJSON(data []byte) error {
@@ -81,7 +88,7 @@ type RepairManifest struct {
 }
 
 type FsElement struct {
-	Path string `json:"-"` // Never export this to JSON.
+	Path string `json:"-"` // Excluded from JSON (not to leak absolute paths)
 
 	Name    string      `json:"name"`
 	Size    int64       `json:"size"`

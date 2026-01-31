@@ -29,7 +29,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -180,7 +182,15 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 
-			return prog.CreationService.Create(ctx, args[0], createArgs)
+			result, err := prog.CreationService.Create(ctx, args[0], createArgs)
+			if result != nil {
+				logOperationResult(err, result, prog.log.With("op", "create"))
+			}
+			if err != nil {
+				return fmt.Errorf("create: %w", err)
+			}
+
+			return nil
 		},
 	}
 	createCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
@@ -256,7 +266,15 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 
-			return prog.VerificationService.Verify(ctx, args[0], verifyArgs)
+			result, err := prog.VerificationService.Verify(ctx, args[0], verifyArgs)
+			if result != nil {
+				logOperationResult(err, result, prog.log.With("op", "verify"))
+			}
+			if err != nil {
+				return fmt.Errorf("verify: %w", err)
+			}
+
+			return nil
 		},
 	}
 	verifyCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
@@ -330,7 +348,15 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 		RunE: func(_ *cobra.Command, args []string) error {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 
-			return prog.RepairService.Repair(ctx, args[0], repairArgs)
+			result, err := prog.RepairService.Repair(ctx, args[0], repairArgs)
+			if result != nil {
+				logOperationResult(err, result, prog.log.With("op", "repair"))
+			}
+			if err != nil {
+				return fmt.Errorf("repair: %w", err)
+			}
+
+			return nil
 		},
 	}
 	repairCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
@@ -415,6 +441,8 @@ type Program struct {
 	VerificationService *verify.Service
 	RepairService       *repair.Service
 	InfoService         *info.Service
+
+	log *logging.Logger
 }
 
 func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner) *Program {
@@ -425,6 +453,48 @@ func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner) 
 		VerificationService: verify.NewService(fsys, log, runner),
 		RepairService:       repair.NewService(fsys, log, runner),
 		InfoService:         info.NewService(fsys, log, runner),
+
+		log: log,
+	}
+}
+
+func logOperationResult(err error, result *util.ResultTracker, log *slog.Logger) {
+	processedCount := result.Success + result.Error + result.Skipped
+
+	switch {
+	case err == nil && result.Error == 0:
+		log.Info(
+			fmt.Sprintf("Operation completed (%d/%d jobs processed)",
+				processedCount, result.Selected),
+			"successCount", result.Success,
+			"skipCount", result.Skipped,
+			"errorCount", result.Error,
+			"processedCount", processedCount,
+			"selectedCount", result.Selected,
+		)
+
+	case errors.Is(err, context.Canceled):
+		log.Error(
+			fmt.Sprintf("Operation interrupted (%d/%d jobs processed)",
+				processedCount, result.Selected),
+			"successCount", result.Success,
+			"skipCount", result.Skipped,
+			"errorCount", result.Error,
+			"processedCount", processedCount,
+			"selectedCount", result.Selected,
+		)
+
+	default:
+		log.Error(
+			fmt.Sprintf("Operation completed with errors (%d/%d jobs processed)",
+				processedCount, result.Selected),
+			"error", err,
+			"successCount", result.Success,
+			"skipCount", result.Skipped,
+			"errorCount", result.Error,
+			"processedCount", processedCount,
+			"selectedCount", result.Selected,
+		)
 	}
 }
 
