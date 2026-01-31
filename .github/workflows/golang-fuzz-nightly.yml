@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   golang-64bit:
-    name: test-fuzz-30min-amd64
+    name: test-fuzz-60min-amd64
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
@@ -24,7 +24,7 @@ jobs:
       - name: Clean the environment
         run: make clean
 
-      - name: Run Go fuzz tests (30m)
+      - name: Run Go fuzz tests (60min)
         run: make test-fuzz-long
 
       - name: Archive the testdata folder
@@ -36,7 +36,7 @@ jobs:
           retention-days: 3
 
   golang-32bit:
-    name: test-fuzz-30min-386
+    name: test-fuzz-60min-386
     runs-on: ubuntu-latest
     steps:
       - name: Set up Go
@@ -54,7 +54,7 @@ jobs:
       - name: Clean the environment
         run: make clean
 
-      - name: Run Go fuzz tests (30m)
+      - name: Run Go fuzz tests (60min)
         env:
           GOARCH: 386
         run: make test-fuzz-long
