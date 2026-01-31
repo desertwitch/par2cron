@@ -165,7 +165,8 @@ func Test_Service_Create_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
-	require.NoError(t, prog.Create(t.Context(), "/data", args))
+	_, err := prog.Create(t.Context(), "/data", args)
+	require.NoError(t, err)
 
 	require.True(t, called)
 	require.Contains(t, logBuf.String(), "Job completed with success")
@@ -200,7 +201,8 @@ func Test_Service_Create_FileLocked_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
-	require.NoError(t, prog.Create(t.Context(), "/data", args))
+	_, err := prog.Create(t.Context(), "/data", args)
+	require.NoError(t, err)
 
 	require.True(t, called)
 	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
@@ -235,7 +237,8 @@ func Test_Service_Create_Generic_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
-	require.ErrorIs(t, prog.Create(t.Context(), "/data", args), schema.ErrExitPartialFailure)
+	_, err := prog.Create(t.Context(), "/data", args)
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	require.True(t, called)
 	require.Contains(t, logBuf.String(), "Job failure (will retry next run)")
@@ -279,7 +282,8 @@ func Test_Service_Create_MultipleJobs_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
-	require.NoError(t, prog.Create(t.Context(), "/data", args))
+	_, err := prog.Create(t.Context(), "/data", args)
+	require.NoError(t, err)
 
 	require.Equal(t, 2, called)
 	require.Equal(t, 2, strings.Count(logBuf.String(), "Job completed with success"))
@@ -323,7 +327,8 @@ func Test_Service_Create_MultipleJobs_OneFails_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
-	require.ErrorIs(t, prog.Create(t.Context(), "/data", args), schema.ErrExitPartialFailure)
+	_, err := prog.Create(t.Context(), "/data", args)
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	require.Equal(t, 2, called)
 	require.Equal(t, 1, strings.Count(logBuf.String(), "Job failure (will retry next run)"))
@@ -365,7 +370,7 @@ func Test_Service_Create_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
-	err := prog.Create(t.Context(), "/data", args)
+	_, err := prog.Create(t.Context(), "/data", args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 
@@ -404,7 +409,7 @@ func Test_Service_Create_MultipleJobs_EnumerationFails_NoOtherJobs_Error(t *test
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
-	err := prog.Create(t.Context(), "/data", args)
+	_, err := prog.Create(t.Context(), "/data", args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 
@@ -431,7 +436,8 @@ func Test_Service_Create_NoJobs_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{Par2Args: []string{"-r10"}}
-	require.NoError(t, prog.Create(t.Context(), "/data", args))
+	_, err := prog.Create(t.Context(), "/data", args)
+	require.NoError(t, err)
 	require.Contains(t, logBuf.String(), "Nothing to do")
 }
 
@@ -457,7 +463,7 @@ func Test_Service_Create_CtxCancel_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{Par2Args: []string{"-r10"}}
-	err := prog.Create(ctx, "/data", args)
+	_, err := prog.Create(ctx, "/data", args)
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -499,7 +505,7 @@ func Test_Service_Create_DurationExceeded_Success(t *testing.T) {
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
 
-	err := prog.Create(t.Context(), "/data", args)
+	_, err := prog.Create(t.Context(), "/data", args)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, called)
@@ -546,7 +552,7 @@ func Test_Service_Create_DurationNotExceeded_Success(t *testing.T) {
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10s"))
 
-	err := prog.Create(t.Context(), "/data", args)
+	_, err := prog.Create(t.Context(), "/data", args)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, called)
@@ -589,7 +595,7 @@ func Test_Service_Create_DurationExceeded_WithPriorError_Error(t *testing.T) {
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
 
-	err := prog.Create(t.Context(), "/data", args)
+	_, err := prog.Create(t.Context(), "/data", args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	require.Equal(t, 1, called)
@@ -634,7 +640,7 @@ func Test_Service_Create_NoDuration_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
-	err := prog.Create(t.Context(), "/data", args)
+	_, err := prog.Create(t.Context(), "/data", args)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, called)

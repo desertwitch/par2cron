@@ -114,8 +114,9 @@ func newFileModeJob(job Job, path string) Job {
 	return job
 }
 
-func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) error {
+func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (*util.ResultTracker, error) {
 	errs := []error{}
+	results := util.NewResultTracker()
 
 	logger := prog.creationLogger(ctx, nil, rootDir)
 	logger.Info("Scanning filesystem for jobs...")
@@ -123,20 +124,19 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) e
 	jobs, err := prog.Enumerate(ctx, rootDir, opts)
 	if err != nil {
 		if !errors.Is(err, schema.ErrNonFatal) {
-			return fmt.Errorf("failed to enumerate jobs: %w", err)
+			return results, fmt.Errorf("failed to enumerate jobs: %w", err)
 		}
 
 		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
 		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 	}
-	prog.considerRecursive(ctx, jobs)
 
-	results := util.NewResultTracker(logger)
-	defer results.PrintCompletionInfo(len(jobs))
+	prog.considerRecursive(ctx, jobs)
 
 	if len(jobs) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
 			"maxDuration", opts.MaxDuration.Value.String())
+		results.Selected = len(jobs)
 	} else {
 		logger.Info("Nothing to do (will check again next run)")
 	}
@@ -150,7 +150,7 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) e
 
 	for i, job := range jobs {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("context error: %w", err)
+			return results, fmt.Errorf("context error: %w", err)
 		}
 
 		if deadlineCtx != nil {
@@ -184,10 +184,10 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) e
 	}
 
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("context error: %w", err)
+		return results, fmt.Errorf("context error: %w", err)
 	}
 
-	return util.HighestError(errs) //nolint:wrapcheck
+	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
