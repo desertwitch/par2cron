@@ -421,11 +421,11 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		return err
 	}
 
-	util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
-		Time:     mf.Creation.Time,
-		Path:     job.par2Path,
-		Manifest: mf,
-	}, logger)
+	// util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
+	// 	Time:     mf.Creation.Time,
+	// 	Path:     job.par2Path,
+	// 	Manifest: mf,
+	// }, logger)
 
 	if sha256hash, err := util.HashFile(prog.fsys, job.par2Path); err != nil {
 		logger.Warn("Failed to hash PAR2 for par2cron manifest (will retry on verify)", "error", err)

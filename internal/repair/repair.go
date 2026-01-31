@@ -360,13 +360,13 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
 
-	if job.manifest.Par2Data == nil {
-		util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
-			Time:     job.manifest.Repair.Time,
-			Path:     job.par2Path,
-			Manifest: job.manifest,
-		}, logger)
-	}
+	// if job.manifest.Par2Data == nil {
+	// 	util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
+	// 		Time:     job.manifest.Repair.Time,
+	// 		Path:     job.par2Path,
+	// 		Manifest: job.manifest,
+	// 	}, logger)
+	// }
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)

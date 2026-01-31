@@ -349,13 +349,13 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 
 	job.manifest.Verification.Count++
 
-	if job.manifest.Par2Data == nil {
-		util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
-			Time:     job.manifest.Verification.Time,
-			Path:     job.par2Path,
-			Manifest: job.manifest,
-		}, logger)
-	}
+	// if job.manifest.Par2Data == nil {
+	// 	util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
+	// 		Time:     job.manifest.Verification.Time,
+	// 		Path:     job.par2Path,
+	// 		Manifest: job.manifest,
+	// 	}, logger)
+	// }
 
 	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
 		logger := prog.verificationLogger(ctx, job, job.manifestPath)
