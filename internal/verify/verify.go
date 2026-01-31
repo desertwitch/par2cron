@@ -79,7 +79,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 
 	return &Service{
 		fsys:   fsys,
-		log:    log,
+		log:    log.With("op", "verify"),
 		runner: runner,
 		walker: walker,
 	}
@@ -422,7 +422,6 @@ func (prog *Service) considerBacklog(jobs []*Job, args Options) {
 	if js.TotalDuration > capacity {
 		prog.log.Warn("Backlog is growing indefinitely (increase --age, increase --duration, "+
 			"or verify without --duration once to clear the backlog and then fix your arguments)",
-			"op", "verify",
 			"totalDuration", js.TotalDuration.String(),
 			"clearingCapacity", capacity.String(),
 			"clearingShortfall", (js.TotalDuration - capacity).String(),
@@ -440,13 +439,11 @@ func (prog *Service) considerDurations(jobs []*Job, args Options) {
 		switch {
 		case est == 0:
 			prog.log.Warn("First job has (still) unknown duration, may exceed --duration",
-				"op", "verify",
 				"job", jobs[0].par2Path,
 				"maxDuration", args.MaxDuration.Value.String(),
 			)
 		case est > args.MaxDuration.Value:
 			prog.log.Warn("First job is estimated to exceed --duration (required to prevent starvation)",
-				"op", "verify",
 				"job", jobs[0].par2Path,
 				"estDuration", est.String(),
 				"maxDuration", args.MaxDuration.Value.String(),
@@ -456,7 +453,6 @@ func (prog *Service) considerDurations(jobs []*Job, args Options) {
 		for _, job := range jobs[1:] {
 			if job.lastDuration() == 0 {
 				prog.log.Warn("Some jobs have a (still) unknown duration, may exceed --duration",
-					"op", "verify",
 					"maxDuration", args.MaxDuration.Value.String(),
 				)
 

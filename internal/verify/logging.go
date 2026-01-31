@@ -2,15 +2,14 @@ package verify
 
 import (
 	"context"
-	"log/slog"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 )
 
-func (prog *Service) verificationLogger(ctx context.Context, job *Job, path any) *slog.Logger {
+func (prog *Service) verificationLogger(ctx context.Context, job *Job, path any) *logging.Logger {
 	logElems := []any{}
 
-	logElems = append(logElems, "op", "verify")
 	if path != nil {
 		logElems = append(logElems, "path", path)
 	}

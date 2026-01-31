@@ -31,7 +31,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -458,7 +457,7 @@ func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner) 
 	}
 }
 
-func logOperationResult(err error, result *util.ResultTracker, log *slog.Logger) {
+func logOperationResult(err error, result *util.ResultTracker, log *logging.Logger) {
 	processedCount := result.Success + result.Error + result.Skipped
 
 	switch {

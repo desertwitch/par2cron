@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/testutil"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -15,7 +16,7 @@ func Test_newBackupPurger_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 
 	purger, err := newBackupPurger(fs, log, "/data")
 
@@ -36,7 +37,7 @@ func Test_newBackupPurger_CapturesState_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.2", []byte("backup2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("original"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 
 	require.NoError(t, err)
@@ -52,7 +53,7 @@ func Test_newBackupPurger_EmptyDir_Success(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 
 	require.NoError(t, err)
@@ -64,7 +65,7 @@ func Test_newBackupPurger_MissingDir_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 
 	_, err := newBackupPurger(fs, log, "/nonexistent")
 
@@ -83,7 +84,7 @@ func Test_newBackupPurger_OpenError_Error(t *testing.T) {
 		FailPattern: "/data",
 	}
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	_, err := newBackupPurger(fs, log, "/data")
 
 	require.ErrorContains(t, err, "failed to establish before-state")
@@ -97,7 +98,7 @@ func Test_backupPurger_Purge_RemovesNewBackups_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("original"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -124,7 +125,7 @@ func Test_backupPurger_Purge_KeepsOldBackups_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("original"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.1", []byte("old backup"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -142,7 +143,7 @@ func Test_backupPurger_Purge_KeepsOrphans_Success(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -164,7 +165,7 @@ func Test_backupPurger_Purge_KeepsEmptyOriginal_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte(""), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -186,7 +187,7 @@ func Test_backupPurger_Purge_MultipleExtensions_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("original"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -216,7 +217,7 @@ func Test_backupPurger_Purge_MultipleValidBackups_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/file2.txt", []byte("original2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/file3.txt", []byte("original3"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -253,7 +254,7 @@ func Test_backupPurger_Purge_IgnoresSubdirectories_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("original"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/subdir/file.txt", []byte("original"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -280,7 +281,7 @@ func Test_backupPurger_Purge_RemoveError_Success(t *testing.T) {
 	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(baseFs, "/data/file.txt", []byte("original"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(baseFs, log, "/data")
 	require.NoError(t, err)
 
@@ -307,7 +308,7 @@ func Test_backupPurger_Purge_PartialRemoveError_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(baseFs, "/data/file1.txt", []byte("original"), 0o644))
 	require.NoError(t, afero.WriteFile(baseFs, "/data/file2.txt", []byte("original"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(baseFs, log, "/data")
 	require.NoError(t, err)
 
@@ -337,7 +338,7 @@ func Test_backupPurger_Purge_PostReadDirError_Error(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -358,7 +359,7 @@ func Test_backupPurger_Purge_StatError_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(baseFs, "/data/file.txt", []byte("original"), 0o644))
 	require.NoError(t, afero.WriteFile(baseFs, "/data/file2.txt", []byte("original"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(baseFs, log, "/data")
 	require.NoError(t, err)
 
@@ -397,7 +398,7 @@ func Test_backupPurger_getNumberExtensions_Pattern_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.bak", []byte("no match"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.1.txt", []byte("no match"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -417,7 +418,7 @@ func Test_backupPurger_getNumberExtensions_SkipsDirs_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data/subdir.1", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.1", []byte("file"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -437,7 +438,7 @@ func Test_backupPurger_getNumberExtensions_CurrentDirOnly_Success(t *testing.T) 
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.1", []byte("current"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/subdir/file.txt.1", []byte("sub"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -461,7 +462,7 @@ func Test_backupPurger_getNumberExtensions_MultiLevelNumeric_Success(t *testing.
 	require.NoError(t, afero.WriteFile(fs, "/data/archive.tar.gz.5", []byte("match"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("no match"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -483,7 +484,7 @@ func Test_backupPurger_hasValidOriginal_Valid_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -501,7 +502,7 @@ func Test_backupPurger_hasValidOriginal_EmptyOriginal_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte(""), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -518,7 +519,7 @@ func Test_backupPurger_hasValidOriginal_MissingOriginal_Success(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -535,7 +536,7 @@ func Test_backupPurger_hasValidOriginal_NoNumericExt_Success(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -553,7 +554,7 @@ func Test_backupPurger_hasValidOriginal_MultipleExtensions_Success(t *testing.T)
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -577,7 +578,7 @@ func Test_backupPurger_hasValidOriginal_MultiLevelNumeric_Success(t *testing.T) 
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.1", []byte("content"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt.1.1", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(fs, log, "/data")
 	require.NoError(t, err)
 
@@ -600,7 +601,7 @@ func Test_backupPurger_hasValidOriginal_StatError_Error(t *testing.T) {
 	baseFs := afero.NewMemMapFs()
 	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	purger, err := newBackupPurger(baseFs, log, "/data")
 	require.NoError(t, err)
 

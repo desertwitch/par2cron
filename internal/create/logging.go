@@ -2,15 +2,14 @@ package create
 
 import (
 	"context"
-	"log/slog"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 )
 
-func (prog *Service) creationLogger(ctx context.Context, job *Job, path any) *slog.Logger {
+func (prog *Service) creationLogger(ctx context.Context, job *Job, path any) *logging.Logger {
 	logElems := []any{}
 
-	logElems = append(logElems, "op", "create")
 	if path != nil {
 		logElems = append(logElems, "path", path)
 	}
@@ -35,10 +34,9 @@ func (prog *Service) creationLogger(ctx context.Context, job *Job, path any) *sl
 	return prog.log.With(logElems...)
 }
 
-func (prog *Service) markerLogger(job any, key any, value any) *slog.Logger {
+func (prog *Service) markerLogger(job any, key any, value any) *logging.Logger {
 	logElems := []any{}
 
-	logElems = append(logElems, "op", "create")
 	logElems = append(logElems, "job", job)
 
 	if key != nil {
@@ -54,7 +52,6 @@ func (prog *Service) markerLogger(job any, key any, value any) *slog.Logger {
 func (prog *Service) debugArgsModified(arg string, value string, before any, after any, wasReplaced bool, markerPath string) {
 	if !wasReplaced {
 		prog.log.Debug("Added argument to argument slice",
-			"op", "create",
 			"job", markerPath,
 			"arg", arg,
 			"value", value,
@@ -62,7 +59,6 @@ func (prog *Service) debugArgsModified(arg string, value string, before any, aft
 			"after", after)
 	} else {
 		prog.log.Debug("Replaced argument in argument slice",
-			"op", "create",
 			"job", markerPath,
 			"arg", arg,
 			"value", value,

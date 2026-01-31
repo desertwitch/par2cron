@@ -3,10 +3,10 @@ package repair
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"path/filepath"
 	"syscall"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/spf13/afero"
 )
 
@@ -19,13 +19,13 @@ type fileRecord struct {
 
 type backupRestorer struct {
 	fsys afero.Fs
-	log  *slog.Logger
+	log  *logging.Logger
 
 	dir    string
 	before map[uint64]fileRecord // map[inode]fileRecord
 }
 
-func newBackupRestorer(fsys afero.Fs, log *slog.Logger, dir string) (*backupRestorer, error) {
+func newBackupRestorer(fsys afero.Fs, log *logging.Logger, dir string) (*backupRestorer, error) {
 	r := &backupRestorer{
 		fsys: fsys,
 		log:  log,

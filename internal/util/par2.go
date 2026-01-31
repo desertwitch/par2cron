@@ -2,9 +2,9 @@ package util
 
 import (
 	"errors"
-	"log/slog"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
@@ -16,7 +16,7 @@ type Par2IndexToManifestOptions struct {
 	Manifest *schema.Manifest
 }
 
-func Par2IndexToManifest(fsys afero.Fs, o Par2IndexToManifestOptions, log *slog.Logger) {
+func Par2IndexToManifest(fsys afero.Fs, o Par2IndexToManifestOptions, log *logging.Logger) {
 	f, err := par2.ParseFile(fsys, o.Path, true)
 	if err != nil {
 		var pe *par2.ParserPanicError

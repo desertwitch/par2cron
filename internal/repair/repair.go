@@ -47,7 +47,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 
 	return &Service{
 		fsys:   fsys,
-		log:    log,
+		log:    log.With("op", "repair"),
 		runner: runner,
 		walker: walker,
 	}

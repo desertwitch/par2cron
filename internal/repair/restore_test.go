@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/testutil"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -16,7 +17,7 @@ func Test_newBackupRestorer_Success(t *testing.T) {
 
 	fs := afero.NewOsFs()
 	dir := t.TempDir()
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 
 	restorer, err := newBackupRestorer(fs, log, dir)
 
@@ -36,7 +37,7 @@ func Test_newBackupRestorer_CapturesState_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, dir+"/file1.txt", []byte("content1"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, dir+"/file2.txt", []byte("content2"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 
 	require.NoError(t, err)
@@ -50,7 +51,7 @@ func Test_newBackupRestorer_EmptyDir_Success(t *testing.T) {
 	fs := afero.NewOsFs()
 	dir := t.TempDir()
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 
 	require.NoError(t, err)
@@ -62,7 +63,7 @@ func Test_newBackupRestorer_MissingDir_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewOsFs()
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 
 	_, err := newBackupRestorer(fs, log, "/nonexistent-dir-that-does-not-exist")
 
@@ -81,7 +82,7 @@ func Test_newBackupRestorer_OpenError_Error(t *testing.T) {
 		FailPattern: dir,
 	}
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	_, err := newBackupRestorer(fs, log, dir)
 
 	require.ErrorContains(t, err, "failed to establish before-state")
@@ -97,7 +98,7 @@ func Test_backupRestorer_Restore_UnchangedOlderBackup_Success(t *testing.T) {
 	// Create a pre-existing numbered backup file before initializing restorer
 	require.NoError(t, afero.WriteFile(fs, dir+"/oldfile.txt.1", []byte("old backup"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -122,7 +123,7 @@ func Test_backupRestorer_Restore_RestoresRenamedFiles_Success(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -146,7 +147,7 @@ func Test_backupRestorer_Restore_IgnoresUnchangedFiles_Success(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -164,7 +165,7 @@ func Test_backupRestorer_Restore_IgnoresNewFiles_Success(t *testing.T) {
 	fs := afero.NewOsFs()
 	dir := t.TempDir()
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -188,7 +189,7 @@ func Test_backupRestorer_Restore_SizeMismatch_Success(t *testing.T) {
 	backupPath := dir + "/file.txt.1"
 	require.NoError(t, afero.WriteFile(fs, originalPath, []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -220,7 +221,7 @@ func Test_backupRestorer_Restore_MultipleFiles_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, dir+"/file2.txt", []byte("content2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, dir+"/file3.txt", []byte("content3"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -258,7 +259,7 @@ func Test_backupRestorer_Restore_IgnoresSubdirectories_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt", []byte("content"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, dir+"/subdir/file.txt", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -285,7 +286,7 @@ func Test_backupRestorer_Restore_RenameError_Success(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, afero.WriteFile(baseFs, dir+"/file.txt", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(baseFs, log, dir)
 	require.NoError(t, err)
 
@@ -312,7 +313,7 @@ func Test_backupRestorer_Restore_PartialRenameError_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(baseFs, dir+"/file1.txt", []byte("content1"), 0o644))
 	require.NoError(t, afero.WriteFile(baseFs, dir+"/file2.txt", []byte("content2"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(baseFs, log, dir)
 	require.NoError(t, err)
 
@@ -342,7 +343,7 @@ func Test_backupRestorer_Restore_PostReadDirError_Error(t *testing.T) {
 	fs := afero.NewOsFs()
 	dir := t.TempDir()
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -364,7 +365,7 @@ func Test_backupRestorer_getFilesWithInodes_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, dir+"/file2.txt", []byte("content2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt.1", []byte("backup"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -383,7 +384,7 @@ func Test_backupRestorer_getFilesWithInodes_SkipsDirs_Success(t *testing.T) {
 	require.NoError(t, fs.MkdirAll(dir+"/subdir", 0o755))
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt", []byte("file"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -404,7 +405,7 @@ func Test_backupRestorer_getNumberedFilesWithInodes_Pattern_Success(t *testing.T
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt", []byte("no match"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt.bak", []byte("no match"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -423,7 +424,7 @@ func Test_backupRestorer_getNumberedFilesWithInodes_SkipsDirs_Success(t *testing
 	require.NoError(t, fs.MkdirAll(dir+"/subdir.1", 0o755))
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt.1", []byte("file"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -442,7 +443,7 @@ func Test_backupRestorer_getInode_Success(t *testing.T) {
 
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt", []byte("file"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -458,7 +459,7 @@ func Test_backupRestorer_getInode_StatError_Error(t *testing.T) {
 	baseFs := afero.NewOsFs()
 	dir := t.TempDir()
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(baseFs, log, dir)
 	require.NoError(t, err)
 
@@ -482,7 +483,7 @@ func Test_backupRestorer_getInode_NoSyscallStat_Error(t *testing.T) {
 	require.NoError(t, fs.MkdirAll("/data", 0o755))
 	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer := &backupRestorer{
 		fsys:   fs,
 		log:    log,
@@ -504,7 +505,7 @@ func Test_backupRestorer_Restore_PreservesContent_Success(t *testing.T) {
 	originalContent := []byte("important content that must be preserved")
 	require.NoError(t, afero.WriteFile(fs, dir+"/file.txt", originalContent, 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 
@@ -532,7 +533,7 @@ func Test_backupRestorer_Restore_DifferentInodeSameContent_Success(t *testing.T)
 
 	require.NoError(t, afero.WriteFile(fs, originalPath, content, 0o644))
 
-	log := slog.New(slog.DiscardHandler)
+	log := &logging.Logger{Logger: slog.New(slog.DiscardHandler), Options: logging.Options{}}
 	restorer, err := newBackupRestorer(fs, log, dir)
 	require.NoError(t, err)
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
@@ -18,7 +19,10 @@ func Test_Par2IndexToManifest_ValidFile_Success(t *testing.T) {
 
 	fsys := afero.NewOsFs()
 	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	log := &logging.Logger{
+		Logger:  slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Options: logging.Options{},
+	}
 
 	manifest := &schema.Manifest{}
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
@@ -41,7 +45,10 @@ func Test_Par2IndexToManifest_ReuseExistingPointer_Success(t *testing.T) {
 
 	fsys := afero.NewOsFs()
 	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	log := &logging.Logger{
+		Logger:  slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Options: logging.Options{},
+	}
 
 	existingData := &schema.Par2DataManifest{}
 	manifest := &schema.Manifest{Par2Data: existingData}
@@ -65,7 +72,10 @@ func Test_Par2IndexToManifest_ParseError_PreservesData_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fsys, "/invalid.par2", []byte("invalid content"), 0o644))
 
 	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, nil))
+	log := &logging.Logger{
+		Logger:  slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Options: logging.Options{},
+	}
 
 	existingTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 	existingData := &schema.Par2DataManifest{
@@ -96,7 +106,10 @@ func Test_Par2IndexToManifest_EmptyDatasets_UpdatesManifest_Success(t *testing.T
 	require.NoError(t, afero.WriteFile(fsys, "/empty.par2", []byte{}, 0o644))
 
 	var buf testutil.SafeBuffer
-	log := slog.New(slog.NewTextHandler(&buf, nil))
+	log := &logging.Logger{
+		Logger:  slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Options: logging.Options{},
+	}
 
 	manifest := &schema.Manifest{}
 	testTime := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)

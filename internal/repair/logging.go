@@ -2,15 +2,14 @@ package repair
 
 import (
 	"context"
-	"log/slog"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 )
 
-func (prog *Service) repairLogger(ctx context.Context, job *Job, path any) *slog.Logger {
+func (prog *Service) repairLogger(ctx context.Context, job *Job, path any) *logging.Logger {
 	logElems := []any{}
 
-	logElems = append(logElems, "op", "repair")
 	if path != nil {
 		logElems = append(logElems, "path", path)
 	}
