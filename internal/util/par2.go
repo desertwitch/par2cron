@@ -23,7 +23,7 @@ func Par2IndexToManifest(fsys afero.Fs, o Par2IndexToManifestOptions, log *slog.
 
 		if errors.As(err, &pe) {
 			log.Warn("Panic while parsing PAR2 for par2cron manifest (report to developers)",
-				"panic", pe.Value, "stack", pe.Stack)
+				"panic", pe.Value, "stack", string(pe.Stack))
 		} else {
 			log.Warn("Failed to parse PAR2 for par2cron manifest (will retry next run)",
 				"error", err)
