@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"slices"
 	"unicode/utf16"
 )
 
@@ -41,18 +40,19 @@ const (
 )
 
 var (
-	errFileCorrupted    = errors.New("file corrupted")
-	errChecksumMismatch = errors.New("packet checksum mismatch")
-	errFilenameTooLong  = errors.New("filename exceeds maximum length")
-	errInvalidAlignment = errors.New("packet length not aligned to 4 bytes")
-	errInvalidMagic     = errors.New("invalid PAR2 magic bytes")
-	errInvalidPacket    = errors.New("invalid packet structure")
-	errInvalidUnicode   = errors.New("invalid unicode data")
-	errTooManySets      = errors.New("too many sets in file")
-	errTooManyIDs       = errors.New("too many cumulative IDs in set")
-	errTooManyFiles     = errors.New("too many cumulative files in set")
-	errSkipPacket       = errors.New("skip this packet")
-	errUnhandledPacket  = errors.New("unhandled packet")
+	errFileCorrupted        = errors.New("file corrupted")
+	errChecksumMismatch     = errors.New("packet checksum mismatch")
+	errFilenameTooLong      = errors.New("filename exceeds maximum length")
+	errInvalidAlignment     = errors.New("packet length not aligned to 4 bytes")
+	errInvalidMagic         = errors.New("invalid PAR2 magic bytes")
+	errInvalidPacket        = errors.New("invalid packet structure")
+	errInvalidUnicode       = errors.New("invalid unicode data")
+	errTooManySets          = errors.New("too many sets in file")
+	errTooManyIDs           = errors.New("too many cumulative IDs in set")
+	errTooManyFiles         = errors.New("too many cumulative files in set")
+	errSkipPacket           = errors.New("skip this packet")
+	errUnhandledPacket      = errors.New("unhandled packet")
+	errUnresolvableConflict = errors.New("unresolvable conflict")
 )
 
 // Parse reads PAR2 data and returns a slice of [Set] in the order they appeared.
@@ -141,31 +141,35 @@ func (s *setGrouper) Insert(packet any) error {
 	}
 	group := s.groups[setID]
 
-	switch e := packet.(type) {
+	switch p := packet.(type) {
 	case *MainPacket:
-		group.mainPacket = e
-		for _, v := range e.RecoveryIDs {
-			if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
-				return errTooManyIDs
+		if group.mainPacket == nil {
+			group.mainPacket = p
+			for _, v := range p.RecoveryIDs {
+				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+					return errTooManyIDs
+				}
+				group.recoveryIDs[v] = struct{}{}
 			}
-			group.recoveryIDs[v] = struct{}{}
-		}
-		for _, v := range e.NonRecoveryIDs {
-			if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
-				return errTooManyIDs
+			for _, v := range p.NonRecoveryIDs {
+				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+					return errTooManyIDs
+				}
+				group.nonRecoveryIDs[v] = struct{}{}
 			}
-			group.nonRecoveryIDs[v] = struct{}{}
+		} else if !group.mainPacket.Equal(p) {
+			return fmt.Errorf("%w: conflicting main packets in same set", errUnresolvableConflict)
 		}
 	case *FilePacket:
 		if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
 			return errTooManyFiles
 		}
-		group.unfilteredASCII[e.FileID] = e
+		group.unfilteredASCII[p.FileID] = p
 	case *UnicodePacket:
 		if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
 			return errTooManyFiles
 		}
-		group.unfilteredUnicode[e.FileID] = e
+		group.unfilteredUnicode[p.FileID] = p
 	}
 
 	return nil
@@ -178,7 +182,7 @@ func (s *setGrouper) Sets() []Set {
 		group := s.groups[id]
 
 		for _, ue := range group.unfilteredUnicode {
-			if fe, ok := group.unfilteredASCII[ue.FileID]; ok {
+			if fe, ok := group.unfilteredASCII[ue.FileID]; ok && !fe.FromUnicode {
 				fe.Name = ue.Name
 				fe.FromUnicode = true
 			}
@@ -186,7 +190,7 @@ func (s *setGrouper) Sets() []Set {
 
 		recoveryList := make([]FilePacket, 0, len(group.recoveryIDs))
 		nonRecoveryList := make([]FilePacket, 0, len(group.nonRecoveryIDs))
-		strayList := make([]FilePacket, 0)
+		strayList := []FilePacket{}
 
 		for _, fe := range group.unfilteredASCII {
 			if _, ok := group.recoveryIDs[fe.FileID]; ok {
@@ -219,27 +223,15 @@ func (s *setGrouper) Sets() []Set {
 		sortFileIDs(recoveryMissing)
 		sortFileIDs(nonRecoveryMissing)
 
-		var mainPacket *MainPacket
-		if group.mainPacket != nil {
-			mainPacket = &MainPacket{
-				SetID:          group.mainPacket.SetID,
-				SliceSize:      group.mainPacket.SliceSize,
-				RecoveryIDs:    slices.Clone(group.mainPacket.RecoveryIDs),
-				NonRecoveryIDs: slices.Clone(group.mainPacket.NonRecoveryIDs),
-			}
-		}
-
 		results = append(results, Set{
 			SetID:          id,
-			MainPacket:     mainPacket,
+			MainPacket:     group.mainPacket.Copy(),
 			RecoverySet:    recoveryList,
 			NonRecoverySet: nonRecoveryList,
 
 			StrayPackets:              strayList,
 			MissingRecoveryPackets:    recoveryMissing,
 			MissingNonRecoveryPackets: nonRecoveryMissing,
-
-			IsComplete: len(strayList) == 0 && len(recoveryMissing) == 0 && len(nonRecoveryMissing) == 0,
 		})
 	}
 
@@ -267,7 +259,7 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 
 	// Validate 4-byte alignment (per spec)
 	if header.length%4 != 0 {
-		return nil, fmt.Errorf("%w: length=%d", errInvalidAlignment, header.length)
+		return nil, fmt.Errorf("%w: misaligned packet length=%d", errInvalidAlignment, header.length)
 	}
 
 	// Validate and calculate the packet length

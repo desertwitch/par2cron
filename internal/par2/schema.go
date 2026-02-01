@@ -9,7 +9,6 @@ type Hash [HashSize]byte
 type FileSet struct {
 	Files      []File `json:"files"`       // Individual PAR2 files and their sets
 	SetsMerged []Set  `json:"sets_merged"` // Merged information of all [File] sets
-	IsComplete bool   `json:"is_complete"` // No missing or stray packets (after merging)
 }
 
 // File represents a single parsed PAR2 file.
@@ -19,8 +18,6 @@ type File struct {
 	// Sets represents the datasets of different set IDs,
 	// though commonly there is only one dataset in a PAR2 file.
 	Sets []Set `json:"sets"`
-
-	IsComplete bool `json:"is_complete"` // No missing or stray packets (in all sets)
 }
 
 // Set represents a dataset with unique set ID.
@@ -41,8 +38,6 @@ type Set struct {
 	// MissingNonRecoveryPackets are non-recovery files that have
 	// their file ID in the PAR2 [MainPacket], but have not been found.
 	MissingNonRecoveryPackets []Hash `json:"missing_non_recovery_packets"`
-
-	IsComplete bool `json:"is_complete"` // No missing or stray packets (in this set)
 }
 
 // MainPacket represents a main packet.

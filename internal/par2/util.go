@@ -115,30 +115,29 @@ func ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
 	}
 
 	return &File{
-		Name:       filepath.Base(path),
-		Sets:       sets,
-		IsComplete: allSetsComplete(sets),
+		Name: filepath.Base(path),
+		Sets: sets,
 	}, nil
 }
 
 // ParseFileSet parses an index PAR2 file and all related volume files.
 func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, error) {
-	var files []File
+	files := []File{}
 
 	indexData, err := ParseFile(fsys, indexFile, panicAsErr)
 	if err != nil {
 		var pe *ParserPanicError
 
 		if errors.As(err, &pe) {
-			return nil, pe // Return a panic
+			return nil, pe // Do not swallow panics.
 		}
 	} else {
 		files = append(files, *indexData)
 	}
 
 	basePath := strings.TrimSuffix(indexFile, ".par2")
-
 	pattern := basePath + "*.par2"
+
 	matches, err := afero.Glob(fsys, pattern)
 	if err != nil {
 		return nil, fmt.Errorf("failed to glob: %w", err)
@@ -154,7 +153,7 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 			var pe *ParserPanicError
 
 			if errors.As(err, &pe) {
-				return nil, pe // Return a panic
+				return nil, pe // Do not swallow panics.
 			}
 
 			continue
@@ -164,12 +163,12 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 	}
 
 	if len(files) == 0 {
-		return nil, fmt.Errorf("%w: no valid files", errFileCorrupted)
+		return nil, fmt.Errorf("%w: no parseable files", errFileCorrupted)
 	}
 
 	merged, err := mergeFiles(files)
 	if err != nil {
-		return nil, fmt.Errorf("failed to merge: %w", err)
+		return nil, fmt.Errorf("failed to merge files: %w", err)
 	}
 
 	return merged, nil

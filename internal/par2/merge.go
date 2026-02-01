@@ -16,39 +16,34 @@ type mergedSet struct {
 }
 
 // mergeFiles combines multiple PAR2 files into a unified FileSet.
-// It merges sets with the same SetID, resolves missing files from stray
-// packets across files, and validates that MainPackets are all consistent.
+// It merges sets with the same SetID, attempting to resolve missing/stray
+// packets across files, and validating that MainPackets are all consistent.
 func mergeFiles(files []File) (*FileSet, error) {
-	if len(files) == 0 {
-		return &FileSet{}, nil
-	}
-
 	// Group and merge all sets by SetID
-	setMap, err := groupSetsByID(files)
+	mergedSets, err := groupSetsByID(files)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to group sets: %w", err)
 	}
 
 	// Preserve set order from first file
-	order := buildSetOrder(files, setMap)
+	order := buildSetOrder(files, mergedSets)
 
 	// Build final merged sets
-	results := buildMergedSets(order, setMap)
+	results := buildMergedSets(order, mergedSets)
 
 	return &FileSet{
 		Files:      slices.Clone(files),
 		SetsMerged: results,
-		IsComplete: allSetsComplete(results),
 	}, nil
 }
 
 // groupSetsByID groups sets from all files by their SetID and validates consistency.
 func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
-	setMap := make(map[Hash]*mergedSet)
+	mergedSets := make(map[Hash]*mergedSet)
 
 	for _, file := range files {
 		for _, set := range file.Sets {
-			ms, exists := setMap[set.SetID]
+			ms, exists := mergedSets[set.SetID]
 			if !exists {
 				ms = &mergedSet{
 					setID:              set.SetID,
@@ -58,7 +53,7 @@ func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
 					missingRecovery:    make(map[Hash]struct{}),
 					missingNonRecovery: make(map[Hash]struct{}),
 				}
-				setMap[set.SetID] = ms
+				mergedSets[set.SetID] = ms
 			}
 
 			// Validate MainPacket consistency
@@ -68,7 +63,7 @@ func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
 					ms.mainPacket = set.MainPacket.Copy()
 				} else if !ms.mainPacket.Equal(set.MainPacket) {
 					// Two differing main packets with the same ID.
-					return nil, fmt.Errorf("%w: conflicting main packets", errFileCorrupted)
+					return nil, fmt.Errorf("%w: conflicting main packets in same set", errUnresolvableConflict)
 				}
 			}
 
@@ -93,18 +88,18 @@ func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
 		}
 	}
 
-	return setMap, nil
+	return mergedSets, nil
 }
 
 // buildSetOrder creates an ordered list of SetIDs, preserving file order.
-func buildSetOrder(files []File, setMap map[Hash]*mergedSet) []Hash {
-	var order []Hash
+func buildSetOrder(files []File, mergedSets map[Hash]*mergedSet) []Hash {
 	seen := make(map[Hash]bool)
+	order := []Hash{}
 
 	// Add sets from each file in order, preserving their original sequence
 	for _, file := range files {
 		for _, set := range file.Sets {
-			if _, exists := setMap[set.SetID]; exists && !seen[set.SetID] {
+			if _, exists := mergedSets[set.SetID]; exists && !seen[set.SetID] {
 				order = append(order, set.SetID)
 				seen[set.SetID] = true
 			}
@@ -115,13 +110,13 @@ func buildSetOrder(files []File, setMap map[Hash]*mergedSet) []Hash {
 }
 
 // buildMergedSets converts mergedSet map to final Set slice.
-func buildMergedSets(order []Hash, setMap map[Hash]*mergedSet) []Set {
+func buildMergedSets(order []Hash, mergedSets map[Hash]*mergedSet) []Set {
 	results := make([]Set, 0, len(order))
 
 	for _, id := range order {
-		ms := setMap[id]
+		ms := mergedSets[id]
 
-		// Resolve missing and stray packets (after merge)
+		// Resolve missing and stray packets
 		ms.resolveUnlisted()
 
 		// Build final lists
@@ -157,13 +152,12 @@ func buildMergedSets(order []Hash, setMap map[Hash]*mergedSet) []Set {
 
 		results = append(results, Set{
 			SetID:                     id,
-			MainPacket:                ms.mainPacket,
+			MainPacket:                ms.mainPacket.Copy(),
 			RecoverySet:               recoveryList,
 			NonRecoverySet:            nonRecoveryList,
 			StrayPackets:              strayList,
 			MissingRecoveryPackets:    recoveryMissing,
 			MissingNonRecoveryPackets: nonRecoveryMissing,
-			IsComplete:                len(strayList) == 0 && len(recoveryMissing) == 0 && len(nonRecoveryMissing) == 0,
 		})
 	}
 
@@ -200,14 +194,4 @@ func (ms *mergedSet) resolveUnlisted() {
 			delete(ms.missingNonRecovery, id)
 		}
 	}
-}
-
-func allSetsComplete(sets []Set) bool {
-	for _, set := range sets {
-		if !set.IsComplete {
-			return false
-		}
-	}
-
-	return true
 }
