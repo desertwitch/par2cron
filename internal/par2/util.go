@@ -53,10 +53,12 @@ type ParserPanicError struct {
 	Stack []byte
 }
 
+// Error returns as string the error message.
 func (e *ParserPanicError) Error() string {
 	return fmt.Sprintf("parser panic: %v", e.Value)
 }
 
+// MarshalJSON marshals into a JSON byte slice.
 func (h *Hash) MarshalJSON() ([]byte, error) {
 	by, err := json.Marshal(hex.EncodeToString(h[:]))
 	if err != nil {
@@ -66,6 +68,7 @@ func (h *Hash) MarshalJSON() ([]byte, error) {
 	return by, nil
 }
 
+// UnmarshalJSON unmarshals from a JSON byte slice.
 func (h *Hash) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -87,7 +90,8 @@ func (h *Hash) UnmarshalJSON(data []byte) error {
 }
 
 // ParseFile parses a PAR2 file into a [File] structure.
-// panicAsErr controls if a panic should be recovered and returned as [ParserPanicError].
+// panicAsErr controls if a panic should be returned as [ParserPanicError].
+// Beware the PAR2-specific packet and error handling as described in [Parse].
 //
 //nolint:nonamedreturns
 func ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
@@ -121,6 +125,11 @@ func ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
 }
 
 // ParseFileSet parses an index PAR2 file and all related volume files.
+// It ignores files which cannot be parsed, unless no files can be parsed.
+// In case no files can be parsed, [errFileCorrupted] is returned instead.
+//
+// panicAsErr controls if a panic should be returned as [ParserPanicError].
+// Beware the PAR2-specific packet and error handling as described in [Parse].
 func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, error) {
 	files := []File{}
 
@@ -174,6 +183,7 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 	return merged, nil
 }
 
+// sortFilePackets sorts a slice of [FilePacket] by filename, ties by ID.
 func sortFilePackets(list []FilePacket) {
 	slices.SortFunc(list, func(a, b FilePacket) int {
 		if c := strings.Compare(a.Name, b.Name); c != 0 {
@@ -184,6 +194,7 @@ func sortFilePackets(list []FilePacket) {
 	})
 }
 
+// sortFileIDs sorts a slice of [Hash] by the contained hash.
 func sortFileIDs(list []Hash) {
 	slices.SortFunc(list, func(a, b Hash) int {
 		return bytes.Compare(a[:], b[:])

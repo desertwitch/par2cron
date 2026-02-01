@@ -56,6 +56,9 @@ var (
 )
 
 // Parse reads PAR2 data and returns a slice of [Set] in the order they appeared.
+// In compliance with the specification, unparseable packets are silently skipped.
+// Unless there is a fatal error, no parseable packets will return an empty slice.
+// It parses: [MainPacket], [FilePacket] and [UnicodePacket], skipping all others.
 func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 	grouper := newSetGrouper()
 
@@ -93,6 +96,7 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 	return grouper.Sets(), nil
 }
 
+// setGroup is a helper struct for grouping packets by their set ID.
 type setGroup struct {
 	setID             Hash                    // Dataset ID
 	mainPacket        *MainPacket             // Main packet (can be nil)
@@ -102,17 +106,22 @@ type setGroup struct {
 	unfilteredUnicode map[Hash]*UnicodePacket // Unicode override packets
 }
 
+// setGrouper accepts packets of interest and groups them by set ID.
+// It currently accepts [MainPacket], [FilePacket] and [UnicodePacket].
 type setGrouper struct {
 	groups map[Hash]*setGroup
 	order  []Hash
 }
 
+// newSetGrouper returns a pointer to a new [setGrouper].
 func newSetGrouper() *setGrouper {
 	return &setGrouper{
 		groups: make(map[Hash]*setGroup),
 	}
 }
 
+// Insert accepts packets of interest for grouping by their set ID.
+// In case of an unknown packet, an [errUnhandledPacket] is returned.
 func (s *setGrouper) Insert(packet any) error {
 	var setID Hash
 	switch e := packet.(type) {
@@ -175,6 +184,7 @@ func (s *setGrouper) Insert(packet any) error {
 	return nil
 }
 
+// Sets returns the internally grouped packets as slice of [Set].
 func (s *setGrouper) Sets() []Set {
 	results := make([]Set, 0, len(s.order))
 

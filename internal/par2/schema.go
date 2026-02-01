@@ -1,19 +1,23 @@
 package par2
 
-const HashSize = 16 // Size of the MD5 hashes (File ID, Set ID, ...)
+// HashSize is the size of the PAR2-contained hashes.
+// These are MD5 hashes used for various purposes within packets.
+const HashSize = 16
 
+// Hash is the type used for all PAR2-contained hashes.
+// According to the specification, it is a [16]byte array.
 type Hash [HashSize]byte
 
 // FileSet represents a set of multiple PAR2 [File]
 // It includes a merged [Set] slice of their combined information.
 type FileSet struct {
-	Files      []File `json:"files"`       // Individual PAR2 files and their sets
-	SetsMerged []Set  `json:"sets_merged"` // Merged information of all [File] sets
+	Files      []File `json:"files"`       // Unmerged PAR2 files and their sets
+	SetsMerged []Set  `json:"sets_merged"` // Merged information of all PAR2 files
 }
 
 // File represents a single parsed PAR2 file.
 type File struct {
-	Name string `json:"name"`
+	Name string `json:"name"` // Name of the PAR2 file
 
 	// Sets represents the datasets of different set IDs,
 	// though commonly there is only one dataset in a PAR2 file.
@@ -40,7 +44,7 @@ type Set struct {
 	MissingNonRecoveryPackets []Hash `json:"missing_non_recovery_packets"`
 }
 
-// MainPacket represents a main packet.
+// MainPacket represents a PAR2 main packet.
 type MainPacket struct {
 	SetID          Hash   `json:"set_id"`           // [Set] the packet belongs to
 	SliceSize      uint64 `json:"slice_size"`       // Recovery slice size
@@ -48,7 +52,7 @@ type MainPacket struct {
 	NonRecoveryIDs []Hash `json:"non_recovery_ids"` // Auxiliary (non-recovery) IDs
 }
 
-// FilePacket represents a file description packet.
+// FilePacket represents a PAR2 file description packet.
 type FilePacket struct {
 	SetID       Hash   `json:"set_id"`       // [Set] the packet belongs to
 	FileID      Hash   `json:"file_id"`      // ID of the file (MD5)
@@ -59,7 +63,7 @@ type FilePacket struct {
 	FromUnicode bool   `json:"from_unicode"` // Name came from a Unicode packet
 }
 
-// UnicodePacket represents a unicode file description packet.
+// UnicodePacket represents a PAR2 unicode file description packet.
 type UnicodePacket struct {
 	SetID  Hash   `json:"set_id"`  // [Set] the packet belongs to
 	FileID Hash   `json:"file_id"` // ID of the file (MD5)

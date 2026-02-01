@@ -5,17 +5,18 @@ import (
 	"slices"
 )
 
+// mergedSet is a helper struct for merged together [Set] information.
 type mergedSet struct {
-	setID              Hash
-	mainPacket         *MainPacket
-	recoveryFiles      map[Hash]FilePacket
-	nonRecoveryFiles   map[Hash]FilePacket
-	strayFiles         map[Hash]FilePacket
-	missingRecovery    map[Hash]struct{}
-	missingNonRecovery map[Hash]struct{}
+	setID              Hash                // Dataset ID
+	mainPacket         *MainPacket         // Main packet (can be nil)
+	recoveryFiles      map[Hash]FilePacket // Protected (recovery) IDs
+	nonRecoveryFiles   map[Hash]FilePacket // Auxiliary (non-recovery) IDs
+	strayFiles         map[Hash]FilePacket // Stray (unlisted) packets
+	missingRecovery    map[Hash]struct{}   // Missing (listed, not found) IDs
+	missingNonRecovery map[Hash]struct{}   // Missing (listed, not found) IDs
 }
 
-// mergeFiles combines multiple PAR2 files into a unified FileSet.
+// mergeFiles combines multiple PAR2 [File] into a unified [FileSet].
 // It merges sets with the same SetID, attempting to resolve missing/stray
 // packets across files, and validating that MainPackets are all consistent.
 func mergeFiles(files []File) (*FileSet, error) {
@@ -37,7 +38,8 @@ func mergeFiles(files []File) (*FileSet, error) {
 	}, nil
 }
 
-// groupSetsByID groups sets from all files by their SetID and validates consistency.
+// groupSetsByID groups sets of all [File] by their SetID.
+// It returns an [errUnresolvableConflict] in case of conflicts.
 func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
 	mergedSets := make(map[Hash]*mergedSet)
 
@@ -92,6 +94,7 @@ func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
 }
 
 // buildSetOrder creates an ordered list of SetIDs, preserving file order.
+// Order is by appearance inside [File] according to order of the [File] slice.
 func buildSetOrder(files []File, mergedSets map[Hash]*mergedSet) []Hash {
 	seen := make(map[Hash]bool)
 	order := []Hash{}
@@ -109,7 +112,7 @@ func buildSetOrder(files []File, mergedSets map[Hash]*mergedSet) []Hash {
 	return order
 }
 
-// buildMergedSets converts mergedSet map to final Set slice.
+// buildMergedSets converts a map[Hash]*mergedSet to a final [Set] slice.
 func buildMergedSets(order []Hash, mergedSets map[Hash]*mergedSet) []Set {
 	results := make([]Set, 0, len(order))
 
