@@ -111,15 +111,11 @@ func FuzzParse(f *testing.F) {
 	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		sets1, err := Parse(bytes.NewReader(data), false)
-		if err != nil {
-			return
-		}
+		sets1, err1 := Parse(bytes.NewReader(data), false)
+		sets2, err2 := Parse(bytes.NewReader(data), false)
 
-		sets2, err := Parse(bytes.NewReader(data), false)
-		require.NoError(t, err, "non-deterministic parse (first ok, second not)")
-
-		require.Equal(t, sets1, sets2, "non-deterministic output for same input")
+		require.Equal(t, err1, err2, "non-deterministic error")
+		require.Equal(t, sets1, sets2, "non-deterministic result")
 	})
 }
 
