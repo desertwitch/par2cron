@@ -35,8 +35,8 @@ func NewManifest(par2Name string) *Manifest {
 }
 
 type Par2DataManifest struct {
-	Time  time.Time  `json:"time"`
-	Index *par2.File `json:"index,omitempty"`
+	Time time.Time     `json:"time"`
+	Set  *par2.FileSet `json:"set,omitempty"`
 }
 
 type CreationManifest struct {
