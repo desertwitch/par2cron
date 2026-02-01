@@ -16,6 +16,36 @@ import (
 
 var errUnexpectedLength = errors.New("unexpected length")
 
+// Copy creates a deep copy of the MainPacket (returning nil on nil reciver).
+func (m *MainPacket) Copy() *MainPacket {
+	if m == nil {
+		return nil
+	}
+
+	return &MainPacket{
+		SetID:          m.SetID,
+		SliceSize:      m.SliceSize,
+		RecoveryIDs:    slices.Clone(m.RecoveryIDs),
+		NonRecoveryIDs: slices.Clone(m.NonRecoveryIDs),
+	}
+}
+
+// Equal checks if two MainPackets are equal.
+// Returns true if both are nil, false if only one is nil.
+func (m *MainPacket) Equal(other *MainPacket) bool {
+	if m == nil && other == nil {
+		return true
+	}
+	if m == nil || other == nil {
+		return false
+	}
+
+	return m.SetID == other.SetID &&
+		m.SliceSize == other.SliceSize &&
+		slices.Equal(m.RecoveryIDs, other.RecoveryIDs) &&
+		slices.Equal(m.NonRecoveryIDs, other.NonRecoveryIDs)
+}
+
 // ParserPanicError is an error that is returned on a recovered parsing panic.
 // It contains the value of the panic and a byte slice containing a stack trace.
 type ParserPanicError struct {

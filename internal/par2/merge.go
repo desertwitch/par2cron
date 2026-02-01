@@ -36,7 +36,7 @@ func mergeFiles(files []File) (*FileSet, error) {
 	results := buildMergedSets(order, setMap)
 
 	return &FileSet{
-		Files:      files,
+		Files:      slices.Clone(files),
 		SetsMerged: results,
 		IsComplete: allSetsComplete(results),
 	}, nil
@@ -64,8 +64,10 @@ func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
 			// Validate MainPacket consistency
 			if set.MainPacket != nil {
 				if ms.mainPacket == nil {
-					ms.mainPacket = set.MainPacket
-				} else if !mainPacketsEqual(ms.mainPacket, set.MainPacket) {
+					// The packet belongs to the set, so copy it.
+					ms.mainPacket = set.MainPacket.Copy()
+				} else if !ms.mainPacket.Equal(set.MainPacket) {
+					// Two differing main packets with the same ID.
 					return nil, fmt.Errorf("%w: conflicting main packets", errFileCorrupted)
 				}
 			}
@@ -203,24 +205,6 @@ func allSetsComplete(sets []Set) bool {
 		if !set.IsComplete {
 			return false
 		}
-	}
-
-	return true
-}
-
-// mainPacketsEqual compares two MainPackets for equality.
-func mainPacketsEqual(a, b *MainPacket) bool {
-	if a.SetID != b.SetID {
-		return false
-	}
-	if a.SliceSize != b.SliceSize {
-		return false
-	}
-	if !slices.Equal(a.RecoveryIDs, b.RecoveryIDs) {
-		return false
-	}
-	if !slices.Equal(a.NonRecoveryIDs, b.NonRecoveryIDs) {
-		return false
 	}
 
 	return true
