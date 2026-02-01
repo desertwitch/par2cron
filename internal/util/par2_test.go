@@ -69,7 +69,6 @@ func Test_Par2IndexToManifest_ParseError_PreservesData_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
-	require.NoError(t, afero.WriteFile(fsys, "/invalid.par2", []byte("invalid content"), 0o644))
 
 	var buf testutil.SafeBuffer
 	log := &logging.Logger{
@@ -88,7 +87,7 @@ func Test_Par2IndexToManifest_ParseError_PreservesData_Success(t *testing.T) {
 
 	Par2IndexToManifest(fsys, Par2IndexToManifestOptions{
 		Time:     time.Now(),
-		Path:     "/invalid.par2",
+		Path:     "/notexist.par2",
 		Manifest: manifest,
 	}, log)
 

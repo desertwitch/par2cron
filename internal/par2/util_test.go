@@ -254,7 +254,7 @@ func Test_ParseFile_FileNotFound_Error(t *testing.T) {
 	require.Contains(t, err.Error(), "failed to open PAR2 file")
 }
 
-// Expectation: ParseFile should fail on invalid PAR2 content.
+// Expectation: ParseFile should produce an empty [File] (no readable packets).
 func Test_ParseFile_InvalidPAR2_Error(t *testing.T) {
 	t.Parallel()
 
@@ -262,9 +262,9 @@ func Test_ParseFile_InvalidPAR2_Error(t *testing.T) {
 
 	require.NoError(t, afero.WriteFile(fs, "/invalid.par2", []byte("not a par2 file"), 0o644))
 
-	_, err := ParseFile(fs, "/invalid.par2", false)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to parse PAR2")
+	f, err := ParseFile(fs, "/invalid.par2", false)
+	require.NoError(t, err)
+	require.Empty(t, f.Sets)
 }
 
 // Expectation: ParseFile should parse real PAR2 files correctly.

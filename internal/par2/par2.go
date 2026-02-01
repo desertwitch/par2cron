@@ -41,6 +41,7 @@ const (
 )
 
 var (
+	errFileCorrupted    = errors.New("file corrupted")
 	errChecksumMismatch = errors.New("packet checksum mismatch")
 	errFilenameTooLong  = errors.New("filename exceeds maximum length")
 	errInvalidAlignment = errors.New("packet length not aligned to 4 bytes")
@@ -51,79 +52,45 @@ var (
 	errTooManyIDs       = errors.New("too many cumulative IDs in set")
 	errTooManyFiles     = errors.New("too many cumulative files in set")
 	errSkipPacket       = errors.New("skip this packet")
+	errUnhandledPacket  = errors.New("unhandled packet")
 )
 
 // Parse reads PAR2 data and returns a slice of [Set] in the order they appeared.
 func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
-	groups := make(map[Hash]*setGroup)
+	grouper := newSetGrouper()
 
-	var order []Hash
 	for {
 		entry, err := readNextPacket(r, checkMD5)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if errors.Is(err, errSkipPacket) {
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				break // No more packets.
+			}
+			if errors.Is(err, errSkipPacket) {
+				continue // Irrelevant packet.
+			}
+
+			// Attempt to seek to the next [packetMagic] sequence.
+			if err := seekToNextPacket(r); err != nil {
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					break // No more packets.
+				}
+
+				return nil, fmt.Errorf("%w: failed to recover: %w", errFileCorrupted, err)
+			}
+
 			continue
 		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to read packet: %w", err)
-		}
 
-		var setID Hash
-		switch e := entry.(type) {
-		case *MainPacket:
-			setID = e.SetID
-		case *FilePacket:
-			setID = e.SetID
-		case *UnicodePacket:
-			setID = e.SetID
-		}
+		if err := grouper.Insert(entry); err != nil {
+			if errors.Is(err, errUnhandledPacket) {
+				continue // Irrelevant packet (shouldn't happen here).
+			}
 
-		if _, exists := groups[setID]; !exists {
-			if len(groups) >= maxSets {
-				return nil, fmt.Errorf("%w: len=%d", errTooManySets, len(groups))
-			}
-			groups[setID] = &setGroup{
-				setID:             setID,
-				recoveryIDs:       make(map[Hash]struct{}),
-				nonRecoveryIDs:    make(map[Hash]struct{}),
-				unfilteredASCII:   make(map[Hash]*FilePacket),
-				unfilteredUnicode: make(map[Hash]*UnicodePacket),
-			}
-			order = append(order, setID)
-		}
-		group := groups[setID]
-
-		switch e := entry.(type) {
-		case *MainPacket:
-			group.mainPacket = e
-			for _, v := range e.RecoveryIDs {
-				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
-					return nil, errTooManyIDs
-				}
-				group.recoveryIDs[v] = struct{}{}
-			}
-			for _, v := range e.NonRecoveryIDs {
-				if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
-					return nil, errTooManyIDs
-				}
-				group.nonRecoveryIDs[v] = struct{}{}
-			}
-		case *FilePacket:
-			if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
-				return nil, errTooManyFiles
-			}
-			group.unfilteredASCII[e.FileID] = e
-		case *UnicodePacket:
-			if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
-				return nil, errTooManyFiles
-			}
-			group.unfilteredUnicode[e.FileID] = e
+			return nil, fmt.Errorf("failed to insert packet: %w", err)
 		}
 	}
 
-	return toSets(groups, order), nil
+	return grouper.Sets(), nil
 }
 
 type setGroup struct {
@@ -135,13 +102,80 @@ type setGroup struct {
 	unfilteredUnicode map[Hash]*UnicodePacket // Unicode override packets
 }
 
-// toSets processes a map[Hash]*setGroup to a slice of [Set].
-// It preserves the order in the provided as argument slice of set IDs.
-func toSets(groups map[Hash]*setGroup, order []Hash) []Set {
-	results := make([]Set, 0, len(order))
+type setGrouper struct {
+	groups map[Hash]*setGroup
+	order  []Hash
+}
 
-	for _, id := range order {
-		group := groups[id]
+func newSetGrouper() *setGrouper {
+	return &setGrouper{
+		groups: make(map[Hash]*setGroup),
+	}
+}
+
+func (s *setGrouper) Insert(packet any) error {
+	var setID Hash
+	switch e := packet.(type) {
+	case *MainPacket:
+		setID = e.SetID
+	case *FilePacket:
+		setID = e.SetID
+	case *UnicodePacket:
+		setID = e.SetID
+	default:
+		return errUnhandledPacket
+	}
+
+	if _, exists := s.groups[setID]; !exists {
+		if len(s.groups) >= maxSets {
+			return fmt.Errorf("%w: len=%d", errTooManySets, len(s.groups))
+		}
+		s.groups[setID] = &setGroup{
+			setID:             setID,
+			recoveryIDs:       make(map[Hash]struct{}),
+			nonRecoveryIDs:    make(map[Hash]struct{}),
+			unfilteredASCII:   make(map[Hash]*FilePacket),
+			unfilteredUnicode: make(map[Hash]*UnicodePacket),
+		}
+		s.order = append(s.order, setID)
+	}
+	group := s.groups[setID]
+
+	switch e := packet.(type) {
+	case *MainPacket:
+		group.mainPacket = e
+		for _, v := range e.RecoveryIDs {
+			if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+				return errTooManyIDs
+			}
+			group.recoveryIDs[v] = struct{}{}
+		}
+		for _, v := range e.NonRecoveryIDs {
+			if len(group.recoveryIDs)+len(group.nonRecoveryIDs) >= maxIDsPerSet {
+				return errTooManyIDs
+			}
+			group.nonRecoveryIDs[v] = struct{}{}
+		}
+	case *FilePacket:
+		if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
+			return errTooManyFiles
+		}
+		group.unfilteredASCII[e.FileID] = e
+	case *UnicodePacket:
+		if len(group.unfilteredASCII)+len(group.unfilteredUnicode) >= maxFilesPerSet {
+			return errTooManyFiles
+		}
+		group.unfilteredUnicode[e.FileID] = e
+	}
+
+	return nil
+}
+
+func (s *setGrouper) Sets() []Set {
+	results := make([]Set, 0, len(s.order))
+
+	for _, id := range s.order {
+		group := s.groups[id]
 
 		for _, ue := range group.unfilteredUnicode {
 			if fe, ok := group.unfilteredASCII[ue.FileID]; ok {
@@ -287,6 +321,34 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	default:
 		return nil, errSkipPacket
 	}
+}
+
+// seekToNextPacket seeks to the start of the next [packetMagic] sequence.
+func seekToNextPacket(r io.ReadSeeker) error {
+	buf := make([]byte, len(packetMagic))
+
+	// Fill initial buffer
+	_, err := io.ReadFull(r, buf)
+	if err != nil {
+		return fmt.Errorf("failed to read: %w", err)
+	}
+
+	for !bytes.Equal(buf, packetMagic) {
+		// Shift left and read one more byte
+		copy(buf, buf[1:])
+		_, err := r.Read(buf[len(buf)-1:])
+		if err != nil {
+			return fmt.Errorf("failed to read: %w", err)
+		}
+	}
+
+	// Seek back to the start of the magic sequence
+	_, err = r.Seek(int64(-len(packetMagic)), io.SeekCurrent)
+	if err != nil {
+		return fmt.Errorf("failed to seek: %w", err)
+	}
+
+	return nil
 }
 
 // packetHeader represents the 64-byte header of every PAR2 packet.

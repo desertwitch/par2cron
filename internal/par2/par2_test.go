@@ -948,18 +948,19 @@ func Test_decodeUTF16LE_SurrogatePairs_Success(t *testing.T) {
 	require.Equal(t, name, result)
 }
 
-// Expectation: toSets should preserve order of sets.
-func Test_toSets_PreservesOrder_Success(t *testing.T) {
+// Expectation: Sets should preserve order of sets.
+func Test_setGrouper_Sets_PreservesOrder_Success(t *testing.T) {
 	t.Parallel()
 
-	groups := map[Hash]*setGroup{
+	grouper := &setGrouper{}
+	grouper.groups = map[Hash]*setGroup{
 		idA: {setID: idA},
 		idB: {setID: idB},
 		idC: {setID: idC},
 	}
-	order := []Hash{idC, idA, idB}
+	grouper.order = []Hash{idC, idA, idB}
 
-	sets := toSets(groups, order)
+	sets := grouper.Sets()
 
 	require.Len(t, sets, 3)
 	require.Equal(t, Hash(idC), sets[0].SetID)
@@ -967,23 +968,25 @@ func Test_toSets_PreservesOrder_Success(t *testing.T) {
 	require.Equal(t, Hash(idB), sets[2].SetID)
 }
 
-// Expectation: toSets should handle empty groups.
-func Test_toSets_EmptyGroups_Success(t *testing.T) {
+// Expectation: Sets should handle empty groups.
+func Test_setGrouper_EmptyGroups_Success(t *testing.T) {
 	t.Parallel()
 
-	groups := map[Hash]*setGroup{}
-	order := []Hash{}
+	grouper := &setGrouper{}
+	grouper.groups = map[Hash]*setGroup{}
+	grouper.order = []Hash{}
 
-	sets := toSets(groups, order)
+	sets := grouper.Sets()
 
 	require.Empty(t, sets)
 }
 
-// Expectation: toSets should handle set with no main packet.
-func Test_toSets_NoMainPacket_Success(t *testing.T) {
+// Expectation: asSets should handle set with no main packet.
+func Test_setGrouper_NoMainPacket_Success(t *testing.T) {
 	t.Parallel()
 
-	groups := map[Hash]*setGroup{
+	grouper := &setGrouper{}
+	grouper.groups = map[Hash]*setGroup{
 		idA: {
 			setID:             idA,
 			recoveryIDs:       make(map[Hash]struct{}),
@@ -992,9 +995,9 @@ func Test_toSets_NoMainPacket_Success(t *testing.T) {
 			unfilteredUnicode: make(map[Hash]*UnicodePacket),
 		},
 	}
-	order := []Hash{idA}
+	grouper.order = []Hash{idA}
 
-	sets := toSets(groups, order)
+	sets := grouper.Sets()
 
 	require.Len(t, sets, 1)
 	require.Nil(t, sets[0].MainPacket)
