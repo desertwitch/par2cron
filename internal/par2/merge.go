@@ -121,8 +121,8 @@ func buildMergedSets(order []Hash, setMap map[Hash]*mergedSet) []Set {
 	for _, id := range order {
 		ms := setMap[id]
 
-		// Try to resolve missing files from strays
-		ms.resolveStrays()
+		// Resolve missing and stray packets (after merge)
+		ms.resolveUnlisted()
 
 		// Build final lists
 		recoveryList := make([]FilePacket, 0, len(ms.recoveryFiles))
@@ -170,15 +170,17 @@ func buildMergedSets(order []Hash, setMap map[Hash]*mergedSet) []Set {
 	return results
 }
 
-// resolveStrays attempts to resolve missing files from stray packets,
-// and removes strays that are already in recovery or non-recovery lists.
-func (ms *mergedSet) resolveStrays() {
-	// Remove strays that are already in recovery or non-recovery lists
+// resolveUnlisted attempts to resolve missing files from stray packets,
+// and removes strays/missing that are already in recovery/non-recovery lists.
+func (ms *mergedSet) resolveUnlisted() {
+	// Remove strays/missing that are already in recovery or non-recovery lists
 	for id := range ms.recoveryFiles {
 		delete(ms.strayFiles, id)
+		delete(ms.missingRecovery, id)
 	}
 	for id := range ms.nonRecoveryFiles {
 		delete(ms.strayFiles, id)
+		delete(ms.missingNonRecovery, id)
 	}
 
 	// Check if any missing recovery files are in strays
