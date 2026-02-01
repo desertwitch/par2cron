@@ -99,9 +99,10 @@ PAR2 sets are then verified and repaired with by the set up periodic tasks.
 **A condensed quick guide and cheatsheet can be found in the [QUICKGUIDE](QUICKGUIDE) file.**
 
 > **One PAR2 per folder:** To keep your mental model simple, marker-based PAR2
-> creation does not recurse into subfolders (by default). The flat protection
-> scope ensures that you know exactly which files a PAR2 covers, without having
-> to remember directory tree complexities (avoiding surprises during recovery).
+> creation does not recurse into subfolders ([by default](#creation-modes)).
+> The flat protection scope ensures that you know exactly which files a PAR2
+> covers, without having to remember directory tree complexities (avoiding
+> surprises during recovery).
 
 ## Installation
 

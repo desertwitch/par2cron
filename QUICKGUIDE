@@ -57,7 +57,7 @@ which files a PAR2 set covers, without having to remember any directory trees.
   |-- beach.jpg  <-- will be protected using PAR2
   +-- sunset.jpg <-- will be protected using PAR2
 
-If needed, recursive mode is best set through the marker configurations.
+If needed, other creation modes can be set via CLI or marker configurations.
 
 ================================================================================
 Arguments for PAR2 creation (recommended):
