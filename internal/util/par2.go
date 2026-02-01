@@ -32,7 +32,7 @@ func Par2ToManifest(fsys afero.Fs, o Par2ToManifestOptions, log *logging.Logger)
 		return
 	}
 
-	if len(set.Sets) == 0 {
+	if len(set.SetsMerged) == 0 {
 		log.Warn("PAR2 set is syntactically valid, but seems to contain no datasets")
 	}
 
@@ -40,7 +40,7 @@ func Par2ToManifest(fsys afero.Fs, o Par2ToManifestOptions, log *logging.Logger)
 		o.Manifest.Par2Data = &schema.Par2DataManifest{}
 	}
 	o.Manifest.Par2Data.Time = o.Time
-	o.Manifest.Par2Data.Set = set
+	o.Manifest.Par2Data.FileSet = set
 
 	log.Debug("Parsed PAR2 set to manifest")
 }

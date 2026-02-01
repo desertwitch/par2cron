@@ -7,8 +7,8 @@ type Hash [HashSize]byte
 // FileSet represents a set of multiple PAR2 [File]
 // It includes a merged [Set] slice of their combined information.
 type FileSet struct {
-	Sets       []Set  `json:"sets"`        // Merged information of all [File]
 	Files      []File `json:"files"`       // Individual PAR2 files and their sets
+	SetsMerged []Set  `json:"sets_merged"` // Merged information of all [File] sets
 	IsComplete bool   `json:"is_complete"` // No missing or stray packets (after merging)
 }
 

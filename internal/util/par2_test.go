@@ -35,7 +35,7 @@ func Test_Par2ToManifest_ValidFile_Success(t *testing.T) {
 
 	require.NotNil(t, manifest.Par2Data)
 	require.Equal(t, testTime, manifest.Par2Data.Time)
-	require.NotNil(t, manifest.Par2Data.Set)
+	require.NotNil(t, manifest.Par2Data.FileSet)
 	require.Contains(t, buf.String(), "Parsed PAR2 set to manifest")
 }
 
@@ -78,8 +78,8 @@ func Test_Par2ToManifest_ParseError_PreservesData_Success(t *testing.T) {
 	existingTime := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC)
 	existingData := &schema.Par2DataManifest{
 		Time: existingTime,
-		Set: &par2.FileSet{
-			Sets: []par2.Set{{SetID: par2.Hash{1, 2, 3}}},
+		FileSet: &par2.FileSet{
+			SetsMerged: []par2.Set{{SetID: par2.Hash{1, 2, 3}}},
 		},
 	}
 	manifest := &schema.Manifest{Par2Data: existingData}
@@ -92,7 +92,7 @@ func Test_Par2ToManifest_ParseError_PreservesData_Success(t *testing.T) {
 
 	require.Same(t, existingData, manifest.Par2Data)
 	require.Equal(t, existingTime, manifest.Par2Data.Time)
-	require.NotNil(t, manifest.Par2Data.Set)
+	require.NotNil(t, manifest.Par2Data.FileSet)
 	require.Contains(t, buf.String(), "Failed to parse PAR2 set for par2cron manifest")
 }
 
@@ -120,7 +120,7 @@ func Test_Par2ToManifest_EmptyDatasets_UpdatesManifest_Success(t *testing.T) {
 
 	require.NotNil(t, manifest.Par2Data)
 	require.Equal(t, testTime, manifest.Par2Data.Time)
-	require.NotNil(t, manifest.Par2Data.Set)
-	require.Empty(t, manifest.Par2Data.Set.Sets)
+	require.NotNil(t, manifest.Par2Data.FileSet)
+	require.Empty(t, manifest.Par2Data.FileSet.SetsMerged)
 	require.Contains(t, buf.String(), "PAR2 set is syntactically valid, but seems to contain no datasets")
 }

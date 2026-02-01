@@ -36,8 +36,8 @@ func mergeFiles(files []File) (*FileSet, error) {
 	results := buildMergedSets(order, setMap)
 
 	return &FileSet{
-		Sets:       results,
 		Files:      files,
+		SetsMerged: results,
 		IsComplete: allSetsComplete(results),
 	}, nil
 }
