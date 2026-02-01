@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -59,8 +60,8 @@ func (h *Hash) UnmarshalJSON(data []byte) error {
 // panicAsErr controls if a panic should be recovered and returned as [ParserPanicError].
 //
 //nolint:nonamedreturns
-func ParseFile(fsys afero.Fs, filename string, panicAsErr bool) (p *File, e error) {
-	f, err := fsys.Open(filename)
+func ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
+	f, err := fsys.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PAR2 file: %w", err)
 	}
@@ -83,7 +84,65 @@ func ParseFile(fsys afero.Fs, filename string, panicAsErr bool) (p *File, e erro
 		return nil, fmt.Errorf("failed to parse PAR2: %w", err)
 	}
 
-	return &File{Sets: sets}, nil
+	return &File{
+		Name:       filepath.Base(path),
+		Sets:       sets,
+		IsComplete: allSetsComplete(sets),
+	}, nil
+}
+
+// ParseFileSet parses an index PAR2 file and all related volume files.
+func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, error) {
+	var files []File
+
+	indexData, err := ParseFile(fsys, indexFile, panicAsErr)
+	if err != nil {
+		var pe *ParserPanicError
+
+		if errors.As(err, &pe) {
+			return nil, pe // Return a panic
+		}
+	} else {
+		files = append(files, *indexData)
+	}
+
+	basePath := strings.TrimSuffix(indexFile, ".par2")
+
+	pattern := basePath + "*.par2"
+	matches, err := afero.Glob(fsys, pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to glob: %w", err)
+	}
+
+	for _, match := range matches {
+		if match == indexFile {
+			continue
+		}
+
+		parsed, err := ParseFile(fsys, match, panicAsErr)
+		if err != nil {
+			var pe *ParserPanicError
+
+			if errors.As(err, &pe) {
+				return nil, pe // Return a panic
+			}
+
+			continue
+		}
+
+		files = append(files, *parsed)
+	}
+
+	if len(files) == 0 {
+		return nil, fmt.Errorf("%w: no valid files", errFileCorrupted)
+	}
+
+	merged, err := mergeFiles(files)
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge: %w", err)
+	}
+
+	return merged, nil
 }
 
 func sortFilePackets(list []FilePacket) {

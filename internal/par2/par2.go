@@ -238,6 +238,8 @@ func (s *setGrouper) Sets() []Set {
 			StrayPackets:              strayList,
 			MissingRecoveryPackets:    recoveryMissing,
 			MissingNonRecoveryPackets: nonRecoveryMissing,
+
+			IsComplete: len(strayList) == 0 && len(recoveryMissing) == 0 && len(nonRecoveryMissing) == 0,
 		})
 	}
 
