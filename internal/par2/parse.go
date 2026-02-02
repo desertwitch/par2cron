@@ -63,13 +63,27 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 	grouper := newSetGrouper()
 
 	for {
+		before, err := r.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return nil, fmt.Errorf("%w: failed to seek pre-parse position: %w",
+				errFileCorrupted, err)
+		}
+
 		entry, err := readNextPacket(r, checkMD5)
 		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			if errors.Is(err, io.EOF) {
 				break // No more packets.
 			}
 			if errors.Is(err, errSkipPacket) {
 				continue // Irrelevant packet.
+			}
+
+			// Reposition the reader 1 byte after the broken packet's
+			// magic sequence, so it's not re-detected endlessly, but
+			// we can still find other non-corrupt packets from onwards.
+			if _, err := r.Seek(before+1, io.SeekStart); err != nil {
+				return nil, fmt.Errorf("%w: failed to seek past corrupt packet: %w",
+					errFileCorrupted, err)
 			}
 
 			// Attempt to seek to the next [packetMagic] sequence.
@@ -78,7 +92,8 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 					break // No more packets.
 				}
 
-				return nil, fmt.Errorf("%w: failed to recover: %w", errFileCorrupted, err)
+				return nil, fmt.Errorf("%w: failed to recover after corrupt packet: %w",
+					errFileCorrupted, err)
 			}
 
 			continue
@@ -293,7 +308,7 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	case bytes.Equal(header.packetType[:], fileDescType):
 	case bytes.Equal(header.packetType[:], unicodeDescType):
 	default:
-		// Advance the reading pointer to the end of the body.
+		// Advance the reader to the end of the body (of this packet).
 		if _, err := r.Seek(bodyLen, io.SeekCurrent); err != nil {
 			return nil, fmt.Errorf("failed to skip packet body: %w", err)
 		}
@@ -340,7 +355,7 @@ func seekToNextPacket(r io.ReadSeeker) error {
 	for !bytes.Equal(buf, packetMagic) {
 		// Shift left and read one more byte
 		copy(buf, buf[1:])
-		_, err := r.Read(buf[len(buf)-1:])
+		_, err := io.ReadFull(r, buf[len(buf)-1:])
 		if err != nil {
 			return fmt.Errorf("failed to read: %w", err)
 		}
