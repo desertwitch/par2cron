@@ -95,7 +95,8 @@ Marker file name         | Resulting arguments (assuming you set: -r15 -n1)
 _par2cron                | Uses defaults: -r15 -n1
 _par2cron_r30            | 30% redundancy: -r30 -n1
 _par2cron_q              | Quiet mode added: -r15 -n1 -q
-_par2cron_r30_q          | Both changes: -r30 -n1 -q
+_par2cron_r30_q          | Both above changes: -r30 -n1 -q
+_par2cron_R              | Recursive mode added: -r15 -n1 -R
 
 Above examples assume you set the par2 default arguments to "-r15 -n1" with:
 
