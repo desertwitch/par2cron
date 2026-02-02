@@ -395,7 +395,7 @@ https://github.com/Parchive/par2cmdline#using-par2cmdline
 
 The `create` mode of par2cron offers 3 distinct operation modes:
 
-| Mode               | Purpose (within the folder the marker was found in) |
+| Mode               | Purpose (within the folder a marker was found in)   |
 | :----------------- | :-------------------------------------------------- |
 | `folder` (default) | Creates a PAR2 set for all files                    |
 | `file`             | Creates a PAR2 set for each file                    |
