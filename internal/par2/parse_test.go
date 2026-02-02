@@ -1035,6 +1035,114 @@ func Test_seekToNextPacket_ShortReader_Error(t *testing.T) {
 	require.Error(t, err)
 }
 
+// Expectation: seekToNextPacket should find magic split across buffer boundaries.
+func Test_seekToNextPacket_SplitBoundary_Success(t *testing.T) {
+	t.Parallel()
+
+	// Create data where the magic starts 4 bytes before the end of the first 16KB chunk
+	// [...16380 bytes...][P A R 2][\0 P K T][...more data...]
+	data := make([]byte, recoverBufferSize+100)
+	copy(data[recoverBufferSize-4:], packetMagic)
+
+	reader := bytes.NewReader(data)
+
+	err := seekToNextPacket(reader)
+	require.NoError(t, err)
+
+	pos, _ := reader.Seek(0, io.SeekCurrent)
+	require.Equal(t, int64(recoverBufferSize-4), pos)
+}
+
+// Expectation: Should not be fooled by partial magic that isn't the full 8 bytes.
+func Test_seekToNextPacket_PartialMagicAtEnd_EOF(t *testing.T) {
+	t.Parallel()
+
+	// "PAR2\0PK" is 7 bytes. It's almost the magic, but missing the 'T'.
+	data := slices.Concat([]byte("some junk"), packetMagic[:len(packetMagic)-1])
+	reader := bytes.NewReader(data)
+
+	err := seekToNextPacket(reader)
+	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: Should point to the first occurrence of magic in a buffer.
+func Test_seekToNextPacket_MultipleMagicInBuffer_Success(t *testing.T) {
+	t.Parallel()
+
+	// Buffer contains: [Junk][Magic1][Junk][Magic2]
+	data := slices.Concat(
+		[]byte("prefix"),
+		packetMagic,
+		[]byte("inter-junk"),
+		packetMagic,
+	)
+	reader := bytes.NewReader(data)
+
+	err := seekToNextPacket(reader)
+	require.NoError(t, err)
+
+	// Should point to the start of the first magic (index 6)
+	pos, _ := reader.Seek(0, io.SeekCurrent)
+	require.Equal(t, int64(6), pos)
+}
+
+type stallingReader struct {
+	data      []byte
+	stalls    int
+	maxStalls int
+	offset    int64
+}
+
+func (s *stallingReader) Read(p []byte) (int, error) {
+	if s.stalls < s.maxStalls {
+		s.stalls++
+
+		return 0, nil
+	}
+
+	if s.offset >= int64(len(s.data)) {
+		return 0, io.EOF
+	}
+
+	n := copy(p, s.data[s.offset:])
+	s.offset += int64(n)
+
+	return n, nil
+}
+
+func (s *stallingReader) Seek(offset int64, whence int) (int64, error) {
+	if whence == io.SeekCurrent {
+		s.offset += offset
+	}
+	if whence == io.SeekStart {
+		s.offset = offset
+	}
+
+	return s.offset, nil
+}
+
+// Expectation: should recover from transient 0-byte reads up to readerRetries.
+func Test_seekToNextPacket_StallRecovery_Success(t *testing.T) {
+	t.Parallel()
+
+	// 5 stalls is less than the 10 retry limit
+	reader := &stallingReader{data: packetMagic, maxStalls: 5}
+
+	err := seekToNextPacket(reader)
+	require.NoError(t, err)
+}
+
+// Expectation: should return EOF if reader stalls more than readerRetries.
+func Test_seekToNextPacket_InfiniteStall_EOF(t *testing.T) {
+	t.Parallel()
+
+	// 15 stalls exceeds the 10 retry limit
+	reader := &stallingReader{data: packetMagic, maxStalls: 15}
+
+	err := seekToNextPacket(reader)
+	require.ErrorIs(t, err, io.EOF)
+}
+
 // Expectation: parsePacketHeader should fail on truncated header.
 func Test_parsePacketHeader_TruncatedHeader_Error(t *testing.T) {
 	t.Parallel()

@@ -37,6 +37,9 @@ const (
 
 	packetHashOffset = 32 // Starting offset for MD5 hashing
 	packetHeaderSize = 64 // Total header size of a packet in bytes
+
+	recoverBufferSize   = 16384 // Next packet search uses 16KB chunks for reads
+	recoverStallRetries = 10    // Next packet search can stall for up to 10 times
 )
 
 var (
@@ -344,32 +347,55 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	}
 }
 
-// seekToNextPacket seeks to the start of the next [packetMagic] sequence.
 func seekToNextPacket(r io.ReadSeeker) error {
-	buf := make([]byte, len(packetMagic))
+	buf := make([]byte, recoverBufferSize)
+	magicLen := len(packetMagic)
+	readerStalls := 0
 
-	// Fill initial buffer
-	_, err := io.ReadFull(r, buf)
-	if err != nil {
-		return fmt.Errorf("failed to read: %w", err)
-	}
-
-	for !bytes.Equal(buf, packetMagic) {
-		// Shift left and read one more byte
-		copy(buf, buf[1:])
-		_, err := io.ReadFull(r, buf[len(buf)-1:])
+	for {
+		// Record before-read position so we can jump later.
+		before, err := r.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return fmt.Errorf("failed to read: %w", err)
+			return fmt.Errorf("failed to seek: %w", err)
+		}
+
+		n, readErr := r.Read(buf) // Read 16KB (or less)
+
+		if n >= magicLen {
+			idx := bytes.Index(buf[:n], packetMagic) // Find magic sequence
+			if idx != -1 {
+				if _, err := r.Seek(before+int64(idx), io.SeekStart); err != nil {
+					return fmt.Errorf("failed to seek: %w", err)
+				}
+
+				return nil // We're at the start of the magic sequence now
+			}
+
+			if readErr == nil {
+				// In case the buffer is cut-off in the middle of a magic sequence,
+				// seek back one magic sequence so the next buffer fill includes it.
+				backtrack := int64(magicLen - 1) // Max amount that could be useless
+				if _, err = r.Seek(-backtrack, io.SeekCurrent); err != nil {
+					return fmt.Errorf("failed to seek: %w", err)
+				}
+			}
+		}
+
+		// Reader is slow, give it some retries...
+		if n == 0 && readErr == nil {
+			if readerStalls < recoverStallRetries {
+				readerStalls++ // Let's wait some more...
+			} else {
+				return io.EOF // Something is funky, EOF.
+			}
+		} else {
+			readerStalls = 0 // Reset, may have new data (or an error).
+		}
+
+		if readErr != nil {
+			return fmt.Errorf("failed to read: %w", readErr) // wraps EOF
 		}
 	}
-
-	// Seek back to the start of the magic sequence
-	_, err = r.Seek(int64(-len(packetMagic)), io.SeekCurrent)
-	if err != nil {
-		return fmt.Errorf("failed to seek: %w", err)
-	}
-
-	return nil
 }
 
 // packetHeader represents the 64-byte header of every PAR2 packet.
