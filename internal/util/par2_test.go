@@ -91,8 +91,7 @@ func Test_Par2ToManifest_ParseError_PreservesData_Success(t *testing.T) {
 	}, log)
 
 	require.Same(t, existingData, manifest.Par2Data)
-	require.Equal(t, existingTime, manifest.Par2Data.Time)
-	require.NotNil(t, manifest.Par2Data.FileSet)
+	require.Equal(t, existingData, manifest.Par2Data)
 	require.Contains(t, buf.String(), "Failed to parse PAR2 set for par2cron manifest")
 }
 
