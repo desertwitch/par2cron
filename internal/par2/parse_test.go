@@ -1132,15 +1132,15 @@ func Test_seekToNextPacket_StallRecovery_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Expectation: should return EOF if reader stalls more than readerRetries.
-func Test_seekToNextPacket_InfiniteStall_EOF(t *testing.T) {
+// Expectation: should return UnexpectedEOF if reader stalls > readerRetries.
+func Test_seekToNextPacket_InfiniteStall_UnexpectedEOF(t *testing.T) {
 	t.Parallel()
 
 	// 15 stalls exceeds the 10 retry limit
 	reader := &stallingReader{data: packetMagic, maxStalls: 15}
 
 	err := seekToNextPacket(reader)
-	require.ErrorIs(t, err, io.EOF)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
 }
 
 // Expectation: parsePacketHeader should fail on truncated header.
