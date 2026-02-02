@@ -492,7 +492,7 @@ func (prog *Service) considerRecursive(opts *Options) error {
 		prog.log.Error(
 			"par2 argument -R needs par2cron --mode recursive (or did you mean -r, for redundancy?)",
 			"error", errWrongModeForRecursive,
-			"mode", opts.Par2Mode,
+			"mode", opts.Par2Mode.Value,
 			"args", opts.Par2Args,
 		)
 
@@ -505,7 +505,7 @@ func (prog *Service) considerRecursive(opts *Options) error {
 
 		prog.log.Debug(
 			"Added -R to argument slice due to recursive mode",
-			"mode", opts.Par2Mode,
+			"mode", opts.Par2Mode.Value,
 			"args-before", before,
 			"args-after", opts.Par2Args,
 		)

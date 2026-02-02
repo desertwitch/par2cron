@@ -1196,6 +1196,130 @@ func Test_Service_findElementsToProtect_Success(t *testing.T) {
 	require.Equal(t, "file.txt", files[0].Name)
 }
 
+// Expectation: The function should include directories and .par2 files in recursive mode.
+func Test_Service_findElementsToProtect_RecursiveMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/existing"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/existing.vol25+22.PAR2", []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/manifest"+schema.Par2Extension+schema.ManifestExtension, []byte("{}"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/manifest"+schema.Par2Extension+schema.LockExtension, []byte("{}"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateRecursiveMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10", "-R"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.NoError(t, err)
+	require.Len(t, files, 6)
+
+	names := make([]string, 0, 6)
+	var dirCount int
+	for _, f := range files {
+		names = append(names, f.Name)
+		if f.IsDir {
+			dirCount++
+		}
+	}
+
+	// In recursive mode, directories are included
+	require.Contains(t, names, "subfolder")
+	require.Equal(t, 1, dirCount)
+
+	// In recursive mode, .par2 files are included (par2cmdline -R includes them)
+	require.Contains(t, names, "existing"+schema.Par2Extension)
+	require.Contains(t, names, "existing.vol25+22.PAR2")
+	require.Contains(t, names, "manifest"+schema.Par2Extension+schema.ManifestExtension)
+	require.Contains(t, names, "manifest"+schema.Par2Extension+schema.LockExtension)
+
+	// Regular files are included
+	require.Contains(t, names, "file.txt")
+
+	// Marker file is always excluded
+	require.NotContains(t, names, "_par2cron")
+}
+
+// Expectation: The function should only list files and folders in the immediate directory.
+func Test_Service_findElementsToProtect_RecursiveMode_NoDeepRecursion_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder/nested", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/subfile.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/nested/deepfile.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateRecursiveMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10", "-R"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	names := make([]string, 0, 2)
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+
+	// Only immediate children should be listed
+	require.Contains(t, names, "file.txt")
+	require.Contains(t, names, "subfolder")
+
+	// Files in subdirectories should not be listed (par2cmdline handles that)
+	require.NotContains(t, names, "subfile.txt")
+	require.NotContains(t, names, "nested")
+	require.NotContains(t, names, "deepfile.txt")
+}
+
 // Expectation: The function should return the correct error when there's nothing to do.
 func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 	t.Parallel()
@@ -1765,6 +1889,75 @@ func Test_Service_runCreate_CorrectArgs_Success(t *testing.T) {
 	}, capturedArgs)
 }
 
+// Expectation: The function should call par2 with correct arguments in recursive mode.
+func Test_Service_runCreate_CorrectArgs_RecursiveMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/subfolder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var capturedCmd string
+	var capturedArgs []string
+	var capturedWorkingDir string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			capturedCmd = cmd
+			capturedArgs = slices.Clone(args)
+			capturedWorkingDir = workingDir
+
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/folder"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateRecursiveMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10", "-n5", "-R"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt", IsDir: false},
+		{Path: "/data/folder/subfolder", Name: "subfolder", IsDir: true},
+	}
+
+	require.NoError(t, prog.runCreate(t.Context(), job, files))
+
+	require.Equal(t, "par2", capturedCmd)
+	require.Equal(t, "/data/folder", capturedWorkingDir)
+	require.Equal(t, []string{
+		"create",
+		"-r10",
+		"-n5",
+		"-R",
+		"--",
+		"/data/folder/folder" + schema.Par2Extension,
+		"/data/folder/file.txt",
+		"/data/folder/subfolder",
+	}, capturedArgs)
+}
+
 // Expectation: The manifest should contain relative file names, not full paths.
 func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) {
 	t.Parallel()
@@ -2081,4 +2274,144 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 	require.True(t, exists5)
 
 	require.Contains(t, logBuf.String(), "Failed to cleanup a file after failure")
+}
+
+// Expectation: An error should be returned when -R is in args but mode is not recursive.
+func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	opts := &Options{
+		Par2Args: []string{"-r10", "-R"},
+	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFileMode))
+
+	err := prog.considerRecursive(opts)
+
+	require.ErrorIs(t, err, errWrongModeForRecursive)
+	require.Contains(t, logBuf.String(), "par2 argument -R needs par2cron --mode recursive")
+}
+
+// Expectation: The -R argument should be added when mode is recursive but -R is not in args.
+func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	opts := &Options{
+		Par2Args: []string{"-r10", "-n3"},
+	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	err := prog.considerRecursive(opts)
+
+	require.NoError(t, err)
+	require.Contains(t, opts.Par2Args, "-R")
+	require.Contains(t, logBuf.String(), "Added -R to argument slice due to recursive mode")
+}
+
+// Expectation: No changes should be made when mode is recursive and -R is already present.
+func Test_Service_considerRecursive_RecursiveModeWithRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	opts := &Options{
+		Par2Args: []string{"-r10", "-R"},
+	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	err := prog.considerRecursive(opts)
+
+	require.NoError(t, err)
+	require.Len(t, opts.Par2Args, 2)
+	require.Equal(t, "-r10", opts.Par2Args[0])
+	require.Equal(t, "-R", opts.Par2Args[1])
+}
+
+// Expectation: No changes should be made when mode is file and -R is not present.
+func Test_Service_considerRecursive_FileModeWithoutRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	opts := &Options{
+		Par2Args: []string{"-r10", "-n3"},
+	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFileMode))
+
+	err := prog.considerRecursive(opts)
+
+	require.NoError(t, err)
+	require.Len(t, opts.Par2Args, 2)
+	require.NotContains(t, opts.Par2Args, "-R")
+}
+
+// Expectation: No changes should be made when mode is folder and -R is not present.
+func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	opts := &Options{
+		Par2Args: []string{"-r10", "-n3"},
+	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFolderMode))
+
+	err := prog.considerRecursive(opts)
+
+	require.NoError(t, err)
+	require.Len(t, opts.Par2Args, 2)
+	require.NotContains(t, opts.Par2Args, "-R")
 }
