@@ -458,6 +458,42 @@ func Test_Parse_RecoveryAfterCorruptPacket_AtEnd_Success(t *testing.T) {
 	require.Empty(t, sets[0].StrayPackets)
 }
 
+// Expectation: Parse should recover when a packet read causes ErrUnexpectedEOF.
+func Test_Parse_RecoveryAfterExcessiveLengthPacket_Success(t *testing.T) {
+	t.Parallel()
+
+	// First packet claims a body length much larger than the actual data
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+
+	// This will cause the reader trying to read way past EOF.
+	binary.LittleEndian.PutUint64(corruptPacket[8:16], 10000)
+
+	// Valid packets follow immediately after the corrupt one
+	// We'd miss these if we considered ErrUnexpectedEOF as EOF.
+	validPackets := slices.Concat(
+		buildMainPacket(4096, [][16]byte{idB}, nil, sID),
+		buildFileDescPacket("recovered.txt", 100, idB, sID),
+	)
+
+	packets := slices.Concat(corruptPacket, validPackets)
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].MainPacket.RecoveryIDs, 1)
+	require.Equal(t, Hash(idB), sets[0].MainPacket.RecoveryIDs[0]) // from validPackets
+
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Equal(t, "recovered.txt", sets[0].RecoverySet[0].Name)
+
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
 // Expectation: Parse should return error when too many sets are encountered.
 func Test_Parse_TooManySets_Error(t *testing.T) {
 	t.Parallel()

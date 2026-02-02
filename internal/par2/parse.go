@@ -75,6 +75,8 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 		entry, err := readNextPacket(r, checkMD5)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				// Do not catch [io.ErrUnexpectedEOF] here, a packet could
+				// claim an excessive length, cause it, and we'd skip others.
 				break // No more packets.
 			}
 			if errors.Is(err, errSkipPacket) {
