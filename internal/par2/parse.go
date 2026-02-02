@@ -347,6 +347,9 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	}
 }
 
+// seekToNextPacket tries to find the next [packetMagic] sequence.
+// It scans until [io.EOF], [io.ErrUnexpectedEOF] or another fatal error occurs.
+// It advances the reader to the position at the start of [packetMagic] (if found).
 func seekToNextPacket(r io.ReadSeeker) error {
 	buf := make([]byte, recoverBufferSize)
 	magicLen := len(packetMagic)
@@ -386,14 +389,18 @@ func seekToNextPacket(r io.ReadSeeker) error {
 			if readerStalls < recoverStallRetries {
 				readerStalls++ // Let's wait some more...
 			} else {
-				return io.EOF // Something is funky, EOF.
+				return io.ErrUnexpectedEOF // Something is funky, EOF.
 			}
 		} else {
 			readerStalls = 0 // Reset, may have new data (or an error).
 		}
 
 		if readErr != nil {
-			return fmt.Errorf("failed to read: %w", readErr) // wraps EOF
+			if errors.Is(readErr, io.EOF) {
+				return io.EOF // Nothing more to do here.
+			}
+
+			return fmt.Errorf("failed to read: %w", readErr)
 		}
 	}
 }
