@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
-	"errors"
 	"io"
 	"os"
 	"slices"
@@ -494,6 +493,47 @@ func Test_Parse_RecoveryAfterExcessiveLengthPacket_Success(t *testing.T) {
 	require.Empty(t, sets[0].StrayPackets)
 }
 
+// Expectation: Parse should recover when unknown packet type claims excessive length causing seek past valid packets.
+func Test_Parse_RecoveryAfterExcessiveLengthUnknownPacket_Success(t *testing.T) {
+	t.Parallel()
+
+	unknownType := []byte{'P', 'A', 'R', ' ', '2', '.', '0', 0x00, 'U', 'n', 'k', 'n', 'o', 'w', 'n', '!'}
+
+	// Build an unknown packet type that claims excessive length
+	corruptBody := make([]byte, 16) // Small actual body
+	corruptPacket := buildPacket(unknownType, corruptBody, sID)
+
+	// Corrupt the length to claim much more than actual
+	binary.LittleEndian.PutUint64(corruptPacket[8:16], 10000)
+
+	// Valid packets follow immediately
+	// If we trust the header's length field to seek over skipped packets,
+	// these will be skipped, so we should always only trust our mechanism.
+	validPackets := slices.Concat(
+		buildMainPacket(4096, [][16]byte{idB}, nil, sID),
+		buildFileDescPacket("recovered.txt", 100, idB, sID),
+	)
+
+	packets := slices.Concat(corruptPacket, validPackets)
+
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].MainPacket.RecoveryIDs, 1)
+	require.Equal(t, Hash(idB), sets[0].MainPacket.RecoveryIDs[0]) // from validPackets
+
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Equal(t, "recovered.txt", sets[0].RecoverySet[0].Name)
+
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
 // Expectation: Parse should return error when too many sets are encountered.
 func Test_Parse_TooManySets_Error(t *testing.T) {
 	t.Parallel()
@@ -900,30 +940,6 @@ func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
 	require.ErrorIs(t, err, errSkipPacket)
 }
 
-// Expectation: readNextPacket should fail if seek fails when skipping unknown packets.
-func Test_readNextPacket_SeekError_Error(t *testing.T) {
-	t.Parallel()
-
-	unknownType := []byte{'P', 'A', 'R', ' ', '2', '.', '0', 0x00, 'U', 'n', 'k', 'n', 'o', 'w', 'n', '!'}
-
-	header := make([]byte, 64)
-	copy(header[0:8], packetMagic)
-	binary.LittleEndian.PutUint64(header[8:16], 1064) // 64 + 1000 bytes
-	copy(header[48:64], unknownType)
-
-	hasher := md5.New()
-	hasher.Write(header[packetHashOffset:])
-	copy(header[16:32], hasher.Sum(nil))
-
-	// Use a non-seekable reader (io.LimitReader doesn't implement Seek)
-	// Wrap in a struct that only implements Read
-	nonSeekableReader := &nonSeekableReader{reader: bytes.NewReader(header)}
-
-	_, err := readNextPacket(nonSeekableReader, false)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "failed to skip packet body")
-}
-
 // Expectation: readNextPacket should handle packet length exceeding MaxInt64.
 func Test_readNextPacket_LengthExceedsMaxInt64_Error(t *testing.T) {
 	t.Parallel()
@@ -1120,41 +1136,6 @@ func Test_seekToNextPacket_MultipleMagicInBuffer_Success(t *testing.T) {
 	// Should point to the start of the first magic (index 6)
 	pos, _ := reader.Seek(0, io.SeekCurrent)
 	require.Equal(t, int64(6), pos)
-}
-
-type stallingReader struct {
-	data      []byte
-	stalls    int
-	maxStalls int
-	offset    int64
-}
-
-func (s *stallingReader) Read(p []byte) (int, error) {
-	if s.stalls < s.maxStalls {
-		s.stalls++
-
-		return 0, nil
-	}
-
-	if s.offset >= int64(len(s.data)) {
-		return 0, io.EOF
-	}
-
-	n := copy(p, s.data[s.offset:])
-	s.offset += int64(n)
-
-	return n, nil
-}
-
-func (s *stallingReader) Seek(offset int64, whence int) (int64, error) {
-	if whence == io.SeekCurrent {
-		s.offset += offset
-	}
-	if whence == io.SeekStart {
-		s.offset = offset
-	}
-
-	return s.offset, nil
 }
 
 // Expectation: should recover from transient 0-byte reads up to readerRetries.
@@ -1721,17 +1702,39 @@ func Test_setGrouper_NoMainPacket_Success(t *testing.T) {
 // Helper Functions for Tests
 // ============================================================================
 
-// nonSeekableReader wraps a reader and only implements Read, not Seek.
-type nonSeekableReader struct {
-	reader io.Reader
+type stallingReader struct {
+	data      []byte
+	stalls    int
+	maxStalls int
+	offset    int64
 }
 
-func (n *nonSeekableReader) Read(p []byte) (int, error) {
-	return n.reader.Read(p)
+func (s *stallingReader) Read(p []byte) (int, error) {
+	if s.stalls < s.maxStalls {
+		s.stalls++
+
+		return 0, nil
+	}
+
+	if s.offset >= int64(len(s.data)) {
+		return 0, io.EOF
+	}
+
+	n := copy(p, s.data[s.offset:])
+	s.offset += int64(n)
+
+	return n, nil
 }
 
-func (n *nonSeekableReader) Seek(offset int64, whence int) (int64, error) {
-	return 0, errors.New("seek not supported")
+func (s *stallingReader) Seek(offset int64, whence int) (int64, error) {
+	if whence == io.SeekCurrent {
+		s.offset += offset
+	}
+	if whence == io.SeekStart {
+		s.offset = offset
+	}
+
+	return s.offset, nil
 }
 
 func buildMainPacket(sliceSize uint64, recoveryIDs [][16]byte, nonRecoveryIDs [][16]byte, setID [16]byte) []byte {

@@ -79,11 +79,6 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 				// claim an excessive length, cause it, and we'd skip others.
 				break // No more packets.
 			}
-			if errors.Is(err, errSkipPacket) {
-				// Reader was already advanced inside readNextPackage(),
-				// this is more efficient as it knows the packet length.
-				continue // Irrelevant packet.
-			}
 
 			// Reposition the reader 1 byte after the pre-parse position,
 			// this avoids corrupt packets being reparsed endlessly and we
@@ -315,11 +310,8 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	case bytes.Equal(header.packetType[:], fileDescType):
 	case bytes.Equal(header.packetType[:], unicodeDescType):
 	default:
-		// Advance the reader to the end of the body (of this packet).
-		if _, err := r.Seek(bodyLen, io.SeekCurrent); err != nil {
-			return nil, fmt.Errorf("failed to skip packet body: %w", err)
-		}
-
+		// Do not seek here, we cannot trust the packet length.
+		// Instead we let the error mechanism find the next packet.
 		return nil, errSkipPacket
 	}
 
@@ -369,11 +361,12 @@ func seekToNextPacket(r io.ReadSeeker) error {
 		if n >= magicLen {
 			idx := bytes.Index(buf[:n], packetMagic) // Find magic sequence
 			if idx != -1 {
+				// Found it, now jump to the offset it was found at.
 				if _, err := r.Seek(before+int64(idx), io.SeekStart); err != nil {
 					return fmt.Errorf("failed to seek: %w", err)
 				}
 
-				return nil // We're at the start of the magic sequence now
+				return nil // Reader is at start of the magic sequence now
 			}
 
 			if readErr == nil {
