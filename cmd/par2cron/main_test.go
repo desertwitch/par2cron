@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -697,4 +700,322 @@ func Test_NewInfoCmd_TooManyArgs_Error(t *testing.T) {
 	err := cmd.Execute()
 
 	require.Error(t, err)
+}
+
+// Expectation: recoverOperationPanic should not modify error when no panic occurs.
+func Test_recoverOperationPanic_NoPanic_Success(t *testing.T) {
+	t.Parallel()
+
+	ls := logging.Options{
+		Logout: &testutil.SafeBuffer{},
+		Stdout: &testutil.SafeBuffer{},
+		Stderr: &testutil.SafeBuffer{},
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	var err error
+	recoverOperationPanic(&err, log)
+
+	require.NoError(t, err)
+}
+
+// Expectation: recoverOperationPanic should preserve existing error when no panic occurs.
+func Test_recoverOperationPanic_NoPanic_PreservesExistingError_Success(t *testing.T) {
+	t.Parallel()
+
+	ls := logging.Options{
+		Logout: &testutil.SafeBuffer{},
+		Stdout: &testutil.SafeBuffer{},
+		Stderr: &testutil.SafeBuffer{},
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	existingErr := errors.New("existing error")
+	err := existingErr
+	recoverOperationPanic(&err, log)
+
+	require.Equal(t, existingErr, err)
+}
+
+// Expectation: recoverOperationPanic should catch panic and set error to ErrExitUnclassified.
+func Test_recoverOperationPanic_CatchesPanic_Success(t *testing.T) {
+	t.Parallel()
+
+	ls := logging.Options{
+		Logout: &testutil.SafeBuffer{},
+		Stdout: &testutil.SafeBuffer{},
+		Stderr: &testutil.SafeBuffer{},
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	var err error
+	func() {
+		defer recoverOperationPanic(&err, log)
+		panic("test panic")
+	}()
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, schema.ErrExitUnclassified)
+}
+
+// Expectation: recoverOperationPanic should log panic with stack trace.
+func Test_recoverOperationPanic_LogsPanicWithStack_Success(t *testing.T) {
+	t.Parallel()
+
+	logout := &testutil.SafeBuffer{}
+	ls := logging.Options{
+		Logout: logout,
+		Stdout: &testutil.SafeBuffer{},
+		Stderr: &testutil.SafeBuffer{},
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	var err error
+	func() {
+		defer recoverOperationPanic(&err, log)
+		panic("test panic message")
+	}()
+
+	logOutput := logout.String()
+	require.Contains(t, logOutput, "Operation crashed due to a panic")
+	require.Contains(t, logOutput, "test panic message")
+	require.Contains(t, logOutput, "stack")
+}
+
+// Expectation: recoverOperationPanic should handle non-string panic values.
+func Test_recoverOperationPanic_NonStringPanic_Success(t *testing.T) {
+	t.Parallel()
+
+	ls := logging.Options{
+		Logout: &testutil.SafeBuffer{},
+		Stdout: &testutil.SafeBuffer{},
+		Stderr: &testutil.SafeBuffer{},
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	var err error
+	func() {
+		defer recoverOperationPanic(&err, log)
+		panic(42)
+	}()
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, schema.ErrExitUnclassified)
+}
+
+// Expectation: recoverOperationPanic should handle nil panic value.
+func Test_recoverOperationPanic_NilPanic_Success(t *testing.T) {
+	t.Parallel()
+
+	ls := logging.Options{
+		Logout: &testutil.SafeBuffer{},
+		Stdout: &testutil.SafeBuffer{},
+		Stderr: &testutil.SafeBuffer{},
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	var err error
+	func() {
+		defer recoverOperationPanic(&err, log)
+		var v uintptr // nil
+		panic(v)
+	}()
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, schema.ErrExitUnclassified)
+}
+
+// Expectation: logOperationResult should log success when no errors occurred.
+func Test_logOperationResult_NoErrors_Success(t *testing.T) {
+	t.Parallel()
+
+	logout := &testutil.SafeBuffer{}
+	ls := logging.Options{
+		Logout:   logout,
+		Stdout:   &testutil.SafeBuffer{},
+		Stderr:   &testutil.SafeBuffer{},
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	result := &util.ResultTracker{
+		Success:  5,
+		Error:    0,
+		Skipped:  2,
+		Selected: 7,
+	}
+
+	logOperationResult(nil, result, log)
+
+	logOutput := logout.String()
+	require.Contains(t, logOutput, "Operation completed (7/7 jobs processed)")
+	require.Contains(t, logOutput, "\"successCount\":5")
+	require.Contains(t, logOutput, "\"errorCount\":0")
+	require.Contains(t, logOutput, "\"skipCount\":2")
+	require.Contains(t, logOutput, "\"processedCount\":7")
+	require.Contains(t, logOutput, "\"selectedCount\":7")
+}
+
+// Expectation: logOperationResult should log error when errors occurred but operation completed.
+func Test_logOperationResult_CompletedWithErrors_Success(t *testing.T) {
+	t.Parallel()
+
+	logout := &testutil.SafeBuffer{}
+	ls := logging.Options{
+		Logout:   logout,
+		Stdout:   &testutil.SafeBuffer{},
+		Stderr:   &testutil.SafeBuffer{},
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	result := &util.ResultTracker{
+		Success:  3,
+		Error:    2,
+		Skipped:  1,
+		Selected: 6,
+	}
+
+	testErr := errors.New("test error")
+	logOperationResult(testErr, result, log)
+
+	logOutput := logout.String()
+	require.Contains(t, logOutput, "Operation completed with errors (6/6 jobs processed)")
+	require.Contains(t, logOutput, "\"successCount\":3")
+	require.Contains(t, logOutput, "\"errorCount\":2")
+	require.Contains(t, logOutput, "\"skipCount\":1")
+	require.Contains(t, logOutput, "\"processedCount\":6")
+	require.Contains(t, logOutput, "\"selectedCount\":6")
+}
+
+// Expectation: logOperationResult should log error when no error value but result has errors.
+func Test_logOperationResult_NoErrorValue_ButResultHasErrors_Success(t *testing.T) {
+	t.Parallel()
+
+	logout := &testutil.SafeBuffer{}
+	ls := logging.Options{
+		Logout:   logout,
+		Stdout:   &testutil.SafeBuffer{},
+		Stderr:   &testutil.SafeBuffer{},
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	result := &util.ResultTracker{
+		Success:  3,
+		Error:    2,
+		Skipped:  1,
+		Selected: 6,
+	}
+
+	logOperationResult(nil, result, log)
+
+	logOutput := logout.String()
+	require.Contains(t, logOutput, "Operation completed with errors (6/6 jobs processed)")
+	require.Contains(t, logOutput, "\"errorCount\":2")
+}
+
+// Expectation: logOperationResult should log interruption when context was canceled.
+func Test_logOperationResult_ContextCanceled_Success(t *testing.T) {
+	t.Parallel()
+
+	logout := &testutil.SafeBuffer{}
+	ls := logging.Options{
+		Logout:   logout,
+		Stdout:   &testutil.SafeBuffer{},
+		Stderr:   &testutil.SafeBuffer{},
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	result := &util.ResultTracker{
+		Success:  2,
+		Error:    1,
+		Skipped:  1,
+		Selected: 10,
+	}
+
+	logOperationResult(context.Canceled, result, log)
+
+	logOutput := logout.String()
+	require.Contains(t, logOutput, "Operation interrupted (4/10 jobs processed)")
+	require.Contains(t, logOutput, "\"successCount\":2")
+	require.Contains(t, logOutput, "\"errorCount\":1")
+	require.Contains(t, logOutput, "\"skipCount\":1")
+	require.Contains(t, logOutput, "\"processedCount\":4")
+	require.Contains(t, logOutput, "\"selectedCount\":10")
+}
+
+// Expectation: logOperationResult should handle zero counts correctly.
+func Test_logOperationResult_ZeroCounts_Success(t *testing.T) {
+	t.Parallel()
+
+	logout := &testutil.SafeBuffer{}
+	ls := logging.Options{
+		Logout:   logout,
+		Stdout:   &testutil.SafeBuffer{},
+		Stderr:   &testutil.SafeBuffer{},
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	result := &util.ResultTracker{
+		Success:  0,
+		Error:    0,
+		Skipped:  0,
+		Selected: 0,
+	}
+
+	logOperationResult(nil, result, log)
+
+	logOutput := logout.String()
+	require.Contains(t, logOutput, "Operation completed (0/0 jobs processed)")
+	require.Contains(t, logOutput, "\"successCount\":0")
+	require.Contains(t, logOutput, "\"errorCount\":0")
+	require.Contains(t, logOutput, "\"skipCount\":0")
+	require.Contains(t, logOutput, "\"processedCount\":0")
+	require.Contains(t, logOutput, "\"selectedCount\":0")
+}
+
+// Expectation: logOperationResult should handle partial completion correctly.
+func Test_logOperationResult_PartialCompletion_Success(t *testing.T) {
+	t.Parallel()
+
+	logout := &testutil.SafeBuffer{}
+	ls := logging.Options{
+		Logout:   logout,
+		Stdout:   &testutil.SafeBuffer{},
+		Stderr:   &testutil.SafeBuffer{},
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+	log := logging.NewLogger(ls)
+
+	result := &util.ResultTracker{
+		Success:  5,
+		Error:    0,
+		Skipped:  0,
+		Selected: 20,
+	}
+
+	logOperationResult(context.Canceled, result, log)
+
+	logOutput := logout.String()
+	require.Contains(t, logOutput, "Operation interrupted (5/20 jobs processed)")
+	require.Contains(t, logOutput, "\"successCount\":5")
+	require.Contains(t, logOutput, "\"errorCount\":0")
+	require.Contains(t, logOutput, "\"skipCount\":0")
+	require.Contains(t, logOutput, "\"processedCount\":5")
+	require.Contains(t, logOutput, "\"selectedCount\":20")
 }

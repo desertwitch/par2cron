@@ -1965,3 +1965,49 @@ func Test_Service_runRepair_HashMatch_ProceedsWithRepair_Success(t *testing.T) {
 	require.NoError(t, prog.runRepair(t.Context(), job))
 	require.True(t, called)
 }
+
+// Expectation: Hashing error should fail the repair process.
+func Test_Service_runRepair_HashError_FailsRepair_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	require.ErrorContains(t, prog.runRepair(t.Context(), job), "failed to hash")
+	require.False(t, called)
+}
