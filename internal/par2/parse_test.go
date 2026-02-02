@@ -1054,7 +1054,7 @@ func Test_seekToNextPacket_SplitBoundary_Success(t *testing.T) {
 }
 
 // Expectation: Should not be fooled by partial magic that isn't the full 8 bytes.
-func Test_seekToNextPacket_PartialMagicAtEnd_EOF(t *testing.T) {
+func Test_seekToNextPacket_PartialMagicAtEnd_Error(t *testing.T) {
 	t.Parallel()
 
 	// "PAR2\0PK" is 7 bytes. It's almost the magic, but missing the 'T'.
@@ -1133,7 +1133,7 @@ func Test_seekToNextPacket_StallRecovery_Success(t *testing.T) {
 }
 
 // Expectation: should return UnexpectedEOF if reader stalls > readerRetries.
-func Test_seekToNextPacket_InfiniteStall_UnexpectedEOF(t *testing.T) {
+func Test_seekToNextPacket_InfiniteStall_Error(t *testing.T) {
 	t.Parallel()
 
 	// 15 stalls exceeds the 10 retry limit
