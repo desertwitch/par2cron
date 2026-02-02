@@ -492,7 +492,7 @@ func (prog *Service) cleanupAfterFailure(ctx context.Context, job *Job) {
 func (prog *Service) considerRecursive(opts *Options) error {
 	if opts.Par2Mode.Value != schema.CreateRecursiveMode && slices.Contains(opts.Par2Args, "-R") {
 		prog.log.Error(
-			"par2 argument -R needs par2cron --mode recursive (or did you mean -r, for redundancy?)",
+			"par2 default argument -R needs par2cron default --mode recursive (perhaps you meant -r, for redundancy?)",
 			"error", errWrongModeArgument,
 			"mode", opts.Par2Mode.Value,
 			"args", opts.Par2Args,
@@ -506,7 +506,7 @@ func (prog *Service) considerRecursive(opts *Options) error {
 		opts.Par2Args = append(opts.Par2Args, "-R")
 
 		prog.log.Info(
-			"Adding -R to default par2 arguments for recursive mode",
+			"Adding -R to par2 default arguments (due to --mode recursive)",
 			"mode", opts.Par2Mode.Value,
 			"args-before", before,
 			"args-after", opts.Par2Args,

@@ -675,7 +675,7 @@ func Test_Service_Create_RecursiveArgWithoutRecursiveMode_Error(t *testing.T) {
 
 	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
 	require.ErrorIs(t, err, errWrongModeArgument)
-	require.Contains(t, logBuf.String(), "par2 argument -R needs par2cron --mode recursive")
+	require.Contains(t, logBuf.String(), "par2 default argument -R needs par2cron default --mode recursive")
 }
 
 // Expectation: The function should correctly find multiple marker files.
@@ -2331,7 +2331,7 @@ func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.
 	err := prog.considerRecursive(opts)
 
 	require.ErrorIs(t, err, errWrongModeArgument)
-	require.Contains(t, logBuf.String(), "par2 argument -R needs par2cron --mode recursive")
+	require.Contains(t, logBuf.String(), "par2 default argument -R needs par2cron default --mode recursive")
 }
 
 // Expectation: The -R argument should be added when mode is recursive but -R is not in args.
@@ -2359,7 +2359,7 @@ func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T)
 
 	require.NoError(t, err)
 	require.Contains(t, opts.Par2Args, "-R")
-	require.Contains(t, logBuf.String(), "Adding -R to default par2 arguments for recursive mode")
+	require.Contains(t, logBuf.String(), "Adding -R to par2 default arguments (due to --mode recursive)")
 }
 
 // Expectation: No changes should be made when mode is recursive and -R is already present.

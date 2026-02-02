@@ -104,6 +104,8 @@ Above examples assume you set the par2 default arguments to "-r15 -n1" with:
 
 However, it applies for any combination of creation arguments passed to par2.
 
+"_R" in marker filename forces recursive mode even without YAML mode directive.
+
 ================================================================================
 Marker content modifiers (optional):
 ================================================================================

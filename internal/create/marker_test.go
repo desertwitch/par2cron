@@ -549,7 +549,7 @@ func Test_Service_considerRecursiveMarker_RecursiveModeButNoRArg_Success(t *test
 	require.Equal(t, "-r10", (*cfg.Par2Args)[0])
 	require.Equal(t, "-n3", (*cfg.Par2Args)[1])
 	require.Equal(t, "-R", (*cfg.Par2Args)[2])
-	require.Contains(t, logBuf.String(), "Adding -R to par2 argument slice for recursive mode")
+	require.Contains(t, logBuf.String(), "Adding -R to par2 argument slice (due to set recursive mode)")
 }
 
 // Expectation: No changes should be made when mode is recursive and -R is already present.

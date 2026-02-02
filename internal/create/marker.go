@@ -157,7 +157,7 @@ func (prog *Service) considerRecursiveMarker(markerPath string, cfg *MarkerConfi
 		before := cfg.Par2Mode.Value
 		_ = cfg.Par2Mode.Set(schema.CreateRecursiveMode)
 
-		logger.Warn(
+		logger.Info(
 			"Assuming recursive mode due to set par2 argument -R (recursive)",
 			"mode-before", before,
 			"mode-after", cfg.Par2Mode.Value,
@@ -172,7 +172,7 @@ func (prog *Service) considerRecursiveMarker(markerPath string, cfg *MarkerConfi
 		*cfg.Par2Args = append(*cfg.Par2Args, "-R")
 
 		logger.Debug(
-			"Adding -R to par2 argument slice for recursive mode",
+			"Adding -R to par2 argument slice (due to set recursive mode)",
 			"mode", cfg.Par2Mode.Value,
 			"args-before", before,
 			"args-after", *cfg.Par2Args,
