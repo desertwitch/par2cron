@@ -672,7 +672,7 @@ func Test_Service_Create_RecursiveArgWithoutRecursiveMode_Error(t *testing.T) {
 	_, err := prog.Create(t.Context(), "/data", args)
 
 	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
-	require.ErrorIs(t, err, errWrongModeForRecursive)
+	require.ErrorIs(t, err, errWrongModeArgument)
 	require.Contains(t, logBuf.String(), "par2 argument -R needs par2cron --mode recursive")
 }
 
@@ -2328,7 +2328,7 @@ func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.
 
 	err := prog.considerRecursive(opts)
 
-	require.ErrorIs(t, err, errWrongModeForRecursive)
+	require.ErrorIs(t, err, errWrongModeArgument)
 	require.Contains(t, logBuf.String(), "par2 argument -R needs par2cron --mode recursive")
 }
 

@@ -24,9 +24,9 @@ const (
 )
 
 var (
-	errNoFilesToProtect      = errors.New("no files to protect")
-	errSubjobFailure         = errors.New("subjob failure")
-	errWrongModeForRecursive = errors.New("wrong --mode for -R argument")
+	errNoFilesToProtect  = errors.New("no files to protect")
+	errSubjobFailure     = errors.New("subjob failure")
+	errWrongModeArgument = errors.New("wrong mode for argument")
 )
 
 type Options struct {
@@ -491,12 +491,12 @@ func (prog *Service) considerRecursive(opts *Options) error {
 	if opts.Par2Mode.Value != schema.CreateRecursiveMode && slices.Contains(opts.Par2Args, "-R") {
 		prog.log.Error(
 			"par2 argument -R needs par2cron --mode recursive (or did you mean -r, for redundancy?)",
-			"error", errWrongModeForRecursive,
+			"error", errWrongModeArgument,
 			"mode", opts.Par2Mode.Value,
 			"args", opts.Par2Args,
 		)
 
-		return errWrongModeForRecursive
+		return errWrongModeArgument
 	}
 
 	if opts.Par2Mode.Value == schema.CreateRecursiveMode && !slices.Contains(opts.Par2Args, "-R") {
