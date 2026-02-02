@@ -47,7 +47,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 
 	return &Service{
 		fsys:   fsys,
-		log:    log,
+		log:    log.With("op", "repair"),
 		runner: runner,
 		walker: walker,
 	}
@@ -360,7 +360,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
 
 	// if job.manifest.Par2Data == nil {
-	// 	util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
+	// 	util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
 	// 		Time:     job.manifest.Repair.Time,
 	// 		Path:     job.par2Path,
 	// 		Manifest: job.manifest,

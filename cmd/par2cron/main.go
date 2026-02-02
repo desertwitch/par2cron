@@ -31,7 +31,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -179,8 +178,9 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
 			result, err := prog.CreationService.Create(ctx, args[0], createArgs)
 			if result != nil {
@@ -199,7 +199,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 	createCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	createCmd.Flags().StringVarP(&createArgs.Par2Glob, "glob", "g", "*", "PAR2 set default glob (files to include)")
 	createCmd.Flags().VarP(&createArgs.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
-	createCmd.Flags().VarP(&createArgs.Par2Mode, "mode", "m", "PAR2 set default mode; per-file or per-folder (file|folder)")
+	createCmd.Flags().VarP(&createArgs.Par2Mode, "mode", "m", "PAR2 set default mode; creates a set per (file|folder|recursive)")
 	createCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return createCmd
@@ -263,8 +263,9 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
 			result, err := prog.VerificationService.Verify(ctx, args[0], verifyArgs)
 			if result != nil {
@@ -345,8 +346,9 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
 			result, err := prog.RepairService.Repair(ctx, args[0], repairArgs)
 			if result != nil {
@@ -418,8 +420,9 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
 			return prog.InfoService.Info(ctx, args[0], infoArgs)
 		},
@@ -458,7 +461,15 @@ func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner) 
 	}
 }
 
-func logOperationResult(err error, result *util.ResultTracker, log *slog.Logger) {
+func recoverOperationPanic(ret *error, log *logging.Logger) {
+	if r := recover(); r != nil {
+		log.Error("Operation crashed due to a panic (report to developers)",
+			"panic", r, "stack", string(debug.Stack()))
+		*ret = schema.ErrExitUnclassified
+	}
+}
+
+func logOperationResult(err error, result *util.ResultTracker, log *logging.Logger) {
 	processedCount := result.Success + result.Error + result.Skipped
 
 	switch {

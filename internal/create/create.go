@@ -24,8 +24,9 @@ const (
 )
 
 var (
-	errNoFilesToProtect = errors.New("no files to protect")
-	errSubjobFailure    = errors.New("subjob failure")
+	errNoFilesToProtect  = errors.New("no files to protect")
+	errSubjobFailure     = errors.New("subjob failure")
+	errWrongModeArgument = errors.New("wrong mode for argument")
 )
 
 type Options struct {
@@ -55,7 +56,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 
 	return &Service{
 		fsys:   fsys,
-		log:    log,
+		log:    log.With("op", "create"),
 		runner: runner,
 		walker: walker,
 	}
@@ -63,6 +64,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 
 type Job struct {
 	workingDir   string
+	hiddenFiles  bool
 	markerPath   string
 	par2Mode     string
 	par2Name     string
@@ -82,6 +84,7 @@ func NewJob(markerPath string, cfg MarkerConfig) *Job {
 	if *cfg.HideFiles && !strings.HasPrefix(cj.par2Name, ".") {
 		cj.par2Name = "." + cj.par2Name
 	}
+	cj.hiddenFiles = *cfg.HideFiles
 
 	cj.par2Mode = cfg.Par2Mode.Value
 	cj.par2Args = slices.Clone(*cfg.Par2Args)
@@ -118,6 +121,10 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 	errs := []error{}
 	results := util.NewResultTracker()
 
+	if err := prog.considerRecursive(&opts); err != nil {
+		return results, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+	}
+
 	logger := prog.creationLogger(ctx, nil, rootDir)
 	logger.Info("Scanning filesystem for jobs...")
 
@@ -130,8 +137,6 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
 		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 	}
-
-	prog.considerRecursive(ctx, jobs)
 
 	if len(jobs) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
@@ -246,11 +251,11 @@ func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 	}
 
 	if job.par2Mode == schema.CreateFileMode {
-		if err := prog.createFileMode(ctx, job, files); err != nil {
+		if err := prog.createIndividual(ctx, job, files); err != nil {
 			return fmt.Errorf("failed to create par2: %w", err)
 		}
 	} else {
-		if err := prog.createFolderMode(ctx, job, files); err != nil {
+		if err := prog.createCombined(ctx, job, files); err != nil {
 			return fmt.Errorf("failed to create par2: %w", err)
 		}
 	}
@@ -279,14 +284,17 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 		if f == job.markerPath {
 			continue
 		}
-		if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension) {
-			continue
-		}
-		if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.LockExtension) {
-			continue
-		}
-		if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.ManifestExtension) {
-			continue
+		// par2cmdline -R will include .par2 in subdirs, so keep this consistent.
+		if job.par2Mode != schema.CreateRecursiveMode {
+			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension) {
+				continue
+			}
+			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.LockExtension) {
+				continue
+			}
+			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.ManifestExtension) {
+				continue
+			}
 		}
 
 		fi, err := prog.fsys.Stat(f)
@@ -297,7 +305,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			return nil, fmt.Errorf("failed to stat: %w", err)
 		}
 
-		if fi.IsDir() {
+		if fi.IsDir() && job.par2Mode != schema.CreateRecursiveMode {
 			continue
 		}
 
@@ -306,6 +314,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			Name:    fi.Name(),
 			Size:    fi.Size(),
 			Mode:    fi.Mode(),
+			IsDir:   fi.IsDir(),
 			ModTime: fi.ModTime(),
 		})
 	}
@@ -320,7 +329,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 	return protectableElements, nil
 }
 
-func (prog *Service) createFolderMode(ctx context.Context, job *Job, elements []schema.FsElement) error {
+func (prog *Service) createCombined(ctx context.Context, job *Job, elements []schema.FsElement) error {
 	logger := prog.creationLogger(ctx, job, job.par2Path)
 
 	if _, err := prog.fsys.Stat(job.par2Path); err == nil {
@@ -338,7 +347,7 @@ func (prog *Service) createFolderMode(ctx context.Context, job *Job, elements []
 	return nil
 }
 
-func (prog *Service) createFileMode(ctx context.Context, job *Job, elements []schema.FsElement) error {
+func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []schema.FsElement) error {
 	var errCount int
 
 	for i, f := range elements {
@@ -421,7 +430,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		return err
 	}
 
-	// util.Par2IndexToManifest(prog.fsys, util.Par2IndexToManifestOptions{
+	// util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
 	// 	Time:     mf.Creation.Time,
 	// 	Path:     job.par2Path,
 	// 	Manifest: mf,
@@ -480,18 +489,31 @@ func (prog *Service) cleanupAfterFailure(ctx context.Context, job *Job) {
 	}
 }
 
-func (prog *Service) considerRecursive(ctx context.Context, jobs []*Job) {
-	for _, job := range jobs {
-		for _, arg := range job.par2Args {
-			if arg == "-R" || arg == "--recursive" {
-				logger := prog.creationLogger(ctx, job, nil)
-				logger.Warn("par2 argument -R has no effect; " +
-					"par2cron creates flat (non-recursive) PAR2 sets by design (see documentation)")
+func (prog *Service) considerRecursive(opts *Options) error {
+	if opts.Par2Mode.Value != schema.CreateRecursiveMode && slices.Contains(opts.Par2Args, "-R") {
+		prog.log.Error(
+			"par2 default argument -R needs par2cron default --mode recursive (perhaps you meant -r, for redundancy?)",
+			"error", errWrongModeArgument,
+			"mode", opts.Par2Mode.Value,
+			"args", opts.Par2Args,
+		)
 
-				return
-			}
-		}
+		return errWrongModeArgument
 	}
+
+	if opts.Par2Mode.Value == schema.CreateRecursiveMode && !slices.Contains(opts.Par2Args, "-R") {
+		before := slices.Clone(opts.Par2Args)
+		opts.Par2Args = append(opts.Par2Args, "-R")
+
+		prog.log.Info(
+			"Adding -R to par2 default arguments (due to --mode recursive)",
+			"mode", opts.Par2Mode.Value,
+			"args-before", before,
+			"args-after", opts.Par2Args,
+		)
+	}
+
+	return nil
 }
 
 func getPaths(files []schema.FsElement) []string {

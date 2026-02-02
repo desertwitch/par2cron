@@ -52,10 +52,10 @@ Marker file content can be a YAML configuration to override
 most settings (set through CLI or a --config configuration)
 for the individual job, refer to documentation for examples.
 
-One PAR2 per folder: A marker file only triggers PAR2 creation
-for files in its immediate directory, it does not recurse into
-subdirectories. To protect a larger directory tree, place marker
-files into each of the specific folders that you wish to secure.
+One PAR2 per folder: By default a marker file only triggers
+PAR2 creation for files in its immediate directory, it does
+not recurse into subdirectories. Recursive mode is best set
+through a marker configuration, rather than as default mode.
 
 To exclude directories from this operation, put ignore files:
   ".par2cron-ignore" - ignore directory

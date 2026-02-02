@@ -44,6 +44,7 @@ func Test_NewJob_Success(t *testing.T) {
 	require.Equal(t, "test"+schema.Par2Extension+schema.ManifestExtension, job.manifestName)
 	require.Equal(t, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, job.manifestPath)
 	require.True(t, job.par2Verify)
+	require.False(t, job.hiddenFiles)
 }
 
 // Expectation: The correct paths should be derived from the [createConfig].
@@ -72,6 +73,7 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 	require.Equal(t, ".test"+schema.Par2Extension+schema.ManifestExtension, job.manifestName)
 	require.Equal(t, "/data/folder/.test"+schema.Par2Extension+schema.ManifestExtension, job.manifestPath)
 	require.True(t, job.par2Verify)
+	require.True(t, job.hiddenFiles)
 }
 
 // Expectation: The relevant fields should be changed for file mode, others not.
@@ -647,6 +649,35 @@ func Test_Service_Create_NoDuration_Success(t *testing.T) {
 	require.Equal(t, 2, strings.Count(logBuf.String(), "Job completed with success"))
 }
 
+// Expectation: The program should return a bad invocation error when -R is used without recursive mode.
+func Test_Service_Create_RecursiveArgWithoutRecursiveMode_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	args := Options{Par2Args: []string{"-r10", "-R"}, Par2Glob: "*"}
+	require.NoError(t, args.Par2Mode.Set(schema.CreateFileMode))
+
+	_, err := prog.Create(t.Context(), "/data", args)
+
+	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.ErrorIs(t, err, errWrongModeArgument)
+	require.Contains(t, logBuf.String(), "par2 default argument -R needs par2cron default --mode recursive")
+}
+
 // Expectation: The function should correctly find multiple marker files.
 func Test_Service_Enumerate_Success(t *testing.T) {
 	t.Parallel()
@@ -1196,6 +1227,130 @@ func Test_Service_findElementsToProtect_Success(t *testing.T) {
 	require.Equal(t, "file.txt", files[0].Name)
 }
 
+// Expectation: The function should include directories and .par2 files in recursive mode.
+func Test_Service_findElementsToProtect_RecursiveMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/existing"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/existing.vol25+22.PAR2", []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/manifest"+schema.Par2Extension+schema.ManifestExtension, []byte("{}"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/manifest"+schema.Par2Extension+schema.LockExtension, []byte("{}"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateRecursiveMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10", "-R"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.NoError(t, err)
+	require.Len(t, files, 6)
+
+	names := make([]string, 0, 6)
+	var dirCount int
+	for _, f := range files {
+		names = append(names, f.Name)
+		if f.IsDir {
+			dirCount++
+		}
+	}
+
+	// In recursive mode, directories are included
+	require.Contains(t, names, "subfolder")
+	require.Equal(t, 1, dirCount)
+
+	// In recursive mode, .par2 files are included (par2cmdline -R includes them)
+	require.Contains(t, names, "existing"+schema.Par2Extension)
+	require.Contains(t, names, "existing.vol25+22.PAR2")
+	require.Contains(t, names, "manifest"+schema.Par2Extension+schema.ManifestExtension)
+	require.Contains(t, names, "manifest"+schema.Par2Extension+schema.LockExtension)
+
+	// Regular files are included
+	require.Contains(t, names, "file.txt")
+
+	// Marker file is always excluded
+	require.NotContains(t, names, "_par2cron")
+}
+
+// Expectation: The function should only list files and folders in the immediate directory.
+func Test_Service_findElementsToProtect_RecursiveMode_NoDeepRecursion_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder/nested", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/subfile.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/nested/deepfile.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateRecursiveMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10", "-R"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	names := make([]string, 0, 2)
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+
+	// Only immediate children should be listed
+	require.Contains(t, names, "file.txt")
+	require.Contains(t, names, "subfolder")
+
+	// Files in subdirectories should not be listed (par2cmdline handles that)
+	require.NotContains(t, names, "subfile.txt")
+	require.NotContains(t, names, "nested")
+	require.NotContains(t, names, "deepfile.txt")
+}
+
 // Expectation: The function should return the correct error when there's nothing to do.
 func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 	t.Parallel()
@@ -1232,7 +1387,7 @@ func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 }
 
 // Expectation: The function should succeed in folder mode.
-func Test_Service_createFolderMode_Success(t *testing.T) {
+func Test_Service_createCombined_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1277,7 +1432,7 @@ func Test_Service_createFolderMode_Success(t *testing.T) {
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
 
-	err := prog.createFolderMode(t.Context(), job, files)
+	err := prog.createCombined(t.Context(), job, files)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, called)
@@ -1285,7 +1440,7 @@ func Test_Service_createFolderMode_Success(t *testing.T) {
 }
 
 // Expectation: The function should return the correct error when a PAR2 already exists.
-func Test_Service_createFolderMode_AlreadyExists_Error(t *testing.T) {
+func Test_Service_createCombined_AlreadyExists_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1320,13 +1475,13 @@ func Test_Service_createFolderMode_AlreadyExists_Error(t *testing.T) {
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
-	err := prog.createFolderMode(t.Context(), job, files)
+	err := prog.createCombined(t.Context(), job, files)
 	require.ErrorIs(t, err, schema.ErrAlreadyExists)
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 }
 
 // Expectation: The function should succeed when both files succeed.
-func Test_Service_createFileMode_Success(t *testing.T) {
+func Test_Service_createIndividual_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1371,7 +1526,7 @@ func Test_Service_createFileMode_Success(t *testing.T) {
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
 
-	err := prog.createFileMode(t.Context(), job, files)
+	err := prog.createIndividual(t.Context(), job, files)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, called)
@@ -1379,7 +1534,7 @@ func Test_Service_createFileMode_Success(t *testing.T) {
 }
 
 // Expectation: The function should continue to second file when first fails and return correct error.
-func Test_Service_createFileMode_FirstFails_Error(t *testing.T) {
+func Test_Service_createIndividual_FirstFails_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1428,7 +1583,7 @@ func Test_Service_createFileMode_FirstFails_Error(t *testing.T) {
 		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
 	}
 
-	err := prog.createFileMode(t.Context(), job, files)
+	err := prog.createIndividual(t.Context(), job, files)
 	require.Equal(t, 2, called)
 
 	require.ErrorIs(t, err, errSubjobFailure)
@@ -1437,7 +1592,7 @@ func Test_Service_createFileMode_FirstFails_Error(t *testing.T) {
 }
 
 // Expectation: The function should not fail when a same-named PAR2 already exists.
-func Test_Service_createFileMode_AlreadyExists_Success(t *testing.T) {
+func Test_Service_createIndividual_AlreadyExists_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1472,13 +1627,13 @@ func Test_Service_createFileMode_AlreadyExists_Success(t *testing.T) {
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
-	err := prog.createFileMode(t.Context(), job, files)
+	err := prog.createIndividual(t.Context(), job, files)
 	require.NoError(t, err)
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 }
 
 // Expectation: The function should respect cancellation and return the correct error.
-func Test_Service_createFileMode_CtxCancel_Error(t *testing.T) {
+func Test_Service_createIndividual_CtxCancel_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1515,7 +1670,7 @@ func Test_Service_createFileMode_CtxCancel_Error(t *testing.T) {
 		{Path: "/data/folder/file1.txt", Name: "file1.txt"},
 	}
 
-	err := prog.createFileMode(ctx, job, files)
+	err := prog.createIndividual(ctx, job, files)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -1762,6 +1917,75 @@ func Test_Service_runCreate_CorrectArgs_Success(t *testing.T) {
 		job.par2Path,
 		"/data/folder/file.txt",
 		"/data/folder/file2.txt",
+	}, capturedArgs)
+}
+
+// Expectation: The function should call par2 with correct arguments in recursive mode.
+func Test_Service_runCreate_CorrectArgs_RecursiveMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/subfolder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var capturedCmd string
+	var capturedArgs []string
+	var capturedWorkingDir string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			capturedCmd = cmd
+			capturedArgs = slices.Clone(args)
+			capturedWorkingDir = workingDir
+
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/folder"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateRecursiveMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10", "-n5", "-R"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt", IsDir: false},
+		{Path: "/data/folder/subfolder", Name: "subfolder", IsDir: true},
+	}
+
+	require.NoError(t, prog.runCreate(t.Context(), job, files))
+
+	require.Equal(t, "par2", capturedCmd)
+	require.Equal(t, "/data/folder", capturedWorkingDir)
+	require.Equal(t, []string{
+		"create",
+		"-r10",
+		"-n5",
+		"-R",
+		"--",
+		"/data/folder/folder" + schema.Par2Extension,
+		"/data/folder/file.txt",
+		"/data/folder/subfolder",
 	}, capturedArgs)
 }
 
@@ -2083,8 +2307,8 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Failed to cleanup a file after failure")
 }
 
-// Expectation: The program should warn when -R/--recursive flag is present in job args.
-func Test_Service_considerRecursive_Success(t *testing.T) {
+// Expectation: An error should be returned when -R is in args but mode is not recursive.
+func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -2095,29 +2319,23 @@ func Test_Service_considerRecursive_Success(t *testing.T) {
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
-	_ = ls.LogLevel.Set("info")
+	_ = ls.LogLevel.Set("debug")
 
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
-	jobs := []*Job{
-		{
-			workingDir: "/data/folder1",
-			par2Args:   []string{"-r10", "-n5"},
-		},
-		{
-			workingDir: "/data/folder2",
-			par2Args:   []string{"-R", "-r15"},
-		},
+	opts := &Options{
+		Par2Args: []string{"-r10", "-R"},
 	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFileMode))
 
-	prog.considerRecursive(t.Context(), jobs)
+	err := prog.considerRecursive(opts)
 
-	require.Contains(t, logBuf.String(), "-R has no effect")
-	require.Equal(t, 1, strings.Count(logBuf.String(), "-R has no effect"))
+	require.ErrorIs(t, err, errWrongModeArgument)
+	require.Contains(t, logBuf.String(), "par2 default argument -R needs par2cron default --mode recursive")
 }
 
-// Expectation: The program should not warn when no -R/--recursive flag is present.
-func Test_Service_considerRecursive_NoFlag_Success(t *testing.T) {
+// Expectation: The -R argument should be added when mode is recursive but -R is not in args.
+func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -2128,28 +2346,24 @@ func Test_Service_considerRecursive_NoFlag_Success(t *testing.T) {
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
-	_ = ls.LogLevel.Set("info")
+	_ = ls.LogLevel.Set("debug")
 
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
-	jobs := []*Job{
-		{
-			workingDir: "/data/folder1",
-			par2Args:   []string{"-r10", "-n5"},
-		},
-		{
-			workingDir: "/data/folder2",
-			par2Args:   []string{"-r15"},
-		},
+	opts := &Options{
+		Par2Args: []string{"-r10", "-n3"},
 	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
 
-	prog.considerRecursive(t.Context(), jobs)
+	err := prog.considerRecursive(opts)
 
-	require.NotContains(t, logBuf.String(), "-R has no effect")
+	require.NoError(t, err)
+	require.Contains(t, opts.Par2Args, "-R")
+	require.Contains(t, logBuf.String(), "Adding -R to par2 default arguments (due to --mode recursive)")
 }
 
-// Expectation: The program should also detect --recursive long form.
-func Test_Service_considerRecursive_LongForm_Success(t *testing.T) {
+// Expectation: No changes should be made when mode is recursive and -R is already present.
+func Test_Service_considerRecursive_RecursiveModeWithRArg_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -2160,18 +2374,75 @@ func Test_Service_considerRecursive_LongForm_Success(t *testing.T) {
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
-	_ = ls.LogLevel.Set("info")
+	_ = ls.LogLevel.Set("debug")
 
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
-	jobs := []*Job{
-		{
-			workingDir: "/data/folder1",
-			par2Args:   []string{"--recursive", "-r10"},
-		},
+	opts := &Options{
+		Par2Args: []string{"-r10", "-R"},
 	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
 
-	prog.considerRecursive(t.Context(), jobs)
+	err := prog.considerRecursive(opts)
 
-	require.Contains(t, logBuf.String(), "-R has no effect")
+	require.NoError(t, err)
+	require.Len(t, opts.Par2Args, 2)
+	require.Equal(t, "-r10", opts.Par2Args[0])
+	require.Equal(t, "-R", opts.Par2Args[1])
+}
+
+// Expectation: No changes should be made when mode is file and -R is not present.
+func Test_Service_considerRecursive_FileModeWithoutRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	opts := &Options{
+		Par2Args: []string{"-r10", "-n3"},
+	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFileMode))
+
+	err := prog.considerRecursive(opts)
+
+	require.NoError(t, err)
+	require.Len(t, opts.Par2Args, 2)
+	require.NotContains(t, opts.Par2Args, "-R")
+}
+
+// Expectation: No changes should be made when mode is folder and -R is not present.
+func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	opts := &Options{
+		Par2Args: []string{"-r10", "-n3"},
+	}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFolderMode))
+
+	err := prog.considerRecursive(opts)
+
+	require.NoError(t, err)
+	require.Len(t, opts.Par2Args, 2)
+	require.NotContains(t, opts.Par2Args, "-R")
 }

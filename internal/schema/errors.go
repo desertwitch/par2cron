@@ -4,7 +4,7 @@ import "errors"
 
 var (
 	ErrExitPartialFailure = errors.New("partial failure")                       // [ExitCodePartialFailure]
-	ErrExitBadInvocation  = errors.New("bad invocation of the program")         // [ExitCodeBadInvocation]
+	ErrExitBadInvocation  = errors.New("bad invocation")                        // [ExitCodeBadInvocation]
 	ErrExitRepairable     = errors.New("files are corrupted, but repairable")   // [ExitCodeRepairable]
 	ErrExitUnrepairable   = errors.New("files are corrupted, but unrepairable") // [ExitCodeUnrepairable]
 	ErrExitUnclassified   = errors.New("unclassified error")                    // [ExitCodeUnclassified]

@@ -5,6 +5,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
@@ -489,4 +490,125 @@ func Test_Service_modifyOrAddArgument_ReplaceNextElement_Success(t *testing.T) {
 	require.Equal(t, "-r", (*cfg.Par2Args)[0])
 	require.Equal(t, "20", (*cfg.Par2Args)[1])
 	require.Equal(t, "-n3", (*cfg.Par2Args)[2])
+}
+
+// Expectation: The mode should be set to recursive when -R is in args but mode is not recursive.
+func Test_Service_considerRecursiveMarker_HasRArgButNotRecursiveMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	cfg := &MarkerConfig{
+		Par2Args: &[]string{"-r10", "-R"},
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateFileMode))
+
+	prog.considerRecursiveMarker("/data/folder/_par2cron", cfg)
+
+	require.Equal(t, schema.CreateRecursiveMode, cfg.Par2Mode.Value)
+	require.Contains(t, logBuf.String(), "Assuming recursive mode due to set par2 argument -R")
+}
+
+// Expectation: The -R argument should be added when mode is recursive but -R is not in args.
+func Test_Service_considerRecursiveMarker_RecursiveModeButNoRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	cfg := &MarkerConfig{
+		Par2Args: &[]string{"-r10", "-n3"},
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	prog.considerRecursiveMarker("/data/folder/_par2cron", cfg)
+
+	require.Equal(t, schema.CreateRecursiveMode, cfg.Par2Mode.Value)
+	require.Len(t, *cfg.Par2Args, 3)
+	require.Equal(t, "-r10", (*cfg.Par2Args)[0])
+	require.Equal(t, "-n3", (*cfg.Par2Args)[1])
+	require.Equal(t, "-R", (*cfg.Par2Args)[2])
+	require.Contains(t, logBuf.String(), "Adding -R to par2 argument slice (due to set recursive mode)")
+}
+
+// Expectation: No changes should be made when mode is recursive and -R is already present.
+func Test_Service_considerRecursiveMarker_RecursiveModeWithRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	cfg := &MarkerConfig{
+		Par2Args: &[]string{"-r10", "-R"},
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	prog.considerRecursiveMarker("/data/folder/_par2cron", cfg)
+
+	require.Equal(t, schema.CreateRecursiveMode, cfg.Par2Mode.Value)
+	require.Len(t, *cfg.Par2Args, 2)
+	require.Equal(t, "-r10", (*cfg.Par2Args)[0])
+	require.Equal(t, "-R", (*cfg.Par2Args)[1])
+}
+
+// Expectation: No changes should be made when mode is file and -R is not present.
+func Test_Service_considerRecursiveMarker_FileModeWithoutRArg_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	cfg := &MarkerConfig{
+		Par2Args: &[]string{"-r10", "-n3"},
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateFileMode))
+
+	prog.considerRecursiveMarker("/data/folder/_par2cron", cfg)
+
+	require.Equal(t, schema.CreateFileMode, cfg.Par2Mode.Value)
+	require.Len(t, *cfg.Par2Args, 2)
+	require.Equal(t, "-r10", (*cfg.Par2Args)[0])
+	require.Equal(t, "-n3", (*cfg.Par2Args)[1])
+	require.NotContains(t, *cfg.Par2Args, "-R")
 }

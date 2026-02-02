@@ -40,10 +40,10 @@
 - [Output Streams](#output-streams)
 - [State Management](#state-management)
 - [Creation Arguments](#creation-arguments)
+- [Creation Modes](#creation-modes)
 - [Marker Files](#marker-files)
   - [Marker Filename](#marker-filename)
   - [Marker Configuration](#marker-configuration)
-  - [Folder Mode vs. File Mode](#folder-mode-vs-file-mode)
 - [Ignore Files](#ignore-files)
 - [Configuration](#configuration)
 - [Limitations](#limitations)
@@ -99,9 +99,8 @@ PAR2 sets are then verified and repaired with by the set up periodic tasks.
 **A condensed quick guide and cheatsheet can be found in the [QUICKGUIDE](QUICKGUIDE) file.**
 
 > **One PAR2 per folder:** To keep your mental model simple, marker-based PAR2
-> creation does not recurse into subfolders. The flat protection scope ensures
-> that you know exactly which files a PAR2 covers, without needing to remember
-> any directory tree complexities (avoiding surprises during data recovering).
+> creation does not recurse into subfolders [by default](#creation-modes). The
+> flat protection scope ensures that you know exactly which files a PAR2 covers.
 
 ## Installation
 
@@ -178,7 +177,7 @@ Flags:
       --hidden              create PAR2 sets and related files as hidden (dotfiles)
       --json                output structured logs in JSON format
   -l, --log-level level     minimum level of emitted logs (debug|info|warn|error) (default info)
-  -m, --mode mode           PAR2 set default mode; per-file or per-folder (file|folder) (default folder)
+  -m, --mode mode           PAR2 set default mode; creates a set per (file|folder|recursive) (default folder)
   -v, --verify              PAR2 sets must pass verification as part of creation
 ```
 
@@ -213,9 +212,9 @@ Flags:
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
-> **External PAR2**: While par2cron creates flat sets, it can verify existing
-> sets (even recursive ones) created by other tools. Use the `--include-external`
-> flag to pull these into par2cron's verification cycle (manifests will be created).
+> **External PAR2**: par2cron can verify existing sets created by other tools.
+> Use the `--include-external` flag to pull these into the verification cycle
+> (creating par2cron manifests for them in the process).
 
 ### `par2cron repair`
 ```
@@ -375,7 +374,7 @@ three calling par2cron operations. However, it is strongly recommended to
 set default `par2` arguments for the `create` command, to be reflecting your
 personal needs and situation. You can decide the default set of arguments to
 give to `par2` for any of the par2cron commands using either the configuration
-file or appending them as `[-- par2-args...]`. An example of the latter below:
+file or appending them as `[-- par2-args...]`:
 
 ```bash
 par2cron create /mnt/storage -- -r15 -n1
@@ -392,7 +391,37 @@ A list for all the possible `par2` arguments can be found here:
 
 https://github.com/Parchive/par2cmdline#using-par2cmdline
 
-With the exception of the `-R` argument (as par2cron allows no recursion).
+## Creation Modes
+
+The `create` mode of par2cron offers three distinct operation modes:
+
+| Mode               | Purpose (within the folder a marker was found in)   |
+| :----------------- | :-------------------------------------------------- |
+| `folder` (default) | Creates a PAR2 set for all files                    |
+| `file`             | Creates a PAR2 set for each file                    |
+| `recursive`        | Creates a PAR2 set for all files and folders        |
+
+The default, `folder` mode, creates one combined PAR2 set for all files in the
+folder the marker file was found in. This is useful for medium-sized sets of
+data where multiple PAR2 sets would unnecessarily pollute the folder. In folder
+mode, unless changed through below means, PAR2 sets created for found marker
+files will assume the name of the directory they reside in, so the PAR2 set for
+files within `/mnt/storage/Pictures` will be named `Pictures.par2`.
+
+The `file` mode creates one PAR2 set for each file of the folder instead, which
+can be useful for large sets of data where verification time may be a concern.
+The disadvantage is that more files are produced, cluttering directories more.
+In file mode, any PAR2 sets that are created will always be named after the file
+they are meant to protect, beware that this is not changeable (at this time).
+
+The `recursive` mode creates one combined PAR2 set for the entire directory tree
+of the folder the marker file was found in (so all files and folders). This may
+be useful in certain situations, but is discouraged because it makes it harder
+to recognize or remember which files (and folders) a PAR2 set is protecting. In
+recursive mode, PAR2 sets created for found marker files will also assume the
+name of the directory they reside in, unless changed by marker configuration.
+It is not recommended to set `recursive` mode as default, but instead use the
+marker configurations on a per-job basis (read more about this further below).
 
 ## Marker Files
 
@@ -407,11 +436,9 @@ of failure, the creation is retried with the next run. If a same-named PAR2 set
 is already present in the directory, the marker file is skipped and a warning
 presented to the user (not resulting in a non-zero exit code).
 
-Subfolders are not considered for the created PAR2 set, as par2cron promotes a
-clear mental model of "One PAR2 per folder". This helps to reduce cognitive load
-and wondering "Which files did this PAR2 protect again?". If you wish to create
-recursive PAR2 sets (which we do not recommend), you can use other software and
-then import these into your par2cron verification cycle (refer to `verify` usage).
+By default, subfolders are not considered for the created PAR2 set. par2cron
+promotes a clear mental model of "One PAR2 per folder". This helps to reduce
+cognitive load and wondering "Which files did this PAR2 protect again?".
 
 ```
 /mnt/storage/Pictures/
@@ -420,6 +447,9 @@ then import these into your par2cron verification cycle (refer to `verify` usage
 ├── beach.jpg  <-- will be protected using PAR2
 └── sunset.jpg <-- will be protected using PAR2
 ```
+
+If you wish to create recursive PAR2 sets, you should use marker configurations
+to set this on a per-job basis (although we recommend adopting the above model).
 
 Users wanting to re-create any of their PAR2 sets (having added or updated files)
 simply need to delete that PAR2 set, placing a new marker file into the directory.
@@ -462,6 +492,11 @@ For more control, or *replacing* the entire default arguments that are given
 to `par2` (again only for the individual creation job), read below about marker
 configuration (the optional content that can be placed within a marker file).
 
+For convenience, the `par2` argument `-R` (when found in a marker filename)
+will also automatically set creation mode to `recursive` for that job. As a
+result, any marker file named `_par2cron_R` will override to recursive mode,
+even if this was not specifically set through the YAML marker configuration.
+
 ### Marker Configuration
 
 In most cases a marker file will have no content, but for maximum control over
@@ -484,7 +519,7 @@ args: ["-r30", "-n1"]
 # Override the glob pattern for which files in the directory to protect
 glob: "*.iso"
 
-# Override the creation mode (per-file or per-folder) [file|folder]
+# Override the creation mode, create a PAR2 set per [file|folder|recursive]
 mode: "folder"
 
 # Override whether to verify the PAR2 set after creation
@@ -495,26 +530,8 @@ hidden: true
 ```
 
 The directives are designed to be easy to remember, although for the rare case
-that you should need such a marker configuration a little cheat-sheet is to be
-recommended, because YAML directive errors will result in a non-zero exit code.
-
-### Folder Mode vs. File Mode
-
-The `create` mode of par2cron offers two distinct operation modes. The default,
-`folder` mode, creates one PAR2 set for the entire folder the marker file was
-found in. This is useful for medium-sized sets of data where multiple PAR2 sets
-would unnecessarily pollute the folder.
-
-In folder mode, unless changed through below means, PAR2 sets created for found
-marker files will assume the name of the directory they reside in, so the PAR2
-set for files within `/mnt/storage/Pictures` will be named `Pictures.par2`.
-
-The `file` mode creates one PAR2 set for each file of the folder instead, which
-can be useful for large sets of data where verification time may be a concern.
-The disadvantage is that more files are produced, cluttering directories more.
-
-In file mode, any PAR2 sets that are created will always be named after the file
-they are meant to protect, beware that this is not changeable (at this time).
+that you should need such a marker configuration [a little cheat-sheet](QUICKGUIDE)
+is to be recommended, because YAML errors will result in a non-zero exit code.
 
 ## Ignore Files
 
@@ -544,11 +561,6 @@ data. It simply has no concept of data being updated, instead flagging such
 updates as possible corruption. If you need to update any protected files,
 you will need to manually delete the PAR2 set and then have it recreated using
 the marker file approach (equals the process for new sets of protectable data).
-
-A marker file only triggers PAR2 creation for files in its immediate directory.
-It will not recurse/traverse into subdirectories. To protect a directory tree,
-you must place a marker file in each specific folder you wish to secure. As a
-result, the `par2` argument `-R` has no effect with the `create` command.
 
 par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in

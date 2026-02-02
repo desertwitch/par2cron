@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log/slog"
 	"path/filepath"
 	"regexp"
 
+	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/spf13/afero"
 )
 
@@ -15,13 +15,13 @@ var numberedFilePattern = regexp.MustCompile(`\.\d+$`)
 
 type backupPurger struct {
 	fsys afero.Fs
-	log  *slog.Logger
+	log  *logging.Logger
 
 	dir    string
 	before map[string]struct{}
 }
 
-func newBackupPurger(fsys afero.Fs, log *slog.Logger, dir string) (*backupPurger, error) {
+func newBackupPurger(fsys afero.Fs, log *logging.Logger, dir string) (*backupPurger, error) {
 	p := &backupPurger{
 		fsys: fsys,
 		log:  log,

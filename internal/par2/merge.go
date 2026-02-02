@@ -1,0 +1,200 @@
+package par2
+
+import (
+	"fmt"
+	"slices"
+)
+
+// mergedSet is a helper struct for merged together [Set] information.
+type mergedSet struct {
+	setID              Hash                // Dataset ID
+	mainPacket         *MainPacket         // Main packet (can be nil)
+	recoveryFiles      map[Hash]FilePacket // Protected (recovery) IDs
+	nonRecoveryFiles   map[Hash]FilePacket // Auxiliary (non-recovery) IDs
+	strayFiles         map[Hash]FilePacket // Stray (unlisted) packets
+	missingRecovery    map[Hash]struct{}   // Missing (listed, not found) IDs
+	missingNonRecovery map[Hash]struct{}   // Missing (listed, not found) IDs
+}
+
+// mergeFiles combines multiple PAR2 [File] into a unified [FileSet].
+// It merges sets with the same SetID, attempting to resolve missing/stray
+// packets across files, and validating that MainPackets are all consistent.
+func mergeFiles(files []File) (*FileSet, error) {
+	// Group and merge all sets by SetID
+	mergedSets, err := groupSetsByID(files)
+	if err != nil {
+		return nil, fmt.Errorf("failed to group sets: %w", err)
+	}
+
+	// Preserve set order from first file
+	order := buildSetOrder(files, mergedSets)
+
+	// Build final merged sets
+	results := buildMergedSets(order, mergedSets)
+
+	return &FileSet{
+		Files:      slices.Clone(files),
+		SetsMerged: results,
+	}, nil
+}
+
+// groupSetsByID groups sets of all [File] by their SetID.
+// It returns an [errUnresolvableConflict] in case of conflicts.
+func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
+	mergedSets := make(map[Hash]*mergedSet)
+
+	for _, file := range files {
+		for _, set := range file.Sets {
+			ms, exists := mergedSets[set.SetID]
+			if !exists {
+				ms = &mergedSet{
+					setID:              set.SetID,
+					recoveryFiles:      make(map[Hash]FilePacket),
+					nonRecoveryFiles:   make(map[Hash]FilePacket),
+					strayFiles:         make(map[Hash]FilePacket),
+					missingRecovery:    make(map[Hash]struct{}),
+					missingNonRecovery: make(map[Hash]struct{}),
+				}
+				mergedSets[set.SetID] = ms
+			}
+
+			// Validate MainPacket consistency
+			if set.MainPacket != nil {
+				if ms.mainPacket == nil {
+					// The packet belongs to the set, so copy it.
+					ms.mainPacket = set.MainPacket.Copy()
+				} else if !ms.mainPacket.Equal(set.MainPacket) {
+					// Two differing main packets with the same ID.
+					return nil, fmt.Errorf("%w: conflicting main packets in same set", errUnresolvableConflict)
+				}
+			}
+
+			// Merge all files
+			for _, fp := range set.RecoverySet {
+				ms.recoveryFiles[fp.FileID] = fp
+			}
+			for _, fp := range set.NonRecoverySet {
+				ms.nonRecoveryFiles[fp.FileID] = fp
+			}
+			for _, fp := range set.StrayPackets {
+				ms.strayFiles[fp.FileID] = fp
+			}
+
+			// Collect missing IDs
+			for _, id := range set.MissingRecoveryPackets {
+				ms.missingRecovery[id] = struct{}{}
+			}
+			for _, id := range set.MissingNonRecoveryPackets {
+				ms.missingNonRecovery[id] = struct{}{}
+			}
+		}
+	}
+
+	return mergedSets, nil
+}
+
+// buildSetOrder creates an ordered list of SetIDs, preserving file order.
+// Order is by appearance inside [File] according to order of the [File] slice.
+func buildSetOrder(files []File, mergedSets map[Hash]*mergedSet) []Hash {
+	seen := make(map[Hash]bool)
+	order := []Hash{}
+
+	// Add sets from each file in order, preserving their original sequence
+	for _, file := range files {
+		for _, set := range file.Sets {
+			if _, exists := mergedSets[set.SetID]; exists && !seen[set.SetID] {
+				order = append(order, set.SetID)
+				seen[set.SetID] = true
+			}
+		}
+	}
+
+	return order
+}
+
+// buildMergedSets converts a map[Hash]*mergedSet to a final [Set] slice.
+func buildMergedSets(order []Hash, mergedSets map[Hash]*mergedSet) []Set {
+	results := make([]Set, 0, len(order))
+
+	for _, id := range order {
+		ms := mergedSets[id]
+
+		// Resolve missing and stray packets
+		ms.resolveUnlisted()
+
+		// Build final lists
+		recoveryList := make([]FilePacket, 0, len(ms.recoveryFiles))
+		for _, fp := range ms.recoveryFiles {
+			recoveryList = append(recoveryList, fp)
+		}
+		sortFilePackets(recoveryList)
+
+		nonRecoveryList := make([]FilePacket, 0, len(ms.nonRecoveryFiles))
+		for _, fp := range ms.nonRecoveryFiles {
+			nonRecoveryList = append(nonRecoveryList, fp)
+		}
+		sortFilePackets(nonRecoveryList)
+
+		strayList := make([]FilePacket, 0, len(ms.strayFiles))
+		for _, fp := range ms.strayFiles {
+			strayList = append(strayList, fp)
+		}
+		sortFilePackets(strayList)
+
+		recoveryMissing := make([]Hash, 0, len(ms.missingRecovery))
+		for h := range ms.missingRecovery {
+			recoveryMissing = append(recoveryMissing, h)
+		}
+		sortFileIDs(recoveryMissing)
+
+		nonRecoveryMissing := make([]Hash, 0, len(ms.missingNonRecovery))
+		for h := range ms.missingNonRecovery {
+			nonRecoveryMissing = append(nonRecoveryMissing, h)
+		}
+		sortFileIDs(nonRecoveryMissing)
+
+		results = append(results, Set{
+			SetID:                     id,
+			MainPacket:                ms.mainPacket.Copy(),
+			RecoverySet:               recoveryList,
+			NonRecoverySet:            nonRecoveryList,
+			StrayPackets:              strayList,
+			MissingRecoveryPackets:    recoveryMissing,
+			MissingNonRecoveryPackets: nonRecoveryMissing,
+		})
+	}
+
+	return results
+}
+
+// resolveUnlisted attempts to resolve missing files from stray packets,
+// and removes strays/missing that are already in recovery/non-recovery lists.
+func (ms *mergedSet) resolveUnlisted() {
+	// Remove strays/missing that are already in recovery or non-recovery lists
+	for id := range ms.recoveryFiles {
+		delete(ms.strayFiles, id)
+		delete(ms.missingRecovery, id)
+	}
+	for id := range ms.nonRecoveryFiles {
+		delete(ms.strayFiles, id)
+		delete(ms.missingNonRecovery, id)
+	}
+
+	// Check if any missing recovery files are in strays
+	for id := range ms.missingRecovery {
+		if fp, found := ms.strayFiles[id]; found {
+			ms.recoveryFiles[id] = fp
+			delete(ms.strayFiles, id)
+			delete(ms.missingRecovery, id)
+		}
+	}
+
+	// Check if any missing non-recovery files are in strays
+	for id := range ms.missingNonRecovery {
+		if fp, found := ms.strayFiles[id]; found {
+			ms.nonRecoveryFiles[id] = fp
+			delete(ms.strayFiles, id)
+			delete(ms.missingNonRecovery, id)
+		}
+	}
+}

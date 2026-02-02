@@ -49,11 +49,14 @@ func (prog *Service) parseMarkerFile(markerPath string, opts Options) (*MarkerCo
 	logger.Debug("Found marker file")
 
 	cfg := NewMarkerConfig(markerPath, opts)
+
 	prog.parseMarkerFilename(markerPath, cfg)
 
 	if err := prog.parseMarkerContent(markerPath, cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse marker file: %w", err)
 	}
+
+	prog.considerRecursiveMarker(markerPath, cfg)
 
 	return cfg, nil
 }
@@ -145,6 +148,36 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 	}
 
 	return nil
+}
+
+func (prog *Service) considerRecursiveMarker(markerPath string, cfg *MarkerConfig) {
+	if cfg.Par2Mode.Value != schema.CreateRecursiveMode && slices.Contains(*cfg.Par2Args, "-R") {
+		logger := prog.markerLogger(markerPath, nil, nil)
+
+		before := cfg.Par2Mode.Value
+		_ = cfg.Par2Mode.Set(schema.CreateRecursiveMode)
+
+		logger.Info(
+			"Assuming recursive mode due to set par2 argument -R (recursive)",
+			"mode-before", before,
+			"mode-after", cfg.Par2Mode.Value,
+			"args", *cfg.Par2Args,
+		)
+	}
+
+	if cfg.Par2Mode.Value == schema.CreateRecursiveMode && !slices.Contains(*cfg.Par2Args, "-R") {
+		logger := prog.markerLogger(markerPath, nil, nil)
+
+		before := slices.Clone(*cfg.Par2Args)
+		*cfg.Par2Args = append(*cfg.Par2Args, "-R")
+
+		logger.Debug(
+			"Adding -R to par2 argument slice (due to set recursive mode)",
+			"mode", cfg.Par2Mode.Value,
+			"args-before", before,
+			"args-after", *cfg.Par2Args,
+		)
+	}
 }
 
 func (prog *Service) modifyOrAddArgument(cfg *MarkerConfig, arg string, value string, markerPath string) {

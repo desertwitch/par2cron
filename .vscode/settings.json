@@ -11,5 +11,6 @@
     "go.formatFlags": [
     "fmt",
     "--stdin"
-    ]
+    ],
+    "markdown.extension.toc.updateOnSave": false
 }

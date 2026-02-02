@@ -45,3 +45,10 @@ func NewLogger(opts Options) *Logger {
 		Options: opts,
 	}
 }
+
+func (l *Logger) With(args ...any) *Logger {
+	return &Logger{
+		Logger:  l.Logger.With(args...),
+		Options: l.Options,
+	}
+}
