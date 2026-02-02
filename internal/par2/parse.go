@@ -75,12 +75,14 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 				break // No more packets.
 			}
 			if errors.Is(err, errSkipPacket) {
+				// Reader was already advanced inside readNextPackage(),
+				// this is more efficient as it knows the packet length.
 				continue // Irrelevant packet.
 			}
 
-			// Reposition the reader 1 byte after the broken packet's
-			// magic sequence, so it's not re-detected endlessly, but
-			// we can still find other non-corrupt packets from onwards.
+			// Reposition the reader 1 byte after the pre-parse position,
+			// this avoids corrupt packets being reparsed endlessly and we
+			// can still find other non-corrupt packets from them onwards.
 			if _, err := r.Seek(before+1, io.SeekStart); err != nil {
 				return nil, fmt.Errorf("%w: failed to seek past corrupt packet: %w",
 					errFileCorrupted, err)
