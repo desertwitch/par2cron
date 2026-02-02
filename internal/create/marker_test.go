@@ -609,6 +609,6 @@ func Test_Service_considerRecursiveMarker_FileModeWithoutRArg_Success(t *testing
 	require.Equal(t, schema.CreateFileMode, cfg.Par2Mode.Value)
 	require.Len(t, *cfg.Par2Args, 2)
 	require.Equal(t, "-r10", (*cfg.Par2Args)[0])
-	require.Equal(t, "-R", (*cfg.Par2Args)[1])
+	require.Equal(t, "-n3", (*cfg.Par2Args)[1])
 	require.NotContains(t, *cfg.Par2Args, "-R")
 }
