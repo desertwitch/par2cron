@@ -393,7 +393,7 @@ https://github.com/Parchive/par2cmdline#using-par2cmdline
 
 ## Creation Modes
 
-The `create` mode of par2cron offers 3 distinct operation modes:
+The `create` mode of par2cron offers three distinct operation modes:
 
 | Mode               | Purpose (within the folder a marker was found in)   |
 | :----------------- | :-------------------------------------------------- |
