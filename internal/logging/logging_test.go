@@ -60,3 +60,29 @@ func Test_NewLogger_AllLevels_Success(t *testing.T) {
 		require.NotNil(t, handler.Logger)
 	}
 }
+
+// Expectation: With should return a new Logger with added attributes while preserving Options.
+func Test_Logger_With_Success(t *testing.T) {
+	t.Parallel()
+
+	buf := &testutil.SafeBuffer{}
+	ls := Options{
+		Logout:   buf,
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	logger := NewLogger(ls)
+	childLogger := logger.With("key", "value", "count", 42)
+
+	require.NotNil(t, childLogger)
+	require.NotSame(t, logger, childLogger)
+	require.Equal(t, logger.Options, childLogger.Options)
+
+	childLogger.Info("test message")
+	output := buf.String()
+	require.Contains(t, output, "key")
+	require.Contains(t, output, "value")
+	require.Contains(t, output, "count")
+	require.Contains(t, output, "42")
+}
