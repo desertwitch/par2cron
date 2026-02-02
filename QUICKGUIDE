@@ -125,7 +125,7 @@ All directives are optional - only specify what you need to override.
 Creation modes:
 ================================================================================
 
-  folder (default): One combined PAR2 set for all files in the directory
+  folder (default): One combined PAR2 set for all files in the folder
   file: Creates a separate PAR2 set for each file (useful for large files)
   recursive: One combined PAR2 set for all files and folders (directory tree)
 
