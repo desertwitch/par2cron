@@ -44,6 +44,7 @@ func Test_NewJob_Success(t *testing.T) {
 	require.Equal(t, "test"+schema.Par2Extension+schema.ManifestExtension, job.manifestName)
 	require.Equal(t, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, job.manifestPath)
 	require.True(t, job.par2Verify)
+	require.False(t, job.hiddenFiles)
 }
 
 // Expectation: The correct paths should be derived from the [createConfig].
@@ -72,6 +73,7 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 	require.Equal(t, ".test"+schema.Par2Extension+schema.ManifestExtension, job.manifestName)
 	require.Equal(t, "/data/folder/.test"+schema.Par2Extension+schema.ManifestExtension, job.manifestPath)
 	require.True(t, job.par2Verify)
+	require.True(t, job.hiddenFiles)
 }
 
 // Expectation: The relevant fields should be changed for file mode, others not.

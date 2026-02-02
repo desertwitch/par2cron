@@ -64,6 +64,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 
 type Job struct {
 	workingDir   string
+	hiddenFiles  bool
 	markerPath   string
 	par2Mode     string
 	par2Name     string
@@ -83,6 +84,7 @@ func NewJob(markerPath string, cfg MarkerConfig) *Job {
 	if *cfg.HideFiles && !strings.HasPrefix(cj.par2Name, ".") {
 		cj.par2Name = "." + cj.par2Name
 	}
+	cj.hiddenFiles = *cfg.HideFiles
 
 	cj.par2Mode = cfg.Par2Mode.Value
 	cj.par2Args = slices.Clone(*cfg.Par2Args)
