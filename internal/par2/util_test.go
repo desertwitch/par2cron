@@ -2,12 +2,229 @@ package par2
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
+
+// Expectation: MainPacket.Copy should return nil for nil receiver.
+func Test_MainPacket_Copy_NilReceiver_Success(t *testing.T) {
+	t.Parallel()
+
+	var m *MainPacket
+	cpy := m.Copy()
+
+	require.Nil(t, cpy)
+}
+
+// Expectation: MainPacket.Copy should create a deep copy.
+func Test_MainPacket_Copy_DeepCopy_Success(t *testing.T) {
+	t.Parallel()
+
+	original := &MainPacket{
+		SetID:          Hash(sID),
+		SliceSize:      4096,
+		RecoveryIDs:    []Hash{Hash(idA), Hash(idB)},
+		NonRecoveryIDs: []Hash{Hash(idC)},
+	}
+
+	cpy := original.Copy()
+
+	require.NotNil(t, cpy)
+	require.NotSame(t, original, cpy)
+	require.Equal(t, original, cpy)
+
+	// Modify original and verify copy is unaffected
+	original.RecoveryIDs[0] = Hash(idC)
+	require.NotEqual(t, original, cpy)
+}
+
+// Expectation: MainPacket.Copy should handle empty slices.
+func Test_MainPacket_Copy_EmptySlices_Success(t *testing.T) {
+	t.Parallel()
+
+	original := &MainPacket{
+		SetID:          Hash(sID),
+		SliceSize:      4096,
+		RecoveryIDs:    []Hash{},
+		NonRecoveryIDs: []Hash{},
+	}
+
+	cpy := original.Copy()
+
+	require.NotNil(t, cpy)
+	require.NotSame(t, original, cpy)
+	require.Equal(t, original, cpy)
+}
+
+// Expectation: MainPacket.Copy should handle nil slices.
+func Test_MainPacket_Copy_NilSlices_Success(t *testing.T) {
+	t.Parallel()
+
+	original := &MainPacket{
+		SetID:          Hash(sID),
+		SliceSize:      4096,
+		RecoveryIDs:    nil,
+		NonRecoveryIDs: nil,
+	}
+
+	cpy := original.Copy()
+
+	require.NotNil(t, cpy)
+	require.NotSame(t, original, cpy)
+	require.Equal(t, original, cpy)
+}
+
+// Expectation: MainPacket.Equal should return true for both nil.
+func Test_MainPacket_Equal_BothNil_Success(t *testing.T) {
+	t.Parallel()
+
+	var a, b *MainPacket
+
+	require.True(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return false when receiver is nil.
+func Test_MainPacket_Equal_ReceiverNil_Success(t *testing.T) {
+	t.Parallel()
+
+	var a *MainPacket
+	b := &MainPacket{SetID: Hash(sID), SliceSize: 4096}
+
+	require.False(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return false when other is nil.
+func Test_MainPacket_Equal_OtherNil_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{SetID: Hash(sID), SliceSize: 4096}
+	var b *MainPacket
+
+	require.False(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return true for identical packets.
+func Test_MainPacket_Equal_Identical_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{
+		SetID:          Hash(sID),
+		SliceSize:      4096,
+		RecoveryIDs:    []Hash{Hash(idA), Hash(idB)},
+		NonRecoveryIDs: []Hash{Hash(idC)},
+	}
+	b := &MainPacket{
+		SetID:          Hash(sID),
+		SliceSize:      4096,
+		RecoveryIDs:    []Hash{Hash(idA), Hash(idB)},
+		NonRecoveryIDs: []Hash{Hash(idC)},
+	}
+
+	require.NotSame(t, a, b)
+	require.True(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return false for different SetID.
+func Test_MainPacket_Equal_DifferentSetID_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{SetID: Hash(idA), SliceSize: 4096}
+	b := &MainPacket{SetID: Hash(idB), SliceSize: 4096}
+
+	require.False(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return false for different SliceSize.
+func Test_MainPacket_Equal_DifferentSliceSize_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{SetID: Hash(sID), SliceSize: 4096}
+	b := &MainPacket{SetID: Hash(sID), SliceSize: 8192}
+
+	require.False(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return false for different RecoveryIDs.
+func Test_MainPacket_Equal_DifferentRecoveryIDs_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}}
+	b := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idB)}}
+
+	require.False(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return false for different NonRecoveryIDs.
+func Test_MainPacket_Equal_DifferentNonRecoveryIDs_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{SetID: Hash(sID), SliceSize: 4096, NonRecoveryIDs: []Hash{Hash(idA)}}
+	b := &MainPacket{SetID: Hash(sID), SliceSize: 4096, NonRecoveryIDs: []Hash{Hash(idB)}}
+
+	require.False(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should return false for different RecoveryIDs length.
+func Test_MainPacket_Equal_DifferentRecoveryIDsLength_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}}
+	b := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA), Hash(idB)}}
+
+	require.False(t, a.Equal(b))
+}
+
+// Expectation: MainPacket.Equal should handle empty vs nil slices.
+func Test_MainPacket_Equal_EmptyVsNilSlices_Success(t *testing.T) {
+	t.Parallel()
+
+	a := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{}}
+	b := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: nil}
+
+	// slices.Equal treats nil and empty as equal
+	require.True(t, a.Equal(b))
+}
+
+// Expectation: ParserPanicError.Error should return formatted message.
+func Test_ParserPanicError_Error_Success(t *testing.T) {
+	t.Parallel()
+
+	err := &ParserPanicError{
+		Value: "test panic",
+		Stack: []byte("stack trace"),
+	}
+
+	require.Equal(t, "parser panic: test panic", err.Error())
+}
+
+// Expectation: ParserPanicError.Error should handle different panic types.
+func Test_ParserPanicError_Error_DifferentTypes_Success(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		value    any
+		expected string
+	}{
+		{"string", "panic message", "parser panic: panic message"},
+		{"int", 42, "parser panic: 42"},
+		{"error", errors.New("an error"), "parser panic: an error"},
+		{"nil", nil, "parser panic: <nil>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := &ParserPanicError{Value: tt.value}
+			require.Equal(t, tt.expected, err.Error())
+		})
+	}
+}
 
 // Expectation: Hash.MarshalJSON should correctly encode hash to hex string.
 func Test_Hash_MarshalJSON_Success(t *testing.T) {
@@ -313,8 +530,186 @@ func Test_ParseFile_MultipleSets_Success(t *testing.T) {
 
 	f, err := ParseFile(fs, "/multi.par2", false)
 	require.NoError(t, err)
+
 	require.NotNil(t, f)
 	require.Len(t, f.Sets, 2)
+}
+
+// Expectation: ParseFile should set correct filename from path.
+func Test_ParseFile_CorrectFilename_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	require.NoError(t, afero.WriteFile(fs, "/some/deep/path/myfile.par2", packet, 0o644))
+
+	f, err := ParseFile(fs, "/some/deep/path/myfile.par2", false)
+	require.NoError(t, err)
+
+	require.Equal(t, "myfile.par2", f.Name)
+}
+
+// Expectation: ParseFileSet should parse index and volume files.
+func Test_ParseFileSet_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB}, nil, sID)
+	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	fileB := buildFileDescPacket("b.txt", 200, idB, sID)
+
+	indexData := slices.Concat(mainPacket, fileA)
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
+
+	volData := slices.Concat(mainPacket, fileB)
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
+
+	result, err := ParseFileSet(fs, "/archive.par2", false)
+	require.NoError(t, err)
+
+	require.NotNil(t, result)
+	require.Len(t, result.Files, 2)
+	require.Len(t, result.SetsMerged, 1)
+	require.Len(t, result.SetsMerged[0].RecoverySet, 2)
+}
+
+// Expectation: ParseFileSet should fail when no files can be parsed.
+func Test_ParseFileSet_NoParseableFiles_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	_, err := ParseFileSet(fs, "/notexist.par2", false)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errFileCorrupted)
+}
+
+// Expectation: ParseFileSet should return empty unparseable files.
+func Test_ParseFileSet_SomeUnparseableFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+
+	indexData := slices.Concat(mainPacket, fileA)
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
+
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", []byte("garbage"), 0o644))
+
+	result, err := ParseFileSet(fs, "/archive.par2", false)
+	require.NoError(t, err)
+
+	require.NotNil(t, result)
+	require.Len(t, result.Files, 2)
+	require.Empty(t, result.Files[1].Sets)
+}
+
+// Expectation: ParseFileSet should handle only volume files existing.
+func Test_ParseFileSet_NoIndexButVolumeFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	volData := slices.Concat(mainPacket, fileA)
+
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
+
+	result, err := ParseFileSet(fs, "/archive.par2", false)
+	require.NoError(t, err)
+
+	require.NotNil(t, result)
+	require.Len(t, result.Files, 1)
+	require.NotEmpty(t, result.SetsMerged)
+}
+
+// Expectation: ParseFileSet should not include index file twice.
+func Test_ParseFileSet_NoDuplicateIndex_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	indexData := slices.Concat(mainPacket, fileA)
+
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
+
+	result, err := ParseFileSet(fs, "/archive.par2", false)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Files, 1)
+}
+
+// Expectation: ParseFileSet should merge multiple volume files.
+func Test_ParseFileSet_MergesMultipleVolumes_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB, idC}, nil, sID)
+	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	fileB := buildFileDescPacket("b.txt", 200, idB, sID)
+	fileC := buildFileDescPacket("c.txt", 300, idC, sID)
+
+	indexData := slices.Concat(mainPacket, fileA)
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
+
+	vol1Data := slices.Concat(mainPacket, fileB)
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", vol1Data, 0o644))
+
+	vol2Data := slices.Concat(mainPacket, fileC)
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol01+02.par2", vol2Data, 0o644))
+
+	result, err := ParseFileSet(fs, "/archive.par2", false)
+	require.NoError(t, err)
+
+	require.NotNil(t, result)
+	require.Len(t, result.Files, 3)
+	require.Len(t, result.SetsMerged, 1)
+	require.Len(t, result.SetsMerged[0].RecoverySet, 3)
+}
+
+// Expectation: ParseFileSet should handle conflicting main packets.
+func Test_ParseFileSet_ConflictingMainPackets_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	mainPacket1 := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	mainPacket2 := buildMainPacket(8192, [][16]byte{idA}, nil, sID)
+
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", mainPacket1, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", mainPacket2, 0o644))
+
+	_, err := ParseFileSet(fs, "/archive.par2", false)
+	require.ErrorIs(t, err, errUnresolvableConflict)
+}
+
+// Expectation: ParseFileSet should handle empty index file with valid volumes.
+func Test_ParseFileSet_EmptyIndexValidVolumes_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", []byte{}, 0o644))
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	volData := slices.Concat(mainPacket, fileA)
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
+
+	result, err := ParseFileSet(fs, "/archive.par2", false)
+	require.NoError(t, err)
+
+	require.NotNil(t, result)
+	require.Len(t, result.Files, 2)
+	require.NotEmpty(t, result.SetsMerged)
 }
 
 // Expectation: sortFilePackets should sort by name first.

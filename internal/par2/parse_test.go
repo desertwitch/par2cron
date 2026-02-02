@@ -292,6 +292,481 @@ func Test_Parse_MultipleUnicodeOverrides_Success(t *testing.T) {
 	require.Equal(t, "ファイル2.txt", sets[0].RecoverySet[1].Name)
 }
 
+// Expectation: Parse should handle packet with valid magic but invalid content.
+func Test_Parse_InvalidPacketContent_Success(t *testing.T) {
+	t.Parallel()
+
+	// Create a header with valid magic but invalid content that will cause parse error
+	header := make([]byte, 64)
+	copy(header[0:8], packetMagic)
+	binary.LittleEndian.PutUint64(header[8:16], 64) // Minimum length (header only)
+	copy(header[48:64], mainType)
+
+	// Fix checksum
+	hasher := md5.New()
+	hasher.Write(header[packetHashOffset:])
+	copy(header[16:32], hasher.Sum(nil))
+
+	// This should trigger recovery because body is too short for main packet
+	// Then EOF, resulting in empty sets
+	sets, err := Parse(bytes.NewReader(header), false)
+	require.NoError(t, err)
+	require.Empty(t, sets)
+}
+
+// Expectation: Parse should recover from a too short packet by seeking to next.
+func Test_Parse_RecoveryAfterTooShortPacket_AtStart_Success(t *testing.T) {
+	t.Parallel()
+
+	garbagePacket := slices.Concat(packetMagic, []byte("GARBAGE"))
+
+	packets := slices.Concat(
+		garbagePacket,
+		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
+		buildFileDescPacket("test.txt", 100, idA, sID),
+	)
+
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
+// Expectation: Parse should recover from a too short packet by seeking to next.
+func Test_Parse_RecoveryAfterTooShortPacket_InMiddle_Success(t *testing.T) {
+	t.Parallel()
+
+	garbagePacket := slices.Concat(packetMagic, []byte("GARBAGE"))
+
+	packets := slices.Concat(
+		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
+		garbagePacket,
+		buildFileDescPacket("test.txt", 100, idA, sID),
+	)
+
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
+// Expectation: Parse should recover from a too short packet by seeking to next.
+func Test_Parse_RecoveryAfterTooShortPacket_AtEnd_Success(t *testing.T) {
+	t.Parallel()
+
+	garbagePacket := slices.Concat(packetMagic, []byte("GARBAGE"))
+
+	packets := slices.Concat(
+		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
+		buildFileDescPacket("test.txt", 100, idA, sID),
+		garbagePacket,
+	)
+
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
+// Expectation: Parse should recover from a corrupt packet by seeking to next.
+func Test_Parse_RecoveryAfterCorruptPacket_AtStart_Success(t *testing.T) {
+	t.Parallel()
+
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	length := binary.LittleEndian.Uint64(corruptPacket[8:16])
+	binary.LittleEndian.PutUint64(corruptPacket[8:16], length+1) // misaligned
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
+	packets := slices.Concat(corruptPacket, mainPacket, validPacket)
+
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
+// Expectation: Parse should recover from a corrupt packet by seeking to next.
+func Test_Parse_RecoveryAfterCorruptPacket_InMiddle_Success(t *testing.T) {
+	t.Parallel()
+
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	length := binary.LittleEndian.Uint64(corruptPacket[8:16])
+	binary.LittleEndian.PutUint64(corruptPacket[8:16], length+1) // misaligned
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
+	packets := slices.Concat(mainPacket, corruptPacket, validPacket)
+
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
+// Expectation: Parse should recover from a corrupt packet by seeking to next.
+func Test_Parse_RecoveryAfterCorruptPacket_AtEnd_Success(t *testing.T) {
+	t.Parallel()
+
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	length := binary.LittleEndian.Uint64(corruptPacket[8:16])
+	binary.LittleEndian.PutUint64(corruptPacket[8:16], length+1) // misaligned
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
+	packets := slices.Concat(mainPacket, validPacket, corruptPacket)
+
+	sets, err := Parse(bytes.NewReader(packets), false)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Empty(t, sets[0].MissingRecoveryPackets)
+	require.Empty(t, sets[0].MissingNonRecoveryPackets)
+	require.Empty(t, sets[0].StrayPackets)
+}
+
+// Expectation: Parse should return error when too many sets are encountered.
+func Test_Parse_TooManySets_Error(t *testing.T) {
+	t.Parallel()
+
+	// Build packets for maxSets + 1 different sets
+	var packets []byte
+	for i := range maxSets + 1 {
+		setID := [16]byte{byte(i)}
+		fileID := [16]byte{byte(i)}
+		packets = slices.Concat(packets,
+			buildMainPacket(4096, [][16]byte{fileID}, nil, setID),
+		)
+	}
+
+	_, err := Parse(bytes.NewReader(packets), false)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errTooManySets)
+}
+
+// Expectation: setGrouper.Insert should return error for unknown packet type.
+func Test_setGrouper_Insert_UnknownPacketType_Error(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	err := grouper.Insert("not a packet")
+	require.ErrorIs(t, err, errUnhandledPacket)
+}
+
+// Expectation: setGrouper.Insert should return error when too many sets.
+func Test_setGrouper_Insert_TooManySets_Error(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// Fill up to maxSets
+	for i := range maxSets {
+		setID := Hash{byte(i)}
+		err := grouper.Insert(&MainPacket{SetID: setID, SliceSize: 4096})
+		require.NoError(t, err)
+	}
+
+	// One more should fail
+	err := grouper.Insert(&MainPacket{SetID: Hash{0xFF}, SliceSize: 4096})
+	require.Error(t, err)
+	require.ErrorIs(t, err, errTooManySets)
+}
+
+// Expectation: setGrouper.Insert should return error on conflicting main packets.
+func Test_setGrouper_Insert_ConflictingMainPackets_Error(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	packet1 := &MainPacket{SetID: Hash(sID), SliceSize: 4096}
+	packet2 := &MainPacket{SetID: Hash(sID), SliceSize: 8192} // Different slice size
+
+	err := grouper.Insert(packet1)
+	require.NoError(t, err)
+
+	err = grouper.Insert(packet2)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errUnresolvableConflict)
+}
+
+// Expectation: setGrouper.Insert should accept identical main packets.
+func Test_setGrouper_Insert_IdenticalMainPackets_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	packet1 := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}}
+	packet2 := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}}
+
+	err := grouper.Insert(packet1)
+	require.NoError(t, err)
+
+	err = grouper.Insert(packet2)
+	require.NoError(t, err)
+}
+
+// Expectation: setGrouper.Insert should return error when too many IDs in recovery set.
+func Test_setGrouper_Insert_TooManyRecoveryIDs_Error(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// Create a main packet with maxIDsPerSet + 1 recovery IDs
+	recoveryIDs := make([]Hash, maxIDsPerSet+1)
+	for i := range recoveryIDs {
+		recoveryIDs[i] = Hash{byte(i), byte(i >> 8), byte(i >> 16)}
+	}
+
+	packet := &MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: recoveryIDs}
+
+	err := grouper.Insert(packet)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errTooManyIDs)
+}
+
+// Expectation: setGrouper.Insert should return error when too many IDs in non-recovery set.
+func Test_setGrouper_Insert_TooManyNonRecoveryIDs_Error(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// Create a main packet with maxIDsPerSet + 1 non-recovery IDs
+	nonRecoveryIDs := make([]Hash, maxIDsPerSet+1)
+	for i := range nonRecoveryIDs {
+		nonRecoveryIDs[i] = Hash{byte(i), byte(i >> 8), byte(i >> 16)}
+	}
+
+	packet := &MainPacket{SetID: Hash(sID), SliceSize: 4096, NonRecoveryIDs: nonRecoveryIDs}
+
+	err := grouper.Insert(packet)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errTooManyIDs)
+}
+
+// Expectation: setGrouper.Insert should return error when too many file packets.
+func Test_setGrouper_Insert_TooManyFilePackets_Error(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// First insert a main packet to create the group
+	err := grouper.Insert(&MainPacket{SetID: Hash(sID), SliceSize: 4096})
+	require.NoError(t, err)
+
+	// Fill up to maxFilesPerSet
+	for i := range maxFilesPerSet {
+		fileID := Hash{byte(i), byte(i >> 8), byte(i >> 16)}
+		err := grouper.Insert(&FilePacket{SetID: Hash(sID), FileID: fileID, Name: "test.txt"})
+		require.NoError(t, err)
+	}
+
+	// One more should fail
+	err = grouper.Insert(&FilePacket{SetID: Hash(sID), FileID: Hash{0xFF, 0xFF, 0xFF}, Name: "overflow.txt"})
+	require.Error(t, err)
+	require.ErrorIs(t, err, errTooManyFiles)
+}
+
+// Expectation: setGrouper.Insert should return error when too many unicode packets.
+func Test_setGrouper_Insert_TooManyUnicodePackets_Error(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// First insert a main packet to create the group
+	err := grouper.Insert(&MainPacket{SetID: Hash(sID), SliceSize: 4096})
+	require.NoError(t, err)
+
+	// Fill up to maxFilesPerSet
+	for i := range maxFilesPerSet {
+		fileID := Hash{byte(i), byte(i >> 8), byte(i >> 16)}
+		err := grouper.Insert(&UnicodePacket{SetID: Hash(sID), FileID: fileID, Name: "test.txt"})
+		require.NoError(t, err)
+	}
+
+	// One more should fail
+	err = grouper.Insert(&UnicodePacket{SetID: Hash(sID), FileID: Hash{0xFF, 0xFF, 0xFF}, Name: "overflow.txt"})
+	require.Error(t, err)
+	require.ErrorIs(t, err, errTooManyFiles)
+}
+
+// Expectation: setGrouper.Insert should handle FilePacket correctly.
+func Test_setGrouper_Insert_FilePacket_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	packet := &FilePacket{SetID: Hash(sID), FileID: Hash(idA), Name: "test.txt", Size: 100}
+
+	err := grouper.Insert(packet)
+	require.NoError(t, err)
+
+	require.Len(t, grouper.groups, 1)
+	require.Contains(t, grouper.groups[Hash(sID)].unfilteredASCII, Hash(idA))
+}
+
+// Expectation: setGrouper.Insert should handle UnicodePacket correctly.
+func Test_setGrouper_Insert_UnicodePacket_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	packet := &UnicodePacket{SetID: Hash(sID), FileID: Hash(idA), Name: "日本語.txt"}
+
+	err := grouper.Insert(packet)
+	require.NoError(t, err)
+
+	require.Len(t, grouper.groups, 1)
+	require.Contains(t, grouper.groups[Hash(sID)].unfilteredUnicode, Hash(idA))
+}
+
+// Expectation: setGrouper.Sets should apply unicode override only once.
+func Test_setGrouper_Sets_UnicodeOverrideOnlyOnce_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// Insert main packet, file packet, and unicode packet
+	_ = grouper.Insert(&MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}})
+	_ = grouper.Insert(&FilePacket{SetID: Hash(sID), FileID: Hash(idA), Name: "original.txt", Size: 100})
+	_ = grouper.Insert(&UnicodePacket{SetID: Hash(sID), FileID: Hash(idA), Name: "unicode.txt"})
+
+	sets := grouper.Sets()
+	require.Len(t, sets, 1)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Equal(t, "unicode.txt", sets[0].RecoverySet[0].Name)
+	require.True(t, sets[0].RecoverySet[0].FromUnicode)
+
+	// Call Sets again - should still work correctly
+	sets2 := grouper.Sets()
+	require.Equal(t, "unicode.txt", sets2[0].RecoverySet[0].Name)
+	require.True(t, sets2[0].RecoverySet[0].FromUnicode)
+
+	require.NotSame(t, sets[0].MainPacket, sets2[0].MainPacket) // copies
+}
+
+// Expectation: setGrouper.Sets should not apply unicode override if already applied.
+func Test_setGrouper_Sets_UnicodeAlreadyApplied_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// Insert file packet that already has FromUnicode set
+	_ = grouper.Insert(&MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}})
+
+	filePacket := &FilePacket{SetID: Hash(sID), FileID: Hash(idA), Name: "already_unicode.txt", Size: 100, FromUnicode: true}
+	_ = grouper.Insert(filePacket)
+	_ = grouper.Insert(&UnicodePacket{SetID: Hash(sID), FileID: Hash(idA), Name: "should_not_override.txt"})
+
+	sets := grouper.Sets()
+	require.Len(t, sets, 1)
+	require.Equal(t, "already_unicode.txt", sets[0].RecoverySet[0].Name) // Should NOT be overridden
+}
+
+// Expectation: setGrouper.Sets should handle unicode packet without matching file packet.
+func Test_setGrouper_Sets_OrphanUnicodePacket_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	_ = grouper.Insert(&MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}})
+	_ = grouper.Insert(&UnicodePacket{SetID: Hash(sID), FileID: Hash(idB), Name: "orphan.txt"}) // idB not in recovery
+
+	sets := grouper.Sets()
+	require.Len(t, sets, 1)
+	require.Empty(t, sets[0].RecoverySet) // No file packet for idA
+	require.Len(t, sets[0].MissingRecoveryPackets, 1)
+	require.Equal(t, sets[0].MissingRecoveryPackets[0], Hash(idA))
+}
+
+// Expectation: Parse should handle multiple consecutive corrupted packets.
+func Test_Parse_MultipleCorruptedPackets_Success(t *testing.T) {
+	t.Parallel()
+
+	validPacket := slices.Concat(
+		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
+		buildFileDescPacket("test.txt", 100, idA, sID),
+	)
+
+	// Multiple fake magic sequences followed by garbage
+	garbage1 := []byte("PAR2\x00PKTgarbage1")
+	garbage2 := []byte("PAR2\x00PKTgarbage2")
+	combined := slices.Concat(garbage1, garbage2, validPacket)
+
+	sets, err := Parse(bytes.NewReader(combined), false)
+	require.NoError(t, err)
+	require.Len(t, sets, 1)
+}
+
+// Expectation: setGrouper.Sets should categorize stray packets correctly.
+func Test_setGrouper_Sets_StrayPackets_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// Main packet with idA in recovery
+	_ = grouper.Insert(&MainPacket{SetID: Hash(sID), SliceSize: 4096, RecoveryIDs: []Hash{Hash(idA)}})
+
+	// File packet with idB (not in recovery or non-recovery)
+	_ = grouper.Insert(&FilePacket{SetID: Hash(sID), FileID: Hash(idB), Name: "stray.txt", Size: 100})
+
+	sets := grouper.Sets()
+	require.Len(t, sets, 1)
+	require.Empty(t, sets[0].RecoverySet)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Len(t, sets[0].StrayPackets, 1)
+	require.Equal(t, "stray.txt", sets[0].StrayPackets[0].Name)
+}
+
+// Expectation: setGrouper.Sets should track missing non-recovery packets.
+func Test_setGrouper_Sets_MissingNonRecoveryPackets_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	// Main packet with idA in non-recovery but no file packet for it
+	_ = grouper.Insert(&MainPacket{SetID: Hash(sID), SliceSize: 4096, NonRecoveryIDs: []Hash{Hash(idA)}})
+
+	sets := grouper.Sets()
+	require.Len(t, sets, 1)
+	require.Empty(t, sets[0].NonRecoverySet)
+	require.Len(t, sets[0].MissingNonRecoveryPackets, 1)
+	require.Equal(t, Hash(idA), sets[0].MissingNonRecoveryPackets[0])
+}
+
 // Expectation: readNextPacket should fail when parsePacketHeader returns error.
 func Test_readNextPacket_ParseHeaderError_Error(t *testing.T) {
 	t.Parallel()
@@ -507,6 +982,59 @@ func Test_readNextPacket_MD5ChecksumMismatch_Error(t *testing.T) {
 	require.Contains(t, err.Error(), "failed to validate packet checksum")
 }
 
+// Expectation: seekToNextPacket should find next packet magic.
+func Test_seekToNextPacket_FindsMagic_Success(t *testing.T) {
+	t.Parallel()
+
+	// Create data with garbage followed by valid packet magic
+	garbage := []byte("some random garbage data")
+	validPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	combined := slices.Concat(garbage, validPacket)
+
+	reader := bytes.NewReader(combined)
+
+	// Read past the garbage to trigger seeking
+	_, _ = reader.Read(make([]byte, 10))
+
+	err := seekToNextPacket(reader)
+	require.NoError(t, err)
+
+	// Verify we're at the start of the packet
+	pos, _ := reader.Seek(0, io.SeekCurrent)
+	require.Equal(t, int64(len(garbage)), pos)
+}
+
+// Expectation: seekToNextPacket should return EOF when no packet found.
+func Test_seekToNextPacket_NoPacketFound_Error(t *testing.T) {
+	t.Parallel()
+
+	garbage := []byte("no valid packet magic here at all")
+	reader := bytes.NewReader(garbage)
+
+	err := seekToNextPacket(reader)
+	require.Error(t, err)
+}
+
+// Expectation: seekToNextPacket should handle empty reader.
+func Test_seekToNextPacket_EmptyReader_Error(t *testing.T) {
+	t.Parallel()
+
+	reader := bytes.NewReader([]byte{})
+
+	err := seekToNextPacket(reader)
+	require.Error(t, err)
+}
+
+// Expectation: seekToNextPacket should handle reader shorter than magic.
+func Test_seekToNextPacket_ShortReader_Error(t *testing.T) {
+	t.Parallel()
+
+	reader := bytes.NewReader([]byte("PAR2")) // Shorter than 8-byte magic
+
+	err := seekToNextPacket(reader)
+	require.Error(t, err)
+}
+
 // Expectation: parsePacketHeader should fail on truncated header.
 func Test_parsePacketHeader_TruncatedHeader_Error(t *testing.T) {
 	t.Parallel()
@@ -532,6 +1060,36 @@ func Test_parsePacketHeader_ValidHeader_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1024), parsed.length)
 	require.Equal(t, Hash(idA), parsed.setID)
+}
+
+// Expectation: verifyPacketChecksum should pass for valid checksum.
+func Test_verifyPacketChecksum_ValidChecksum_Success(t *testing.T) {
+	t.Parallel()
+
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+
+	header, err := parsePacketHeader(packet[:64])
+	require.NoError(t, err)
+
+	err = verifyPacketChecksum(header, packet[:64], packet[64:])
+	require.NoError(t, err)
+}
+
+// Expectation: verifyPacketChecksum should fail for invalid checksum.
+func Test_verifyPacketChecksum_InvalidChecksum_Error(t *testing.T) {
+	t.Parallel()
+
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+
+	header, err := parsePacketHeader(packet[:64])
+	require.NoError(t, err)
+
+	// Corrupt the body
+	packet[64] ^= 0xFF
+
+	err = verifyPacketChecksum(header, packet[:64], packet[64:])
+	require.Error(t, err)
+	require.ErrorIs(t, err, errChecksumMismatch)
 }
 
 // Expectation: parseMainPacketBody should reject invalid slice size alignment.
@@ -890,6 +1448,22 @@ func Test_parseUnicodeDescriptionBody_DecodeError_AllNulls_Success(t *testing.T)
 
 	_, err := parseUnicodeDescriptionBody(Hash{}, body)
 	require.ErrorIs(t, err, errSkipPacket)
+}
+
+// Expectation: decodeUTF16LE should fail on filename too long.
+func Test_decodeUTF16LE_FilenameTooLong_Error(t *testing.T) {
+	t.Parallel()
+
+	// Create a UTF-16 byte slice that exceeds maxFilenameLength * 2
+	tooLong := make([]byte, (maxFilenameLength+1)*2)
+	for i := 0; i < len(tooLong); i += 2 {
+		tooLong[i] = 'A'
+		tooLong[i+1] = 0x00
+	}
+
+	_, err := decodeUTF16LE(tooLong)
+	require.Error(t, err)
+	require.ErrorIs(t, err, errFilenameTooLong)
 }
 
 // Expectation: decodeUTF16LE should fail on odd number of bytes.
