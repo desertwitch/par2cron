@@ -647,6 +647,35 @@ func Test_Service_Create_NoDuration_Success(t *testing.T) {
 	require.Equal(t, 2, strings.Count(logBuf.String(), "Job completed with success"))
 }
 
+// Expectation: The program should return a bad invocation error when -R is used without recursive mode.
+func Test_Service_Create_RecursiveArgWithoutRecursiveMode_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	args := Options{Par2Args: []string{"-r10", "-R"}, Par2Glob: "*"}
+	require.NoError(t, args.Par2Mode.Set(schema.CreateFileMode))
+
+	_, err := prog.Create(t.Context(), "/data", args)
+
+	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.ErrorIs(t, err, errWrongModeForRecursive)
+	require.Contains(t, logBuf.String(), "par2 argument -R needs par2cron --mode recursive")
+}
+
 // Expectation: The function should correctly find multiple marker files.
 func Test_Service_Enumerate_Success(t *testing.T) {
 	t.Parallel()
