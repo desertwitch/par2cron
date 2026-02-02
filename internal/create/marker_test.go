@@ -545,7 +545,10 @@ func Test_Service_considerRecursiveMarker_RecursiveModeButNoRArg_Success(t *test
 	prog.considerRecursiveMarker("/data/folder/_par2cron", cfg)
 
 	require.Equal(t, schema.CreateRecursiveMode, cfg.Par2Mode.Value)
-	require.Contains(t, *cfg.Par2Args, "-R")
+	require.Len(t, *cfg.Par2Args, 3)
+	require.Equal(t, "-r10", (*cfg.Par2Args)[0])
+	require.Equal(t, "-n3", (*cfg.Par2Args)[1])
+	require.Equal(t, "-R", (*cfg.Par2Args)[2])
 	require.Contains(t, logBuf.String(), "Added -R to argument slice due to recursive mode")
 }
 
@@ -605,5 +608,7 @@ func Test_Service_considerRecursiveMarker_FileModeWithoutRArg_Success(t *testing
 
 	require.Equal(t, schema.CreateFileMode, cfg.Par2Mode.Value)
 	require.Len(t, *cfg.Par2Args, 2)
+	require.Equal(t, "-r10", (*cfg.Par2Args)[0])
+	require.Equal(t, "-R", (*cfg.Par2Args)[1])
 	require.NotContains(t, *cfg.Par2Args, "-R")
 }
