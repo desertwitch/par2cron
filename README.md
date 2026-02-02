@@ -374,7 +374,7 @@ three calling par2cron operations. However, it is strongly recommended to
 set default `par2` arguments for the `create` command, to be reflecting your
 personal needs and situation. You can decide the default set of arguments to
 give to `par2` for any of the par2cron commands using either the configuration
-file or appending them as `[-- par2-args...]`. An example of the latter below:
+file or appending them as `[-- par2-args...]`:
 
 ```bash
 par2cron create /mnt/storage -- -r15 -n1
@@ -393,7 +393,7 @@ https://github.com/Parchive/par2cmdline#using-par2cmdline
 
 ## Creation Modes
 
-The `create` mode of par2cron offers 3 distinct operation modes.
+The `create` mode of par2cron offers 3 distinct operation modes:
 
 | Mode               | Purpose (within the folder the marker was found in) |
 | :----------------- | :-------------------------------------------------- |
@@ -525,8 +525,8 @@ hidden: true
 ```
 
 The directives are designed to be easy to remember, although for the rare case
-that you should need such a marker configuration a little cheat-sheet is to be
-recommended, because YAML directive errors will result in a non-zero exit code.
+that you should need such a marker configuration [a little cheat-sheet](QUICKGUIDE)
+is to be recommended, because YAML errors will result in a non-zero exit code.
 
 ## Ignore Files
 
