@@ -492,6 +492,11 @@ For more control, or *replacing* the entire default arguments that are given
 to `par2` (again only for the individual creation job), read below about marker
 configuration (the optional content that can be placed within a marker file).
 
+For convenience, the `par2` argument `-R` (when found in a marker filename)
+will automatically set the creation mode to `recursive` for that job. As a
+result, any marker file named `_par2cron_R` will override to recursive mode,
+even if this was not specifically set through the YAML marker configuration.
+
 ### Marker Configuration
 
 In most cases a marker file will have no content, but for maximum control over
