@@ -505,8 +505,8 @@ func (prog *Service) considerRecursive(opts *Options) error {
 		before := slices.Clone(opts.Par2Args)
 		opts.Par2Args = append(opts.Par2Args, "-R")
 
-		prog.log.Debug(
-			"Added -R to argument slice due to recursive mode",
+		prog.log.Info(
+			"Adding -R to default par2 arguments for recursive mode",
 			"mode", opts.Par2Mode.Value,
 			"args-before", before,
 			"args-after", opts.Par2Args,

@@ -2359,7 +2359,7 @@ func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T)
 
 	require.NoError(t, err)
 	require.Contains(t, opts.Par2Args, "-R")
-	require.Contains(t, logBuf.String(), "Added -R to argument slice due to recursive mode")
+	require.Contains(t, logBuf.String(), "Adding -R to default par2 arguments for recursive mode")
 }
 
 // Expectation: No changes should be made when mode is recursive and -R is already present.

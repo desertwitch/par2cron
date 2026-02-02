@@ -172,7 +172,7 @@ func (prog *Service) considerRecursiveMarker(markerPath string, cfg *MarkerConfi
 		*cfg.Par2Args = append(*cfg.Par2Args, "-R")
 
 		logger.Debug(
-			"Added -R to argument slice due to recursive mode",
+			"Adding -R to par2 argument slice for recursive mode",
 			"mode", cfg.Par2Mode.Value,
 			"args-before", before,
 			"args-after", *cfg.Par2Args,
