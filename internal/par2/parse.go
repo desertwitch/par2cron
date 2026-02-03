@@ -38,8 +38,8 @@ const (
 	packetHashOffset = 32 // Starting offset for MD5 hashing
 	packetHeaderSize = 64 // Total header size of a packet in bytes
 
-	recoverBufferSize   = 256 * 1024 // Next packet search reads in 256KiB chunks
-	recoverStallRetries = 10         // Next packet search can stall for up to 10 times
+	recoverBufferSize   = 16 * 1024 // Next packet search reads in 16KiB chunks
+	recoverStallRetries = 10        // Next packet search can stall for up to 10 times
 )
 
 var (
@@ -356,7 +356,7 @@ func seekToNextPacket(r io.ReadSeeker) error {
 			return fmt.Errorf("failed to seek: %w", err)
 		}
 
-		n, readErr := r.Read(buf) // Read 16KB (or less)
+		n, readErr := r.Read(buf) // Read [recoverBufferSize] (or less)
 
 		if n >= magicLen {
 			idx := bytes.Index(buf[:n], packetMagic) // Find magic sequence
