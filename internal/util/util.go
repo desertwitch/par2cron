@@ -25,11 +25,6 @@ func NewResultTracker() *ResultTracker {
 	return &ResultTracker{}
 }
 
-// Ptr converts a value of type [T] to a pointer of type [*T].
-func Ptr[T any](v T) *T {
-	return &v
-}
-
 func IsPar2Base(path string) bool {
 	lower := strings.ToLower(path)
 

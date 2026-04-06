@@ -9,7 +9,6 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
-	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -167,9 +166,9 @@ func Test_Service_parseMarkerFilename_NoSuffix_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	prog.parseMarkerFilename("/data/_par2cron", cfg)
@@ -194,9 +193,9 @@ func Test_Service_parseMarkerFilename_WithFlags_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10", "-n3"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	fname := fmt.Sprintf("%s%sr20%sn5%sqqq",
@@ -226,9 +225,9 @@ func Test_Service_parseMarkerFilename_WithDuplicateFlags_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10", "-n3"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	fname := fmt.Sprintf("%s%sr20%sn5%sqqq%sqq",
@@ -259,9 +258,9 @@ func Test_Service_parseMarkerContent_FailedToRead_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	err := prog.parseMarkerContent("/data/folder/_par2cron", cfg)
@@ -288,9 +287,9 @@ func Test_Service_parseMarkerContent_InvalidYAML_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	err := prog.parseMarkerContent("/data/folder/_par2cron", cfg)
@@ -318,9 +317,9 @@ func Test_Service_parseMarkerContent_NameWithoutExtension_Success(t *testing.T) 
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	err := prog.parseMarkerContent("/data/folder/_par2cron", cfg)

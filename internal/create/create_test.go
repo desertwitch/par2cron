@@ -13,7 +13,6 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
-	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -24,11 +23,11 @@ func Test_NewJob_Success(t *testing.T) {
 
 	cfg := MarkerConfig{
 		Par2Mode:   &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
-		Par2Name:   util.Ptr("test" + schema.Par2Extension),
+		Par2Name:   new("test" + schema.Par2Extension),
 		Par2Args:   &[]string{"-r10", "-n5"},
-		Par2Glob:   util.Ptr("*.txt"),
-		Par2Verify: util.Ptr(true),
-		HideFiles:  util.Ptr(false),
+		Par2Glob:   new("*.txt"),
+		Par2Verify: new(true),
+		HideFiles:  new(false),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -53,11 +52,11 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 
 	cfg := MarkerConfig{
 		Par2Mode:   &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
-		Par2Name:   util.Ptr("test" + schema.Par2Extension),
+		Par2Name:   new("test" + schema.Par2Extension),
 		Par2Args:   &[]string{"-r10", "-n5"},
-		Par2Glob:   util.Ptr("*.txt"),
-		Par2Verify: util.Ptr(true),
-		HideFiles:  util.Ptr(true),
+		Par2Glob:   new("*.txt"),
+		Par2Verify: new(true),
+		HideFiles:  new(true),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)

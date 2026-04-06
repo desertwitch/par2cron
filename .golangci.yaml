@@ -29,9 +29,6 @@ linters:
       checks:
         - all
         - -S1008
-    modernize:
-      disable:
-        - newexpr
   exclusions:
     generated: lax
     presets:
