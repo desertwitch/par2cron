@@ -1583,7 +1583,7 @@ func Test_decodeUTF16LE_FilenameTooLong_Error(t *testing.T) {
 	tooLong := make([]byte, (maxFilenameLength+1)*2)
 	for i := 0; i < len(tooLong); i += 2 {
 		tooLong[i] = 'A'
-		tooLong[i+1] = 0x00
+		tooLong[i+1] = 0x00 //nolint:gosec
 	}
 
 	_, err := decodeUTF16LE(tooLong)

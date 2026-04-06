@@ -31,7 +31,7 @@ func AcquireLock(fsys afero.Fs, lockPath string, block bool) (func(), error) {
 		flags |= syscall.LOCK_NB
 	}
 
-	err = syscall.Flock(int(f.Fd()), flags)
+	err = syscall.Flock(int(f.Fd()), flags) //nolint:gosec
 	if err != nil {
 		_ = f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
@@ -42,7 +42,7 @@ func AcquireLock(fsys afero.Fs, lockPath string, block bool) (func(), error) {
 	}
 
 	return func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:gosec
 		_ = f.Close()
 	}, nil
 }

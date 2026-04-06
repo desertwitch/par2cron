@@ -7,7 +7,7 @@
 
 <div align="center">
     <a href="https://github.com/desertwitch/par2cron/releases"><img alt="Release" src="https://img.shields.io/github/release/desertwitch/par2cron.svg"></a>
-    <a href="https://go.dev/"><img alt="Go Version" src="https://img.shields.io/badge/Go-%3E%3D%201.25.5-%23007d9c"></a>
+    <a href="https://go.dev/"><img alt="Go Version" src="https://img.shields.io/badge/Go-%3E%3D%201.26.1-%23007d9c"></a>
     <a href="https://pkg.go.dev/github.com/desertwitch/par2cron"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/desertwitch/par2cron.svg"></a>
     <a href="https://goreportcard.com/report/github.com/desertwitch/par2cron"><img alt="Go Report" src="https://goreportcard.com/badge/github.com/desertwitch/par2cron"></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/desertwitch/par2cron"></a>
