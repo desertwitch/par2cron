@@ -44,6 +44,16 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	return cfg
 }
 
+func (m *MarkerConfig) Validate() error {
+	// par2cmdline internally does recursion, so we cannot do double recursion.
+	// If the user wants recursive globbing, they'll have to do it in non-recursive mode.
+	if m.Par2Mode.Value == schema.CreateRecursiveMode && strings.Contains(*m.Par2Glob, "/") {
+		return schema.ErrUnsupportedGlob
+	}
+
+	return nil
+}
+
 func (prog *Service) parseMarkerFile(markerPath string, opts Options) (*MarkerConfig, error) {
 	logger := prog.markerLogger(markerPath, nil, nil)
 	logger.Debug("Found marker file")
@@ -57,6 +67,16 @@ func (prog *Service) parseMarkerFile(markerPath string, opts Options) (*MarkerCo
 	}
 
 	prog.considerRecursiveMarker(markerPath, cfg)
+
+	if err := cfg.Validate(); err != nil {
+		if errors.Is(err, schema.ErrUnsupportedGlob) {
+			logger.Error("Recursive mode does not support deep (/) glob patterns, "+
+				"use non-recursive modes with deep globs instead (see documentation)",
+				"error", schema.ErrUnsupportedGlob)
+		}
+
+		return nil, err
+	}
 
 	return cfg, nil
 }

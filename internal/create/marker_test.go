@@ -33,6 +33,99 @@ func Test_NewMarkerConfig_Success(t *testing.T) {
 	require.False(t, *cfg.HideFiles)
 }
 
+// Expectation: Validation should pass when mode is recursive with a shallow glob.
+func Test_MarkerConfig_Validate_RecursiveShallowGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &MarkerConfig{
+		Par2Glob: new("*.mp4"),
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when mode is not recursive with a deep glob.
+func Test_MarkerConfig_Validate_NonRecursiveDeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &MarkerConfig{
+		Par2Glob: new("**/*.mp4"),
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateFileMode))
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should fail when mode is recursive with a deep glob.
+func Test_MarkerConfig_Validate_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	cfg := &MarkerConfig{
+		Par2Glob: new("**/*.mp4"),
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	require.ErrorIs(t, cfg.Validate(), schema.ErrUnsupportedGlob)
+}
+
+// Expectation: An error should be returned when recursive mode and deep glob are combined via marker file.
+func Test_Service_parseMarkerFile_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	yamlContent := `glob: "**/*.mp4"
+mode: "recursive"`
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(yamlContent), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	args := Options{Par2Args: []string{"-r10"}}
+	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
+
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+	require.Nil(t, cfg)
+}
+
+// Expectation: An error should be returned when -R in args triggers recursive mode with a deep default glob.
+func Test_Service_parseMarkerFile_InferredRecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	yamlContent := `args: ["-r10", "-R"]
+glob: "**/*.mp4"`
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(yamlContent), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	args := Options{Par2Args: []string{}}
+	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
+
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+	require.Nil(t, cfg)
+}
+
 // Expectation: A non-nil configuration should be returned.
 func Test_Service_parseMarkerFile_ValidMarker_Success(t *testing.T) {
 	t.Parallel()

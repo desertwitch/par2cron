@@ -14,6 +14,7 @@ var (
 	ErrNonFatal         = errors.New("non-fatal error")
 	ErrSilentSkip       = errors.New("skip without error")
 	ErrManifestMismatch = errors.New("manifest mismatch")
+	ErrUnsupportedGlob  = errors.New("unsupported glob")
 )
 
 var exitErrorsByPriority = []struct {

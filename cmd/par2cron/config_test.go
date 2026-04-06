@@ -17,6 +17,86 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Expectation: Validation should pass when config has no create section.
+func Test_configFile_Validate_NoCreateSection_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Verify: &configFileVerify{},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when create section has no mode or glob.
+func Test_configFile_Validate_CreateNilModeAndGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when mode is recursive with a shallow glob.
+func Test_configFile_Validate_RecursiveShallowGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{
+			Par2Mode: &flags.CreateMode{Value: schema.CreateRecursiveMode},
+			Par2Glob: new("*.mp4"),
+		},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when mode is not recursive with a deep glob.
+func Test_configFile_Validate_NonRecursiveDeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{
+			Par2Mode: &flags.CreateMode{Value: schema.CreateFileMode},
+			Par2Glob: new("**/*.mp4"),
+		},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should fail when mode is recursive with a deep glob.
+func Test_configFile_Validate_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{
+			Par2Mode: &flags.CreateMode{Value: schema.CreateRecursiveMode},
+			Par2Glob: new("**/*.mp4"),
+		},
+	}
+
+	require.ErrorIs(t, cfg.Validate(), schema.ErrUnsupportedGlob)
+}
+
+// Expectation: parseConfigFile should reject a config with recursive mode and deep glob.
+func Test_parseConfigFile_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	yamlContent := `create:
+  mode: "recursive"
+  glob: "**/*.mp4"`
+	require.NoError(t, afero.WriteFile(fs, "/par2cron.yaml", []byte(yamlContent), 0o644))
+
+	cfg, err := parseConfigFile(fs, "/par2cron.yaml")
+
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+	require.Nil(t, cfg)
+}
+
 // Expectation: A valid YAML config file should be parsed successfully.
 func Test_parseConfigFile_ValidConfig_Success(t *testing.T) {
 	t.Parallel()

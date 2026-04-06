@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -36,6 +37,16 @@ type Options struct {
 	Par2Verify  bool
 	MaxDuration flags.Duration
 	HideFiles   bool
+}
+
+func (o *Options) Validate() error {
+	// par2cmdline internally does recursion, so we cannot do double recursion.
+	// If the user wants recursive globbing, they'll have to do it in non-recursive mode.
+	if o.Par2Mode.Value == schema.CreateRecursiveMode && strings.Contains(o.Par2Glob, "/") {
+		return schema.ErrUnsupportedGlob
+	}
+
+	return nil
 }
 
 type Service struct {
@@ -109,6 +120,7 @@ func newFileModeJob(job Job, path string) Job {
 		job.par2Name = "." + job.par2Name
 	}
 
+	job.workingDir = filepath.Dir(path)
 	job.par2Path = filepath.Join(job.workingDir, job.par2Name)
 	job.manifestName = job.par2Name + schema.ManifestExtension
 	job.manifestPath = job.par2Path + schema.ManifestExtension
@@ -271,7 +283,28 @@ func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 }
 
 func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]schema.FsElement, error) {
-	dirPaths, err := afero.Glob(prog.fsys, filepath.Join(job.workingDir, job.par2Glob))
+	// Should be caught earlier during validation, but keeping it here as a last-minute seatbelt.
+	if job.par2Mode == schema.CreateRecursiveMode && strings.Contains(job.par2Glob, "/") {
+		logger := prog.creationLogger(ctx, job, job.workingDir)
+		logger.Error("Recursive mode does not support deep (/) glob patterns, "+
+			"use non-recursive modes with deep globs instead (see documentation)",
+			"error", schema.ErrUnsupportedGlob)
+
+		return nil, schema.ErrUnsupportedGlob
+	}
+
+	globFsys := util.AferoToFS{Fs: prog.fsys}
+	globPattern := filepath.Join(job.workingDir, job.par2Glob)
+	globOptions := make([]doublestar.GlobOption, 0, 2) //nolint:mnd
+	globOptions = append(globOptions, doublestar.WithNoHidden())
+
+	if job.par2Mode != schema.CreateFileMode {
+		// In these modes the PAR2 is not created at the side of the protected file,
+		// so we do not want any symlinks possibly reaching out of the directory tree.
+		globOptions = append(globOptions, doublestar.WithNoFollow())
+	}
+
+	protectablePaths, err := doublestar.Glob(globFsys, globPattern, globOptions...)
 	if err != nil {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
 		logger.Error("Failed to glob folder (will retry next run)", "error", err)
@@ -280,7 +313,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 	}
 
 	protectableElements := []schema.FsElement{}
-	for _, f := range dirPaths {
+	for _, f := range protectablePaths {
 		if f == job.markerPath {
 			continue
 		}

@@ -41,6 +41,7 @@
 - [State Management](#state-management)
 - [Creation Arguments](#creation-arguments)
 - [Creation Modes](#creation-modes)
+- [Creation Glob Patterns](#creation-glob-patterns)
 - [Marker Files](#marker-files)
   - [Marker Filename](#marker-filename)
   - [Marker Configuration](#marker-configuration)
@@ -423,6 +424,30 @@ name of the directory they reside in, unless changed by marker configuration.
 It is not recommended to set `recursive` mode as default, but instead use the
 marker configurations on a per-job basis (read more about this further below).
 
+## Creation Glob Patterns
+
+par2cron passes a list of paths to the `par2` program for protection. The
+`--glob` argument controls which files (and folders, in recursive mode) will be
+in this list. It supports complex inclusion and exclusion patterns, making it a
+powerful tool for fine-tuning your individual protection requirements.
+
+**For a list of supported patterns, refer to the [doublestar](https://github.com/bmatcuk/doublestar#patterns) documentation.**
+
+Beware that deep glob patterns (`/`) can only be used in non-recursive creation
+modes. This is because `par2` performs its own internal recursion - combining
+both would result in double recursion. Use non-recursive modes with any pattern,
+including `/`, for maximum control. Use recursive mode with any pattern except
+`/` for selective matching of files and folders within the topmost directory,
+the `par2` program including **everything** within pattern-matching subfolders.
+
+For such deep glob patterns (`/`), with the resulting path list spanning
+multiple directories, in `folder` mode the created PAR2 set will be placed in
+the marker-containing directory and protect all paths of the list. In `file`
+mode, a PAR2 set will be created for each path of the list and placed next to
+the file it protects (so in the respective subdirectory that file resides in).
+
+The above applies both for the default configuration and marker configurations.
+
 ## Marker Files
 
 The core of the par2cron `create` operation are the marker files. A found marker
@@ -517,6 +542,7 @@ name: "Ubuntu"
 args: ["-r30", "-n1"]
 
 # Override the glob pattern for which files in the directory to protect
+# Section "Creation Glob Patterns" of documentation covers supported patterns
 glob: "*.iso"
 
 # Override the creation mode, create a PAR2 set per [file|folder|recursive]
