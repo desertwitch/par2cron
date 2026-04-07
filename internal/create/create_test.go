@@ -1608,6 +1608,212 @@ func Test_Service_findElementsToProtect_RecursiveMode_NoDeepRecursion_Success(t 
 	require.NotContains(t, names, "deepfile.txt")
 }
 
+// Expectation: The function should not break with globbing meta characters in the working directory path.
+func Test_Service_findElementsToProtect_GlobMetacharsInWorkingDirPath_Table(t *testing.T) {
+	t.Parallel()
+
+	type expectedFile struct {
+		Name string
+		Path string
+	}
+
+	tests := []struct {
+		name     string
+		dirs     []string
+		files    map[string]string // map[path]content
+		job      Job
+		expected []expectedFile
+	}{
+		{
+			name: "brackets in working directory",
+			dirs: []string{"/data/project[1]"},
+			files: map[string]string{
+				"/data/project[1]/file.txt":  "content",
+				"/data/project[1]/_par2cron": "",
+			},
+			job: Job{
+				workingDir: "/data/project[1]",
+				markerPath: "/data/project[1]/_par2cron",
+				par2Mode:   schema.CreateFileMode,
+				par2Glob:   "*",
+			},
+			expected: []expectedFile{
+				{Name: "file.txt", Path: "/data/project[1]/file.txt"},
+			},
+		},
+		{
+			name: "asterisk in working directory",
+			dirs: []string{"/data/my*folder"},
+			files: map[string]string{
+				"/data/my*folder/file.txt":  "content",
+				"/data/my*folder/_par2cron": "",
+			},
+			job: Job{
+				workingDir: "/data/my*folder",
+				markerPath: "/data/my*folder/_par2cron",
+				par2Mode:   schema.CreateFolderMode,
+				par2Glob:   "*",
+			},
+			expected: []expectedFile{
+				{Name: "file.txt", Path: "/data/my*folder/file.txt"},
+			},
+		},
+		{
+			name: "question mark in working directory",
+			dirs: []string{"/data/what?"},
+			files: map[string]string{
+				"/data/what?/file.txt":  "content",
+				"/data/what?/_par2cron": "",
+			},
+			job: Job{
+				workingDir: "/data/what?",
+				markerPath: "/data/what?/_par2cron",
+				par2Mode:   schema.CreateFolderMode,
+				par2Glob:   "*",
+			},
+			expected: []expectedFile{
+				{Name: "file.txt", Path: "/data/what?/file.txt"},
+			},
+		},
+		{
+			name: "curly braces in working directory",
+			dirs: []string{"/data/{project}"},
+			files: map[string]string{
+				"/data/{project}/file.txt":  "content",
+				"/data/{project}/_par2cron": "",
+			},
+			job: Job{
+				workingDir: "/data/{project}",
+				markerPath: "/data/{project}/_par2cron",
+				par2Mode:   schema.CreateFolderMode,
+				par2Glob:   "*",
+			},
+			expected: []expectedFile{
+				{Name: "file.txt", Path: "/data/{project}/file.txt"},
+			},
+		},
+		{
+			name: "multiple metacharacters in working directory",
+			dirs: []string{"/data/proj[1]*{a}?"},
+			files: map[string]string{
+				"/data/proj[1]*{a}?/file.txt":  "content",
+				"/data/proj[1]*{a}?/_par2cron": "",
+			},
+			job: Job{
+				workingDir: "/data/proj[1]*{a}?",
+				markerPath: "/data/proj[1]*{a}?/_par2cron",
+				par2Mode:   schema.CreateFolderMode,
+				par2Glob:   "*",
+			},
+			expected: []expectedFile{
+				{Name: "file.txt", Path: "/data/proj[1]*{a}?/file.txt"},
+			},
+		},
+		{
+			name: "brackets in working directory with deep glob pattern",
+			dirs: []string{"/data/project[1]", "/data/project[1]/subdir"},
+			files: map[string]string{
+				"/data/project[1]/file.txt":        "content",
+				"/data/project[1]/file.go":         "content",
+				"/data/project[1]/subdir/deep.txt": "content",
+				"/data/project[1]/subdir/deep.go":  "content",
+				"/data/project[1]/_par2cron":       "",
+			},
+			job: Job{
+				workingDir: "/data/project[1]",
+				markerPath: "/data/project[1]/_par2cron",
+				par2Mode:   schema.CreateFolderMode,
+				par2Glob:   "**/*.txt",
+			},
+			expected: []expectedFile{
+				{Name: "file.txt", Path: "/data/project[1]/file.txt"},
+				{Name: "subdir/deep.txt", Path: "/data/project[1]/subdir/deep.txt"},
+			},
+		},
+		{
+			name: "asterisk in working directory with deep glob pattern",
+			dirs: []string{"/data/my*folder", "/data/my*folder/sub"},
+			files: map[string]string{
+				"/data/my*folder/a.txt":     "content",
+				"/data/my*folder/b.go":      "content",
+				"/data/my*folder/sub/c.txt": "content",
+				"/data/my*folder/_par2cron": "",
+			},
+			job: Job{
+				workingDir: "/data/my*folder",
+				markerPath: "/data/my*folder/_par2cron",
+				par2Mode:   schema.CreateFolderMode,
+				par2Glob:   "**/*.txt",
+			},
+			expected: []expectedFile{
+				{Name: "a.txt", Path: "/data/my*folder/a.txt"},
+				{Name: "sub/c.txt", Path: "/data/my*folder/sub/c.txt"},
+			},
+		},
+		{
+			name: "folder mode relative names are clean with metacharacters in path",
+			dirs: []string{"/data/{proj}[2]", "/data/{proj}[2]/subdir"},
+			files: map[string]string{
+				"/data/{proj}[2]/file.txt":        "content",
+				"/data/{proj}[2]/subdir/deep.txt": "content",
+				"/data/{proj}[2]/_par2cron":       "",
+			},
+			job: Job{
+				workingDir: "/data/{proj}[2]",
+				markerPath: "/data/{proj}[2]/_par2cron",
+				par2Mode:   schema.CreateFolderMode,
+				par2Glob:   "**",
+			},
+			expected: []expectedFile{
+				{Name: "file.txt", Path: "/data/{proj}[2]/file.txt"},
+				{Name: "subdir/deep.txt", Path: "/data/{proj}[2]/subdir/deep.txt"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewMemMapFs()
+			for _, dir := range tt.dirs {
+				require.NoError(t, fs.MkdirAll(dir, 0o755))
+			}
+			for path, content := range tt.files {
+				require.NoError(t, afero.WriteFile(fs, path, []byte(content), 0o644))
+			}
+
+			var logBuf testutil.SafeBuffer
+			ls := logging.Options{
+				Logout: &logBuf,
+				Stdout: io.Discard,
+				Stderr: io.Discard,
+			}
+			_ = ls.LogLevel.Set("info")
+
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+			files, err := prog.findElementsToProtect(t.Context(), &tt.job)
+			require.NoError(t, err)
+			require.Len(t, files, len(tt.expected))
+
+			actual := make(map[string]string, len(files)) // map[name]path
+			for _, f := range files {
+				actual[f.Name] = f.Path
+
+				require.NotContains(t, f.Path, "\\", "path %q contains escape backslash", f.Path)
+				require.NotContains(t, f.Name, "\\", "name %q contains escape backslash", f.Name)
+			}
+			for _, exp := range tt.expected {
+				path, ok := actual[exp.Name]
+
+				require.True(t, ok, "expected file %q not found in results", exp.Name)
+				require.Equal(t, exp.Path, path, "path mismatch for %q", exp.Name)
+			}
+		})
+	}
+}
+
 // Expectation: The function should return the correct error when there's nothing to do.
 func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 	t.Parallel()
