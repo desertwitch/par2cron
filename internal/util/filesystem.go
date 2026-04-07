@@ -31,7 +31,7 @@ func AcquireLock(fsys afero.Fs, lockPath string, block bool) (func(), error) {
 		flags |= syscall.LOCK_NB
 	}
 
-	err = syscall.Flock(int(f.Fd()), flags)
+	err = syscall.Flock(int(f.Fd()), flags) //nolint:gosec
 	if err != nil {
 		_ = f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
@@ -42,7 +42,7 @@ func AcquireLock(fsys afero.Fs, lockPath string, block bool) (func(), error) {
 	}
 
 	return func() {
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) //nolint:gosec
 		_ = f.Close()
 	}, nil
 }
@@ -79,6 +79,16 @@ func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
 	}
 
 	return nil
+}
+
+// AferoToFS is an adapter to turn the [afero.Fs] into a [fs.FS] signature.
+type AferoToFS struct {
+	Fs afero.Fs
+}
+
+// Open is a method that adapts [afero.Fs.Open] into a [fs.FS.Open] compatible signature.
+func (w AferoToFS) Open(name string) (fs.File, error) {
+	return w.Fs.Open(name) //nolint:wrapcheck
 }
 
 // AferoWalker is an adapter to turn the [afero.Walk] into a [filepath.WalkDir] signature.

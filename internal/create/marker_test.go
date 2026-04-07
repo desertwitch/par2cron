@@ -9,7 +9,6 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
-	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -32,6 +31,99 @@ func Test_NewMarkerConfig_Success(t *testing.T) {
 	require.Equal(t, args.Par2Mode.Value, cfg.Par2Mode.Value)
 	require.False(t, *cfg.Par2Verify)
 	require.False(t, *cfg.HideFiles)
+}
+
+// Expectation: Validation should pass when mode is recursive with a shallow glob.
+func Test_MarkerConfig_Validate_RecursiveShallowGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &MarkerConfig{
+		Par2Glob: new("*.mp4"),
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when mode is not recursive with a deep glob.
+func Test_MarkerConfig_Validate_NonRecursiveDeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &MarkerConfig{
+		Par2Glob: new("**/*.mp4"),
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateFileMode))
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should fail when mode is recursive with a deep glob.
+func Test_MarkerConfig_Validate_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	cfg := &MarkerConfig{
+		Par2Glob: new("**/*.mp4"),
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	require.ErrorIs(t, cfg.Validate(), schema.ErrUnsupportedGlob)
+}
+
+// Expectation: An error should be returned when recursive mode and deep glob are combined via marker file.
+func Test_Service_parseMarkerFile_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	yamlContent := `glob: "**/*.mp4"
+mode: "recursive"`
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(yamlContent), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	args := Options{Par2Args: []string{"-r10"}}
+	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
+
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+	require.Nil(t, cfg)
+}
+
+// Expectation: An error should be returned when -R in args triggers recursive mode with a deep default glob.
+func Test_Service_parseMarkerFile_InferredRecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	yamlContent := `args: ["-r10", "-R"]
+glob: "**/*.mp4"`
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(yamlContent), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	args := Options{Par2Args: []string{}}
+	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
+
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+	require.Nil(t, cfg)
 }
 
 // Expectation: A non-nil configuration should be returned.
@@ -167,9 +259,9 @@ func Test_Service_parseMarkerFilename_NoSuffix_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	prog.parseMarkerFilename("/data/_par2cron", cfg)
@@ -194,9 +286,9 @@ func Test_Service_parseMarkerFilename_WithFlags_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10", "-n3"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	fname := fmt.Sprintf("%s%sr20%sn5%sqqq",
@@ -226,9 +318,9 @@ func Test_Service_parseMarkerFilename_WithDuplicateFlags_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10", "-n3"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	fname := fmt.Sprintf("%s%sr20%sn5%sqqq%sqq",
@@ -259,9 +351,9 @@ func Test_Service_parseMarkerContent_FailedToRead_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	err := prog.parseMarkerContent("/data/folder/_par2cron", cfg)
@@ -288,9 +380,9 @@ func Test_Service_parseMarkerContent_InvalidYAML_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	err := prog.parseMarkerContent("/data/folder/_par2cron", cfg)
@@ -318,9 +410,9 @@ func Test_Service_parseMarkerContent_NameWithoutExtension_Success(t *testing.T) 
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	cfg := &MarkerConfig{
-		Par2Name: util.Ptr("test" + schema.Par2Extension),
+		Par2Name: new("test" + schema.Par2Extension),
 		Par2Args: &[]string{"-r10"},
-		Par2Glob: util.Ptr("*"),
+		Par2Glob: new("*"),
 	}
 
 	err := prog.parseMarkerContent("/data/folder/_par2cron", cfg)

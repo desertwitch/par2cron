@@ -12,11 +12,90 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/repair"
 	"github.com/desertwitch/par2cron/internal/schema"
-	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
+
+// Expectation: Validation should pass when config has no create section.
+func Test_configFile_Validate_NoCreateSection_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Verify: &configFileVerify{},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when create section has no mode or glob.
+func Test_configFile_Validate_CreateNilModeAndGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when mode is recursive with a shallow glob.
+func Test_configFile_Validate_RecursiveShallowGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{
+			Par2Mode: &flags.CreateMode{Value: schema.CreateRecursiveMode},
+			Par2Glob: new("*.mp4"),
+		},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should pass when mode is not recursive with a deep glob.
+func Test_configFile_Validate_NonRecursiveDeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{
+			Par2Mode: &flags.CreateMode{Value: schema.CreateFileMode},
+			Par2Glob: new("**/*.mp4"),
+		},
+	}
+
+	require.NoError(t, cfg.Validate())
+}
+
+// Expectation: Validation should fail when mode is recursive with a deep glob.
+func Test_configFile_Validate_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{
+			Par2Mode: &flags.CreateMode{Value: schema.CreateRecursiveMode},
+			Par2Glob: new("**/*.mp4"),
+		},
+	}
+
+	require.ErrorIs(t, cfg.Validate(), schema.ErrUnsupportedGlob)
+}
+
+// Expectation: parseConfigFile should reject a config with recursive mode and deep glob.
+func Test_parseConfigFile_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	yamlContent := `create:
+  mode: "recursive"
+  glob: "**/*.mp4"`
+	require.NoError(t, afero.WriteFile(fs, "/par2cron.yaml", []byte(yamlContent), 0o644))
+
+	cfg, err := parseConfigFile(fs, "/par2cron.yaml")
+
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+	require.Nil(t, cfg)
+}
 
 // Expectation: A valid YAML config file should be parsed successfully.
 func Test_parseConfigFile_ValidConfig_Success(t *testing.T) {
@@ -156,13 +235,13 @@ func Test_configFileCreate_Merge_AllFields_Success(t *testing.T) {
 
 	yamlCfg := &configFileCreate{
 		Par2Args:    &[]string{"-r20", "-n5"},
-		Par2Glob:    util.Ptr("*.mp4"),
-		Par2Verify:  util.Ptr(true),
+		Par2Glob:    new("*.mp4"),
+		Par2Verify:  new(true),
 		Par2Mode:    &flags.CreateMode{Value: schema.CreateFileMode},
 		MaxDuration: &flags.Duration{Value: 5 * time.Minute},
 		LogLevel:    &flags.LogLevel{},
-		WantJSON:    util.Ptr(true),
-		HideFiles:   util.Ptr(true),
+		WantJSON:    new(true),
+		HideFiles:   new(true),
 	}
 	_ = yamlCfg.LogLevel.Set("debug")
 
@@ -221,13 +300,13 @@ func Test_configFileCreate_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	t.Parallel()
 
 	yamlCfg := &configFileCreate{
-		Par2Glob:    util.Ptr("*.mp4"),
-		Par2Verify:  util.Ptr(true),
+		Par2Glob:    new("*.mp4"),
+		Par2Verify:  new(true),
 		Par2Mode:    &flags.CreateMode{Value: schema.CreateFileMode},
 		MaxDuration: &flags.Duration{Value: 5 * time.Minute},
 		LogLevel:    &flags.LogLevel{},
-		WantJSON:    util.Ptr(true),
-		HideFiles:   util.Ptr(true),
+		WantJSON:    new(true),
+		HideFiles:   new(true),
 	}
 	_ = yamlCfg.LogLevel.Set("debug")
 
@@ -270,7 +349,7 @@ func Test_configFileCreate_Merge_NilFields_Success(t *testing.T) {
 	t.Parallel()
 
 	yamlCfg := &configFileCreate{
-		Par2Glob: util.Ptr("*.mp4"),
+		Par2Glob: new("*.mp4"),
 	}
 
 	cfg := create.Options{
@@ -341,10 +420,10 @@ func Test_configFileVerify_Merge_AllFields_Success(t *testing.T) {
 		MaxDuration:     &maxDur,
 		MinAge:          &minAge,
 		RunInterval:     &RunInterval,
-		IncludeExternal: util.Ptr(true),
-		SkipNotCreated:  util.Ptr(true),
+		IncludeExternal: new(true),
+		SkipNotCreated:  new(true),
 		LogLevel:        &LogLevel,
-		WantJSON:        util.Ptr(true),
+		WantJSON:        new(true),
 	}
 
 	cfg := verify.Options{
@@ -406,8 +485,8 @@ func Test_configFileVerify_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	yamlCfg := &configFileVerify{
 		MaxDuration:     &maxDur,
 		MinAge:          &minAge,
-		IncludeExternal: util.Ptr(true),
-		SkipNotCreated:  util.Ptr(true),
+		IncludeExternal: new(true),
+		SkipNotCreated:  new(true),
 	}
 
 	cfg := verify.Options{}
@@ -510,14 +589,14 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 	yamlCfg := &configFileRepair{
 		Par2Args:             &[]string{"-B", "-q"},
 		MaxDuration:          &maxDur,
-		MinTestedCount:       util.Ptr(5),
-		SkipNotCreated:       util.Ptr(true),
+		MinTestedCount:       new(5),
+		SkipNotCreated:       new(true),
 		LogLevel:             &LogLevel,
-		WantJSON:             util.Ptr(true),
-		AttemptUnrepairables: util.Ptr(true),
-		PurgeBackups:         util.Ptr(true),
-		RestoreBackups:       util.Ptr(true),
-		Par2Verify:           util.Ptr(true),
+		WantJSON:             new(true),
+		AttemptUnrepairables: new(true),
+		PurgeBackups:         new(true),
+		RestoreBackups:       new(true),
+		Par2Verify:           new(true),
 	}
 
 	cfg := repair.Options{
@@ -582,14 +661,14 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 
 	yamlCfg := &configFileRepair{
 		MaxDuration:          &maxDur,
-		MinTestedCount:       util.Ptr(10),
-		SkipNotCreated:       util.Ptr(true),
+		MinTestedCount:       new(10),
+		SkipNotCreated:       new(true),
 		LogLevel:             &LogLevel,
-		WantJSON:             util.Ptr(true),
-		AttemptUnrepairables: util.Ptr(true),
-		PurgeBackups:         util.Ptr(true),
-		RestoreBackups:       util.Ptr(true),
-		Par2Verify:           util.Ptr(true),
+		WantJSON:             new(true),
+		AttemptUnrepairables: new(true),
+		PurgeBackups:         new(true),
+		RestoreBackups:       new(true),
+		Par2Verify:           new(true),
 	}
 
 	cfg := repair.Options{
@@ -708,9 +787,9 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 		MinAge:          &minAge,
 		RunInterval:     &RunInterval,
 		LogLevel:        &LogLevel,
-		IncludeExternal: util.Ptr(true),
-		SkipNotCreated:  util.Ptr(true),
-		WantJSON:        util.Ptr(true),
+		IncludeExternal: new(true),
+		SkipNotCreated:  new(true),
+		WantJSON:        new(true),
 	}
 
 	cfg := info.Options{}
@@ -749,9 +828,9 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		MaxDuration:     &maxDur,
 		MinAge:          &minAge,
 		LogLevel:        &LogLevel,
-		IncludeExternal: util.Ptr(true),
-		SkipNotCreated:  util.Ptr(true),
-		WantJSON:        util.Ptr(true),
+		IncludeExternal: new(true),
+		SkipNotCreated:  new(true),
+		WantJSON:        new(true),
 	}
 
 	cfg := info.Options{}

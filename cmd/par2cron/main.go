@@ -121,6 +121,8 @@ func newCheckConfigCmd(_ context.Context) *cobra.Command {
 }
 
 // newCreateCmd returns the "create" [cobra.Command] pointer for the program.
+//
+//nolint:funlen
 func newCreateCmd(ctx context.Context) *cobra.Command {
 	var createArgs create.Options
 	var logSettings logging.Options
@@ -174,6 +176,16 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 
 			if hasExternalArgs {
 				createArgs.Par2Args = append([]string{}, args[dashAt:]...)
+			}
+
+			if err := createArgs.Validate(); err != nil {
+				if errors.Is(err, schema.ErrUnsupportedGlob) {
+					return fmt.Errorf("%w: %w: cannot use deep glob (/) in recursive mode, "+
+						"use non-recursive modes with deep globs instead (see documentation)",
+						schema.ErrExitBadInvocation, err)
+				}
+
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
 			return nil

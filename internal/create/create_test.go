@@ -13,10 +13,39 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
-	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
+
+// Expectation: Validation should pass when mode is recursive with a shallow glob.
+func Test_Options_Validate_RecursiveShallowGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{Par2Glob: "*.mp4"}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	require.NoError(t, opts.Validate())
+}
+
+// Expectation: Validation should pass when mode is not recursive with a deep glob.
+func Test_Options_Validate_NonRecursiveDeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{Par2Glob: "**/*.mp4"}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFileMode))
+
+	require.NoError(t, opts.Validate())
+}
+
+// Expectation: Validation should fail when mode is recursive with a deep glob.
+func Test_Options_Validate_RecursiveDeepGlob_Error(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{Par2Glob: "**/*.mp4"}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
+
+	require.ErrorIs(t, opts.Validate(), schema.ErrUnsupportedGlob)
+}
 
 // Expectation: The correct paths should be derived from the [createConfig].
 func Test_NewJob_Success(t *testing.T) {
@@ -24,11 +53,11 @@ func Test_NewJob_Success(t *testing.T) {
 
 	cfg := MarkerConfig{
 		Par2Mode:   &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
-		Par2Name:   util.Ptr("test" + schema.Par2Extension),
+		Par2Name:   new("test" + schema.Par2Extension),
 		Par2Args:   &[]string{"-r10", "-n5"},
-		Par2Glob:   util.Ptr("*.txt"),
-		Par2Verify: util.Ptr(true),
-		HideFiles:  util.Ptr(false),
+		Par2Glob:   new("*.txt"),
+		Par2Verify: new(true),
+		HideFiles:  new(false),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -53,11 +82,11 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 
 	cfg := MarkerConfig{
 		Par2Mode:   &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
-		Par2Name:   util.Ptr("test" + schema.Par2Extension),
+		Par2Name:   new("test" + schema.Par2Extension),
 		Par2Args:   &[]string{"-r10", "-n5"},
-		Par2Glob:   util.Ptr("*.txt"),
-		Par2Verify: util.Ptr(true),
-		HideFiles:  util.Ptr(true),
+		Par2Glob:   new("*.txt"),
+		Par2Verify: new(true),
+		HideFiles:  new(true),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -892,6 +921,67 @@ func Test_Service_createPar2_FolderMode_Success(t *testing.T) {
 	require.False(t, markerExists)
 }
 
+// Expectation: A deep glob pattern in folder mode should match files in
+// subdirectories but create a single par2 set in the marker-containing directory.
+func Test_Service_createPar2_FolderMode_DeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub/other.bin", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	var workingDirs []string
+	var capturedArgs []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+			workingDirs = append(workingDirs, workingDir)
+			capturedArgs = append(capturedArgs, args...)
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*.txt",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Len(t, workingDirs, 1)
+	require.Equal(t, "/data/folder", workingDirs[0])
+
+	require.Equal(t, 1, called)
+	require.Contains(t, capturedArgs, "/data/folder/file.txt")
+	require.Contains(t, capturedArgs, "/data/folder/sub/file.txt")
+	require.NotContains(t, capturedArgs, "/data/folder/sub/other.bin")
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.False(t, markerExists)
+}
+
 // Expectation: The creation mode "folder" should handle no files to protect.
 func Test_Service_createPar2_FolderMode_NoFilesToProtect_Error(t *testing.T) {
 	t.Parallel()
@@ -1032,6 +1122,68 @@ func Test_Service_createPar2_FileMode_Success(t *testing.T) {
 
 	require.NoError(t, prog.createPar2(t.Context(), job))
 	require.Equal(t, 2, called)
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.False(t, markerExists)
+}
+
+// Expectation: A deep glob pattern in file mode should match files in
+// subdirectories and create the par2 in the respective subdirectories.
+func Test_Service_createPar2_FileMode_DeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub/other.bin", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	var workingDirs []string
+	var capturedArgs []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+			workingDirs = append(workingDirs, workingDir)
+			capturedArgs = append(capturedArgs, args...)
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFileMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*.txt",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Len(t, workingDirs, 2)
+	require.Contains(t, workingDirs, "/data/folder")
+	require.Contains(t, workingDirs, "/data/folder/sub")
+
+	require.Equal(t, 2, called)
+	require.Contains(t, capturedArgs, "/data/folder/file.txt")
+	require.Contains(t, capturedArgs, "/data/folder/sub/file.txt")
+	require.NotContains(t, capturedArgs, "/data/folder/sub/other.bin")
 
 	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
 	require.False(t, markerExists)
@@ -1384,6 +1536,37 @@ func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 
 	require.ErrorIs(t, err, errNoFilesToProtect)
 	require.Contains(t, logBuf.String(), "No files to protect")
+}
+
+// Expectation: Function should reject deep (/) glob patterns in recursive creation mode.
+func Test_Service_findElementsToProtect_DeepGlobInRecursiveMode_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir: "/data/folder",
+		markerPath: "/data/folder/_par2cron",
+		par2Glob:   "**/*.txt",
+		par2Mode:   schema.CreateRecursiveMode,
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.Nil(t, files)
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
 }
 
 // Expectation: The function should succeed in folder mode.

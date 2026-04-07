@@ -29,17 +29,17 @@ const (
 	mainSizeFixed     = 12 // SliceSize(8) + NumFiles (4)
 	fileDescSizeFixed = 56 // FileID(16) + HashFull(16) + Hash16k(16) + Length(8)
 
-	maxSets           = 10       // Sane amount of sets
-	maxIDsPerSet      = 100000   // Sane amount of IDs per set
-	maxFilesPerSet    = 100000   // Sane amount of files per set
-	maxPacketSize     = 10 << 20 // Sane packet size (10 MB)
-	maxFilenameLength = 65535    // Sane filename length
+	maxSets           = 10               // Sane amount of sets
+	maxIDsPerSet      = 100000           // Sane amount of IDs per set
+	maxFilesPerSet    = 100000           // Sane amount of files per set
+	maxPacketSize     = 10 * 1024 * 1024 // Sane packet size (10 MiB)
+	maxFilenameLength = 65535            // Sane filename length
 
 	packetHashOffset = 32 // Starting offset for MD5 hashing
 	packetHeaderSize = 64 // Total header size of a packet in bytes
 
-	recoverBufferSize   = 16384 // Next packet search uses 16KB chunks for reads
-	recoverStallRetries = 10    // Next packet search can stall for up to 10 times
+	recoverBufferSize   = 16 * 1024 // Next packet search reads in 16KiB chunks
+	recoverStallRetries = 10        // Next packet search can stall for up to 10 times
 )
 
 var (
@@ -356,7 +356,7 @@ func seekToNextPacket(r io.ReadSeeker) error {
 			return fmt.Errorf("failed to seek: %w", err)
 		}
 
-		n, readErr := r.Read(buf) // Read 16KB (or less)
+		n, readErr := r.Read(buf) // Read [recoverBufferSize] (or less)
 
 		if n >= magicLen {
 			idx := bytes.Index(buf[:n], packetMagic) // Find magic sequence

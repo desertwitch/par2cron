@@ -1091,8 +1091,8 @@ func Test_seekToNextPacket_ShortReader_Error(t *testing.T) {
 func Test_seekToNextPacket_SplitBoundary_Success(t *testing.T) {
 	t.Parallel()
 
-	// Create data where the magic starts 4 bytes before the end of the first 16KB chunk
-	// [...16380 bytes...][P A R 2][\0 P K T][...more data...]
+	// Create data where the magic starts 4 bytes before the end of the first
+	// buffer chunk [...16380 bytes...][P A R 2][\0 P K T][...more data...]
 	data := make([]byte, recoverBufferSize+100)
 	copy(data[recoverBufferSize-4:], packetMagic)
 
@@ -1583,7 +1583,7 @@ func Test_decodeUTF16LE_FilenameTooLong_Error(t *testing.T) {
 	tooLong := make([]byte, (maxFilenameLength+1)*2)
 	for i := 0; i < len(tooLong); i += 2 {
 		tooLong[i] = 'A'
-		tooLong[i+1] = 0x00
+		tooLong[i+1] = 0x00 //nolint:gosec
 	}
 
 	_, err := decodeUTF16LE(tooLong)
