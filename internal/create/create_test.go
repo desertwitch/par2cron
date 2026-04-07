@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -45,6 +46,16 @@ func Test_Options_Validate_RecursiveDeepGlob_Error(t *testing.T) {
 	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
 
 	require.ErrorIs(t, opts.Validate(), schema.ErrUnsupportedGlob)
+}
+
+// Expectation: Validation should fail when the glob pattern is invalid.
+func Test_Options_Validate_InvalidGlobPattern_Error(t *testing.T) {
+	t.Parallel()
+
+	opts := Options{Par2Glob: "{unclosed"}
+	require.NoError(t, opts.Par2Mode.Set(schema.CreateFolderMode))
+
+	require.ErrorIs(t, opts.Validate(), doublestar.ErrBadPattern)
 }
 
 // Expectation: The correct paths should be derived from the [createConfig].
