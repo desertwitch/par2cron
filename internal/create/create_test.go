@@ -1379,6 +1379,100 @@ func Test_Service_findElementsToProtect_Success(t *testing.T) {
 	require.Equal(t, "file.txt", files[0].Name)
 }
 
+// Expectation: A deep glob should preserve the relative path in the element name in folder mode.
+func Test_Service_findElementsToProtect_DeepGlobRelativeName_FolderMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/ignore.log", []byte("log"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/root.txt", []byte("root"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*.txt",
+		par2Mode:     schema.CreateFolderMode,
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	// Root-level file: Name is just the filename.
+	require.Equal(t, "/data/folder/root.txt", files[0].Path)
+	require.Equal(t, "root.txt", files[0].Name)
+
+	// Nested file: Name preserves the relative path from workingDir.
+	require.Equal(t, "/data/folder/subfolder/file.txt", files[1].Path)
+	require.Equal(t, "subfolder/file.txt", files[1].Name)
+}
+
+// Expectation: A deep glob should not preserve the relative path in the element name in file mode.
+func Test_Service_findElementsToProtect_DeepGlobRelativeName_FileMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/subfolder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/subfolder/ignore.log", []byte("log"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/root.txt", []byte("root"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*.txt",
+		par2Mode:     schema.CreateFileMode,
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	// Root-level file: Name is just the filename.
+	require.Equal(t, "/data/folder/root.txt", files[0].Path)
+	require.Equal(t, "root.txt", files[0].Name)
+
+	// Nested file: Name is just the filename.
+	require.Equal(t, "/data/folder/subfolder/file.txt", files[1].Path)
+	require.Equal(t, "file.txt", files[1].Name)
+}
+
 // Expectation: The function should include directories and .par2 files in recursive mode.
 func Test_Service_findElementsToProtect_RecursiveMode_Success(t *testing.T) {
 	t.Parallel()

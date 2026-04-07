@@ -342,9 +342,20 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			continue
 		}
 
+		// In file/recursive mode, the structure is guaranteed to be shallow.
+		name := fi.Name()
+		if job.par2Mode == schema.CreateFolderMode {
+			if pname, err := filepath.Rel(job.workingDir, f); err != nil {
+				logger := prog.creationLogger(ctx, job, f)
+				logger.Warn("Failed to derive relative path for creation manifest", "error", err)
+			} else {
+				name = pname
+			}
+		}
+
 		protectableElements = append(protectableElements, schema.FsElement{
 			Path:    f,
-			Name:    fi.Name(),
+			Name:    name,
 			Size:    fi.Size(),
 			Mode:    fi.Mode(),
 			IsDir:   fi.IsDir(),
