@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
@@ -45,6 +46,11 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 }
 
 func (m *MarkerConfig) Validate() error {
+	// Useful to avoid pattern issues at parsing time.
+	if ok := doublestar.ValidatePattern(*m.Par2Glob); !ok {
+		return fmt.Errorf("glob: %w", doublestar.ErrBadPattern)
+	}
+
 	// par2cmdline internally does recursion, so we cannot do double recursion.
 	// If the user wants recursive globbing, they'll have to do it in non-recursive mode.
 	if m.Par2Mode.Value == schema.CreateRecursiveMode && strings.Contains(*m.Par2Glob, "/") {

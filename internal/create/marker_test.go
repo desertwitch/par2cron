@@ -5,6 +5,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -70,6 +71,19 @@ func Test_MarkerConfig_Validate_RecursiveDeepGlob_Error(t *testing.T) {
 	require.NoError(t, cfg.Par2Mode.Set(schema.CreateRecursiveMode))
 
 	require.ErrorIs(t, cfg.Validate(), schema.ErrUnsupportedGlob)
+}
+
+// Expectation: Validation should fail when the glob pattern is invalid.
+func Test_MarkerConfig_Validate_InvalidGlobPattern_Error(t *testing.T) {
+	t.Parallel()
+
+	cfg := &MarkerConfig{
+		Par2Glob: new("{unclosed"),
+		Par2Mode: &flags.CreateMode{},
+	}
+	require.NoError(t, cfg.Par2Mode.Set(schema.CreateFolderMode))
+
+	require.ErrorIs(t, cfg.Validate(), doublestar.ErrBadPattern)
 }
 
 // Expectation: An error should be returned when recursive mode and deep glob are combined via marker file.

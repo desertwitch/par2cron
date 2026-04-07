@@ -40,6 +40,11 @@ type Options struct {
 }
 
 func (o *Options) Validate() error {
+	// Useful to avoid pattern issues in default configuration.
+	if ok := doublestar.ValidatePattern(o.Par2Glob); !ok {
+		return fmt.Errorf("glob: %w", doublestar.ErrBadPattern)
+	}
+
 	// par2cmdline internally does recursion, so we cannot do double recursion.
 	// If the user wants recursive globbing, they'll have to do it in non-recursive mode.
 	if o.Par2Mode.Value == schema.CreateRecursiveMode && strings.Contains(o.Par2Glob, "/") {
@@ -342,9 +347,20 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			continue
 		}
 
+		// In file/recursive mode, the structure is guaranteed to be shallow.
+		name := fi.Name()
+		if job.par2Mode == schema.CreateFolderMode {
+			if pname, err := filepath.Rel(job.workingDir, f); err != nil {
+				logger := prog.creationLogger(ctx, job, f)
+				logger.Warn("Failed to derive relative path for creation manifest", "error", err)
+			} else {
+				name = pname
+			}
+		}
+
 		protectableElements = append(protectableElements, schema.FsElement{
 			Path:    f,
-			Name:    fi.Name(),
+			Name:    name,
 			Size:    fi.Size(),
 			Mode:    fi.Mode(),
 			IsDir:   fi.IsDir(),

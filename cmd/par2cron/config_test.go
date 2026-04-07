@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/desertwitch/par2cron/internal/create"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/info"
@@ -79,6 +80,19 @@ func Test_configFile_Validate_RecursiveDeepGlob_Error(t *testing.T) {
 	}
 
 	require.ErrorIs(t, cfg.Validate(), schema.ErrUnsupportedGlob)
+}
+
+// Expectation: Validation should fail when the glob pattern is invalid.
+func Test_configFile_Validate_InvalidGlobPattern_Error(t *testing.T) {
+	t.Parallel()
+
+	cfg := &configFile{
+		Create: &configFileCreate{
+			Par2Glob: new("{unclosed"),
+		},
+	}
+
+	require.ErrorIs(t, cfg.Validate(), doublestar.ErrBadPattern)
 }
 
 // Expectation: parseConfigFile should reject a config with recursive mode and deep glob.
