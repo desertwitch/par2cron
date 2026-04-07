@@ -28,6 +28,9 @@ var (
 	errNoFilesToProtect  = errors.New("no files to protect")
 	errSubjobFailure     = errors.New("subjob failure")
 	errWrongModeArgument = errors.New("wrong mode for argument")
+
+	// https://github.com/bmatcuk/doublestar/blob/master/utils.go#L153
+	globMetaReplacer = strings.NewReplacer("*", "\\*", "?", "\\?", "[", "\\[", "]", "\\]", "{", "\\{", "}", "\\}")
 )
 
 type Options struct {
@@ -298,8 +301,9 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 		return nil, schema.ErrUnsupportedGlob
 	}
 
-	globFsys := util.AferoToFS{Fs: prog.fsys}
-	globPattern := filepath.Join(job.workingDir, job.par2Glob)
+	globFsys := afero.NewIOFS(prog.fsys)
+	globPath := globMetaReplacer.Replace(job.workingDir)
+	globPattern := filepath.Join(globPath, job.par2Glob)
 	globOptions := make([]doublestar.GlobOption, 0, 2) //nolint:mnd
 	globOptions = append(globOptions, doublestar.WithNoHidden())
 

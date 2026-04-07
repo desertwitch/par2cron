@@ -81,16 +81,6 @@ func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
 	return nil
 }
 
-// AferoToFS is an adapter to turn the [afero.Fs] into a [fs.FS] signature.
-type AferoToFS struct {
-	Fs afero.Fs
-}
-
-// Open is a method that adapts [afero.Fs.Open] into a [fs.FS.Open] compatible signature.
-func (w AferoToFS) Open(name string) (fs.File, error) {
-	return w.Fs.Open(name) //nolint:wrapcheck
-}
-
 // AferoWalker is an adapter to turn the [afero.Walk] into a [filepath.WalkDir] signature.
 type AferoWalker struct {
 	Fs afero.Fs
