@@ -17,12 +17,13 @@ import (
 )
 
 type MarkerConfig struct {
-	Par2Name   *string           `yaml:"name"`
-	Par2Args   *[]string         `yaml:"args"`
-	Par2Glob   *string           `yaml:"glob"`
-	Par2Mode   *flags.CreateMode `yaml:"mode"`
-	Par2Verify *bool             `yaml:"verify"`
-	HideFiles  *bool             `yaml:"hidden"`
+	Par2Name      *string           `yaml:"name"`
+	Par2Args      *[]string         `yaml:"args"`
+	Par2Glob      *string           `yaml:"glob"`
+	Par2Mode      *flags.CreateMode `yaml:"mode"`
+	Par2Verify    *bool             `yaml:"verify"`
+	HideFiles     *bool             `yaml:"hidden"`
+	PersistMarker *bool             `yaml:"persist"`
 }
 
 func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
@@ -34,6 +35,7 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	par2Mode := opts.Par2Mode
 	par2Verify := opts.Par2Verify
 	hideFiles := opts.HideFiles
+	persistMarker := false
 
 	cfg.Par2Name = &par2Name
 	cfg.Par2Args = &par2Args
@@ -41,6 +43,7 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	cfg.Par2Mode = &par2Mode
 	cfg.Par2Verify = &par2Verify
 	cfg.HideFiles = &hideFiles
+	cfg.PersistMarker = &persistMarker
 
 	return cfg
 }
@@ -171,6 +174,13 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 		logger.Debug("Parsed setting from marker file contents")
 
 		cfg.HideFiles = yamlConfig.HideFiles
+	}
+
+	if yamlConfig.PersistMarker != nil {
+		logger := prog.markerLogger(markerPath, "persist", *yamlConfig.PersistMarker)
+		logger.Debug("Parsed setting from marker file contents")
+
+		cfg.PersistMarker = yamlConfig.PersistMarker
 	}
 
 	return nil

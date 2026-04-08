@@ -147,7 +147,7 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) (
 		} else if errors.Is(err, schema.ErrFileIsLocked) || errors.Is(err, schema.ErrManifestMismatch) {
 			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++
-		} else if !errors.Is(err, schema.ErrAlreadyExists) {
+		} else {
 			logger.Error("Job failure (will retry next run)", "error", err)
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 			results.Error++

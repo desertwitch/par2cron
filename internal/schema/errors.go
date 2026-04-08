@@ -9,7 +9,6 @@ var (
 	ErrExitUnrepairable   = errors.New("files are corrupted, but unrepairable") // [ExitCodeUnrepairable]
 	ErrExitUnclassified   = errors.New("unclassified error")                    // [ExitCodeUnclassified]
 
-	ErrAlreadyExists    = errors.New("file exists")
 	ErrFileIsLocked     = errors.New("file is locked")
 	ErrNonFatal         = errors.New("non-fatal error")
 	ErrSilentSkip       = errors.New("skip without error")

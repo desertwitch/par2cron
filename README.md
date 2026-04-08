@@ -41,7 +41,14 @@
 - [State Management](#state-management)
 - [Creation Arguments](#creation-arguments)
 - [Creation Modes](#creation-modes)
+  - [`folder` mode (default)](#folder-mode-default)
+  - [`nested` mode](#nested-mode)
+  - [`file` mode](#file-mode)
+  - [`recursive` mode](#recursive-mode)
 - [Creation Glob Patterns](#creation-glob-patterns)
+  - [Shallow patterns (no `/`)](#shallow-patterns-no-)
+  - [Deep patterns (containing `/`)](#deep-patterns-containing-)
+  - [Pattern examples](#pattern-examples)
 - [Marker Files](#marker-files)
   - [Marker Filename](#marker-filename)
   - [Marker Configuration](#marker-configuration)
@@ -178,7 +185,7 @@ Flags:
       --hidden              create PAR2 sets and related files as hidden (dotfiles)
       --json                output structured logs in JSON format
   -l, --log-level level     minimum level of emitted logs (debug|info|warn|error) (default info)
-  -m, --mode mode           PAR2 set default mode; creates a set per (file|folder|recursive) (default folder)
+  -m, --mode mode           PAR2 set default mode; creates a set per (folder|nested|file|recursive) (default folder)
   -v, --verify              PAR2 sets must pass verification as part of creation
 ```
 
@@ -394,72 +401,147 @@ https://github.com/Parchive/par2cmdline#using-par2cmdline
 
 ## Creation Modes
 
-The `create` mode of par2cron offers three distinct operation modes:
+The `create` command offers four distinct operation modes, controlling how many
+PAR2 sets are created and where they are placed. The glob pattern (see below)
+controls which files are considered for protection in any of these modes.
 
-| Mode               | Purpose (within the folder a marker was found in)   |
-| :----------------- | :-------------------------------------------------- |
-| `folder` (default) | Creates a PAR2 set for all files                    |
-| `file`             | Creates a PAR2 set for each file                    |
-| `recursive`        | Creates a PAR2 set for all files and folders        |
+| Mode               | PAR2 sets created (marker-containing folder as base)  |
+| :----------------- | :---------------------------------------------------- |
+| `folder` (default) | One PAR2 set for all matching files                   |
+| `nested`           | One PAR2 set per folder containing matching files     |
+| `file`             | One PAR2 set per matching file                        |
+| `recursive`        | One PAR2 set, but using `par2` internal recursion     |
 
-The default, `folder` mode, creates one combined PAR2 set for all files in the
-folder the marker file was found in. This is useful for medium-sized sets of
-data where multiple PAR2 sets would unnecessarily pollute the folder. In folder
-mode, unless changed through below means, PAR2 sets created for found marker
-files will assume the name of the directory they reside in, so the PAR2 set for
-files within `/mnt/storage/Pictures` will be named `Pictures.par2`.
+### `folder` mode (default)
 
-The `file` mode creates one PAR2 set for each file of the folder instead, which
-can be useful for large sets of data where verification time may be a concern.
-The disadvantage is that more files are produced, cluttering directories more.
-In file mode, any PAR2 sets that are created will always be named after the file
-they are meant to protect, beware that this is not changeable (at this time).
+Creates a single PAR2 set covering all glob-matching files, placed in the
+marker-containing directory. With the default glob `*`, this means all files in
+the marker folder itself, but not folders. With a deep glob like `**/*.jpg`,
+this extends to matching files in subfolders - but still produces only one PAR2
+set.
 
-The `recursive` mode creates one combined PAR2 set for the entire directory tree
-of the folder the marker file was found in (so all files and folders). This may
-be useful in certain situations, but is discouraged because it makes it harder
-to recognize or remember which files (and folders) a PAR2 set is protecting. In
-recursive mode, PAR2 sets created for found marker files will also assume the
-name of the directory they reside in, unless changed by marker configuration.
-It is not recommended to set `recursive` mode as default, but instead use the
-marker configurations on a per-job basis (read more about this further below).
+The PAR2 set is named after the directory it resides in. For example, a marker
+in `/mnt/storage/Pictures` produces `Pictures.par2`. This can be overridden
+on a per-job basis using the `name` directive within the marker configuration.
+
+**This is the recommended mode for most use cases.**  
+One marker, one PAR2 set, simple and clean mental model.
+
+### `nested` mode
+
+Creates one PAR2 set per folder that contains glob-matching files, starting from
+the marker-containing directory and descending into subfolders, provided a deep
+glob like `**/*.jpg` is used.  Each PAR2 set is placed in the folder it protects
+and named after that folder.
+
+This is useful for structured collections like media libraries. A single marker
+in `Movies/` with a deep glob will produce `Movies/A/A.par2`, `Movies/B/B.par2`
+and so on - without needing individual marker files in each subfolder. Every
+folder that contains at least one matching file gets its own independent PAR2
+set, including deeply nested folders.
+
+Combined with the `persist` marker directive, nested mode allows handling
+growing collections. New folders are picked up automatically on the next run,
+and existing folders with a PAR2 set are skipped. To update a folder's PAR2 set
+(after adding or changing files), delete the old PAR2 set and the next run will
+recreate it without requiring re-creation of a marker file.
+
+### `file` mode
+
+Creates one PAR2 set per matching file, placed next to the file it protects.
+Each PAR2 set is named after its file, so `beach.jpg` produces `beach.jpg.par2`.
+This naming is not changeable through marker configuration.
+
+This mode is useful for large collections where verifying or repairing a single
+combined PAR2 set would take too long. The trade-off is more files: each
+protected file produces its own set of PAR2 recovery files. The `hidden`
+argument or marker directive can hide any PAR2-related files for less clutter.
+
+With a deep glob like `**/*.jpg`, PAR2 sets are created next to each matching
+file in its respective subfolder, so they always stay close to each other.
+
+### `recursive` mode
+
+Creates a single PAR2 set and delegates recursion entirely to `par2` itself
+using its `-R` flag. The glob pattern controls which files and folders (only of
+the marker-containing directory itself) `par2` receives, `par2` will then
+greedily include **everything** within any glob-matching folder.
+
+The PAR2 set is placed in the marker-containing directory and named after it,
+like in folder mode. The key difference is that `par2` handles the recursion
+internally rather than par2cron building a recursive path list from a glob.
+
+Beware this mode does not support deep glob patterns containing `/`, as
+combining par2cron's glob recursion with `par2` internal recursion would result
+in unpredictable behavior and double recursion. For fine-grained control over
+what gets protected across subfolders, use folder, nested or file mode with deep
+globs instead. If you just want **everything** in the marker-containing
+directory and below, glob `*` with recursive mode can be the simple choice.
+
+Recursive mode is not recommended as a default. Use it on a per-job basis
+through marker configuration when the other modes do not fit your needs.
 
 ## Creation Glob Patterns
 
-par2cron passes a list of paths to the `par2` program for protection. The
-`--glob` argument controls which files (and folders, in recursive mode) will be
-in this list. It supports complex inclusion and exclusion patterns, making it a
-powerful tool for fine-tuning your individual protection requirements.
+The `--glob` argument controls which files are considered for protection. It
+defaults to `*`, matching all non-hidden files in the marker-containing
+directory. par2cron uses the
+[doublestar](https://github.com/bmatcuk/doublestar#patterns) library, supporting
+the full range of glob patterns including `**` for crossing directory
+boundaries. The glob pattern can be changed in the default configuration or on a
+per-job basis using the marker configurations.
 
-**For a list of supported patterns, refer to the [doublestar](https://github.com/bmatcuk/doublestar#patterns) documentation.**
+### Shallow patterns (no `/`)
 
-Beware that deep glob patterns (`/`) can only be used in non-recursive creation
-modes. This is because `par2` performs its own internal recursion - combining
-both would result in double recursion. Use non-recursive modes with any pattern,
-including `/`, for maximum control. Use recursive mode with any pattern except
-`/` for selective matching of files and folders within the topmost directory,
-the `par2` program including **everything** within pattern-matching subfolders.
+Shallow patterns like `*`, `*.jpg` or `*.{jpg,png}` match files within a single
+directory. In folder, nested and file modes, this means only files directly in
+the marker-containing folder are considered. In recursive mode, the pattern is
+applied to files and folders in the marker-containing directory, with `par2`
+recursing into any matching folders.
 
-For such deep glob patterns (`/`), with the resulting path list spanning
-multiple directories, in `folder` mode the created PAR2 set will be placed in
-the marker-containing directory and protect all paths of the list. In `file`
-mode, a PAR2 set will be created for each path of the list and placed next to
-the file it protects (so in the respective subdirectory that file resides in).
+### Deep patterns (containing `/`)
 
-The above applies both for the default configuration and marker configurations.
+Patterns containing `/` such as `**/*.jpg` or `*/data/*.csv` cross directory
+boundaries. This allows all non-recursive modes (folder, nested, file) to
+match specific files across subfolders:
+
+- **folder** collects all matches into one PAR2 set in the marker directory
+- **nested** groups matches by their containing folder, one PAR2 set per folder
+- **file** creates one PAR2 set per match, placed next to each file
+
+Deep patterns are not supported in recursive mode, as `par2` performs its own
+recursion internally. Combining both would result in unpredictable behavior.
+
+### Pattern examples
+
+| Pattern          | Matches                                              |
+| :--------------- | :--------------------------------------------------- |
+| `*`              | All files in the marker directory                    |
+| `*.mp4`          | All `.mp4` files in the marker directory             |
+| `*.{mkv,srt}`    | All `.mkv` and `.srt` files in the marker directory  |
+| `**/*`           | All files in the marker directory and subfolders     |
+| `**/*.mkv`       | All `.mkv` files in the marker directory and below   |
+| `*/data/*.iso`   | All `.iso` files in `data/` subdirectories           |
+
+**For a full list of supported patterns, refer to the [doublestar](https://github.com/bmatcuk/doublestar#patterns) documentation.**
 
 ## Marker Files
 
 The core of the par2cron `create` operation are the marker files. A found marker
-file denotes that **files** in the containing directory need protecting. In most
+file denotes that elements in the containing directory need protecting. In most
 basic form it is just an empty `_par2cron` file, with the defaults from the set
 command-line arguments or configuration file being applied, but more control for
 individual creation jobs is possible through the marker files (read more below).
 
-Upon successful creation of the PAR2 set, the marker file is deleted. In case
-of failure, the creation is retried with the next run. If a same-named PAR2 set
-is already present in the directory, the marker file is skipped and a warning
-presented to the user (not resulting in a non-zero exit code).
+Upon successful creation of the PAR2 set, the marker file is normally deleted.
+In case of failure, the creation is retried with the next run. If a same-named
+PAR2 set is already present in the directory, the marker file is skipped and a
+warning presented to the user (not resulting in a non-zero exit code).
+
+Above does not apply when a marker file is set to `persist` (see below), which
+allows re-use of marker files for growing folders. New content then picked up
+automatically on the next run, and existing PAR2 sets skipped without warning.
+This is interesting for nested mode, but **does not** update existing PAR2 sets.
 
 By default, subfolders are not considered for the created PAR2 set. par2cron
 promotes a clear mental model of "One PAR2 per folder". This helps to reduce
@@ -473,11 +555,13 @@ cognitive load and wondering "Which files did this PAR2 protect again?".
 └── sunset.jpg <-- will be protected using PAR2
 ```
 
-If you wish to create recursive PAR2 sets, you should use marker configurations
-to set this on a per-job basis (although we recommend adopting the above model).
+For subfolder protection, consider using nested mode with a deep glob pattern.
+Recursive mode should only be set on a per-job basis via marker configuration.
 
-Users wanting to re-create any of their PAR2 sets (having added or updated files)
-simply need to delete that PAR2 set, placing a new marker file into the directory.
+Users wanting to re-create any of their PAR2 sets (having added or updated
+files) simply need to delete that PAR2 set, placing a new marker file into the
+directory. With persistent marker files (e.g. for nested creation mode), only
+the old PAR2 set needs deletion, but no new marker file will need to be created.
 
 ### Marker Filename
 
@@ -541,11 +625,11 @@ name: "Ubuntu"
 # Replaces the default arguments set in CLI/configuration
 args: ["-r30", "-n1"]
 
-# Override the glob pattern for which files in the directory to protect
-# Section "Creation Glob Patterns" of documentation covers supported patterns
+# Override the glob pattern
+# Refer to section "Creation Glob Patterns" of documentation
 glob: "*.iso"
 
-# Override the creation mode, create a PAR2 set per [file|folder|recursive]
+# Override the creation mode [folder|nested|file|recursive]
 mode: "folder"
 
 # Override whether to verify the PAR2 set after creation
@@ -553,6 +637,11 @@ verify: true
 
 # Override whether to create the PAR2 set and related files as hidden
 hidden: true
+
+# Do not delete this marker file after PAR2 set creation
+# If set, no warnings will be raised about existing PAR2 sets
+# Allows re-use of marker file for growing folders (e.g. in nested mode)
+persist: true
 ```
 
 The directives are designed to be easy to remember, although for the rare case

@@ -82,18 +82,19 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 }
 
 type Job struct {
-	workingDir   string
-	hiddenFiles  bool
-	markerPath   string
-	par2Mode     string
-	par2Name     string
-	par2Path     string
-	par2Args     []string
-	par2Glob     string
-	par2Verify   bool
-	lockPath     string
-	manifestName string
-	manifestPath string
+	workingDir    string
+	hiddenFiles   bool
+	markerPath    string
+	markerPersist bool
+	par2Mode      string
+	par2Name      string
+	par2Path      string
+	par2Args      []string
+	par2Glob      string
+	par2Verify    bool
+	lockPath      string
+	manifestName  string
+	manifestPath  string
 }
 
 func NewJob(markerPath string, cfg MarkerConfig) *Job {
@@ -104,6 +105,7 @@ func NewJob(markerPath string, cfg MarkerConfig) *Job {
 		cj.par2Name = "." + cj.par2Name
 	}
 	cj.hiddenFiles = *cfg.HideFiles
+	cj.markerPersist = *cfg.PersistMarker
 
 	cj.par2Mode = cfg.Par2Mode.Value
 	cj.par2Args = slices.Clone(*cfg.Par2Args)
@@ -129,6 +131,23 @@ func newFileModeJob(job Job, path string) Job {
 	}
 
 	job.workingDir = filepath.Dir(path)
+	job.par2Path = filepath.Join(job.workingDir, job.par2Name)
+	job.manifestName = job.par2Name + schema.ManifestExtension
+	job.manifestPath = job.par2Path + schema.ManifestExtension
+	job.lockPath = job.par2Path + schema.LockExtension
+
+	return job
+}
+
+func newNestedModeJob(job Job, dir string) Job {
+	oldName := job.par2Name
+
+	job.par2Name = filepath.Base(dir) + schema.Par2Extension
+	if strings.HasPrefix(oldName, ".") {
+		job.par2Name = "." + job.par2Name
+	}
+
+	job.workingDir = dir
 	job.par2Path = filepath.Join(job.workingDir, job.par2Name)
 	job.manifestName = job.par2Name + schema.ManifestExtension
 	job.manifestPath = job.par2Path + schema.ManifestExtension
@@ -201,7 +220,7 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 		} else if errors.Is(err, schema.ErrFileIsLocked) {
 			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++
-		} else if !errors.Is(err, schema.ErrAlreadyExists) {
+		} else {
 			logger.Error("Job failure (will retry next run)", "error", err)
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 			results.Error++
@@ -269,21 +288,30 @@ func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to find to-protect elements: %w", err)
 	}
 
-	if job.par2Mode == schema.CreateFileMode {
+	switch job.par2Mode {
+	case schema.CreateFileMode:
 		if err := prog.createIndividual(ctx, job, files); err != nil {
 			return fmt.Errorf("failed to create par2: %w", err)
 		}
-	} else {
+
+	case schema.CreateNestedMode:
+		if err := prog.createNested(ctx, job, files); err != nil {
+			return fmt.Errorf("failed to create par2: %w", err)
+		}
+
+	default: // schema.CreateFolderMode
 		if err := prog.createCombined(ctx, job, files); err != nil {
 			return fmt.Errorf("failed to create par2: %w", err)
 		}
 	}
 
-	if err := prog.fsys.Remove(job.markerPath); err != nil {
-		logger := prog.creationLogger(ctx, job, job.markerPath)
-		logger.Error("Failed to delete marker file (needs manual deletion)", "error", err)
+	if !job.markerPersist {
+		if err := prog.fsys.Remove(job.markerPath); err != nil {
+			logger := prog.creationLogger(ctx, job, job.markerPath)
+			logger.Error("Failed to delete marker file (needs manual deletion)", "error", err)
 
-		return fmt.Errorf("failed to delete marker file: %w", err)
+			return fmt.Errorf("failed to delete marker file: %w", err)
+		}
 	}
 
 	return nil
@@ -385,9 +413,13 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 	logger := prog.creationLogger(ctx, job, job.par2Path)
 
 	if _, err := prog.fsys.Stat(job.par2Path); err == nil {
-		logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+		if job.markerPersist {
+			logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+		} else {
+			logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+		}
 
-		return schema.ErrAlreadyExists
+		return nil
 	}
 
 	if err := prog.runCreate(ctx, job, elements); err != nil {
@@ -395,6 +427,59 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 	}
 
 	logger.Info("Succeeded to create PAR2")
+
+	return nil
+}
+
+func (prog *Service) createNested(ctx context.Context, job *Job, elements []schema.FsElement) error {
+	var errCount int
+
+	groups := make(map[string][]schema.FsElement)
+	order := make([]string, 0)
+
+	for _, e := range elements {
+		dir := filepath.Dir(e.Path)
+
+		if _, exists := groups[dir]; !exists {
+			order = append(order, dir)
+		}
+
+		groups[dir] = append(groups[dir], e)
+	}
+
+	for i, dir := range order {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
+		mpos := fmt.Sprintf("%d/%d", i+1, len(order))
+		ctx := context.WithValue(ctx, schema.MposKey, mpos)
+
+		j := newNestedModeJob(*job, dir)
+		logger := prog.creationLogger(ctx, &j, j.par2Path)
+
+		if _, err := prog.fsys.Stat(j.par2Path); err == nil {
+			if job.markerPersist {
+				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+			} else {
+				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+			}
+
+			continue
+		}
+
+		if err := prog.runCreate(ctx, &j, groups[dir]); err != nil {
+			errCount++
+
+			continue
+		}
+
+		logger.Info("Succeeded to create PAR2")
+	}
+
+	if errCount > 0 {
+		return fmt.Errorf("%w: %d/%d failed", errSubjobFailure, errCount, len(order))
+	}
 
 	return nil
 }
@@ -415,7 +500,11 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
 		if _, err := prog.fsys.Stat(j.par2Path); err == nil {
-			logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+			if job.markerPersist {
+				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+			} else {
+				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+			}
 
 			continue
 		}
