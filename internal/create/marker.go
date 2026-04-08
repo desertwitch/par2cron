@@ -49,7 +49,6 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 }
 
 func (m *MarkerConfig) Validate() error {
-	// Useful to avoid pattern issues at parsing time.
 	if ok := doublestar.ValidatePattern(*m.Par2Glob); !ok {
 		return fmt.Errorf("glob: %w", doublestar.ErrBadPattern)
 	}

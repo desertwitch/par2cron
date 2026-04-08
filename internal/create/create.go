@@ -43,7 +43,6 @@ type Options struct {
 }
 
 func (o *Options) Validate() error {
-	// Useful to avoid pattern issues in default configuration.
 	if ok := doublestar.ValidatePattern(o.Par2Glob); !ok {
 		return fmt.Errorf("glob: %w", doublestar.ErrBadPattern)
 	}
@@ -318,7 +317,6 @@ func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 }
 
 func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]schema.FsElement, error) {
-	// Should be caught earlier during validation, but keeping it here as a last-minute seatbelt.
 	if job.par2Mode == schema.CreateRecursiveMode && strings.Contains(job.par2Glob, "/") {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
 		logger.Error("Recursive mode does not support deep (/) glob patterns, "+
@@ -335,8 +333,6 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 	globOptions = append(globOptions, doublestar.WithNoHidden())
 
 	if job.par2Mode != schema.CreateFileMode {
-		// In these modes the PAR2 is not created at the side of the protected file,
-		// so we do not want any symlinks possibly reaching out of the directory tree.
 		globOptions = append(globOptions, doublestar.WithNoFollow())
 	}
 
@@ -378,12 +374,13 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			continue
 		}
 
-		// In file/recursive mode, the structure is guaranteed to be shallow.
+		// In other modes, the structure is guaranteed to be shallow.
 		name := fi.Name()
 		if job.par2Mode == schema.CreateFolderMode {
 			if pname, err := filepath.Rel(job.workingDir, f); err != nil {
 				logger := prog.creationLogger(ctx, job, f)
 				logger.Warn("Failed to derive relative path for creation manifest", "error", err)
+				name = ""
 			} else {
 				name = pname
 			}

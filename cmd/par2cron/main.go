@@ -53,7 +53,7 @@ import (
 
 var profFile *os.File
 
-func stopProf() {
+func stopProfile() {
 	if profFile != nil {
 		pprof.StopCPUProfile()
 		_ = profFile.Close()
@@ -81,16 +81,16 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 		SilenceUsage:      true,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			pp, _ := cmd.Flags().GetString("prof")
+			pp, _ := cmd.Flags().GetString("pprof")
 			if pp != "" {
 				pf, err := os.Create(pp)
 				if err != nil {
-					return fmt.Errorf("%w: failed to create --prof: %w",
+					return fmt.Errorf("%w: failed to create --pprof: %w",
 						schema.ErrExitBadInvocation, err)
 				}
 				profFile = pf
 				if err := pprof.StartCPUProfile(pf); err != nil {
-					return fmt.Errorf("%w: failed to start --prof: %w",
+					return fmt.Errorf("%w: failed to start --pprof: %w",
 						schema.ErrExitBadInvocation, err)
 				}
 			}
@@ -106,7 +106,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 	}
-	rootCmd.PersistentFlags().String("prof", "", "write CPU profile to file")
+	rootCmd.PersistentFlags().String("pprof", "", "write CPU performance profile to file")
 
 	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -569,7 +569,7 @@ func main() {
 
 	cobra.OnFinalize(func() {
 		// https://github.com/spf13/cobra/issues/1893#issuecomment-1573951697
-		stopProf()
+		stopProfile()
 	})
 
 	rootCmd := newRootCmd(ctx)
