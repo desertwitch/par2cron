@@ -50,8 +50,8 @@
   - [Deep patterns (containing `/`)](#deep-patterns-containing-)
   - [Pattern examples](#pattern-examples)
 - [Marker Files](#marker-files)
-  - [Marker Filename](#marker-filename)
-  - [Marker Configuration](#marker-configuration)
+  - [Marker filename](#marker-filename)
+  - [Marker configuration](#marker-configuration)
 - [Ignore Files](#ignore-files)
 - [Configuration](#configuration)
 - [Limitations](#limitations)
@@ -563,7 +563,7 @@ files) simply need to delete that PAR2 set, placing a new marker file into the
 directory. With persistent marker files (e.g. for nested creation mode), only
 the old PAR2 set needs deletion, but no new marker file will need to be created.
 
-### Marker Filename
+### Marker filename
 
 You can *modify* the default arguments that are given to `par2`, settable
 through the command-line arguments or configuration file (see *Usage* and
@@ -606,7 +606,7 @@ will also automatically set creation mode to `recursive` for that job. As a
 result, any marker file named `_par2cron_R` will override to recursive mode,
 even if this was not specifically set through the YAML marker configuration.
 
-### Marker Configuration
+### Marker configuration
 
 In most cases a marker file will have no content, but for maximum control over
 individual creation jobs it is possible to place YAML directives inside. These
