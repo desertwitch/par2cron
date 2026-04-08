@@ -176,7 +176,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options
 			return nil
 		}
 
-		if !util.IsPar2Base(d.Name()) {
+		if !util.IsPar2Index(d.Name()) {
 			return nil
 		}
 		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
