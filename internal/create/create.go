@@ -328,12 +328,11 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 
 	globFsys := afero.NewIOFS(prog.fsys)
 	globPath := globMetaReplacer.Replace(job.workingDir)
-	globPattern := filepath.Join(globPath, job.par2Glob)
-	globOptions := make([]doublestar.GlobOption, 0, 2) //nolint:mnd
-	globOptions = append(globOptions, doublestar.WithNoHidden())
 
-	if job.par2Mode != schema.CreateFileMode {
-		globOptions = append(globOptions, doublestar.WithNoFollow())
+	globPattern := filepath.Join(globPath, job.par2Glob)
+	globOptions := []doublestar.GlobOption{
+		doublestar.WithNoHidden(),
+		doublestar.WithNoFollow(),
 	}
 
 	protectablePaths, err := doublestar.Glob(globFsys, globPattern, globOptions...)
