@@ -92,7 +92,7 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) (
 	results := util.NewResultTracker()
 
 	logger := prog.repairLogger(ctx, nil, rootDir)
-	logger.Info("Scanning filesystem for jobs...")
+	logger.Info("Scanning filesystem for jobs...", "walker", prog.walker.Name())
 
 	jobs, err := prog.Enumerate(ctx, rootDir, args)
 	if err != nil {
@@ -163,7 +163,6 @@ func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) (
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options) ([]*Job, error) {
 	jobs := []*Job{}
-	chkr := util.NewIgnoreChecker(prog.fsys)
 
 	var partialErrors int
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
@@ -176,14 +175,14 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options
 
 			return nil
 		}
-		if skip, err := chkr.ShouldSkip(par2path, d.IsDir()); skip {
-			logger := prog.repairLogger(ctx, nil, par2path)
-			logger.Debug("A path was skipped due to a present ignore-file", "error", err)
 
-			return err //nolint:wrapcheck
+		if !util.IsPar2Base(d.Name()) {
+			return nil
 		}
+		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
+			logger := prog.repairLogger(ctx, nil, par2path)
+			logger.Debug("A path was skipped due to a present ignore-file")
 
-		if !util.IsPar2Base(par2path) {
 			return nil
 		}
 

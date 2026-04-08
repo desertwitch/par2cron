@@ -86,6 +86,8 @@ type AferoWalker struct {
 	Fs afero.Fs
 }
 
+func (w AferoWalker) Name() string { return "afero" }
+
 // WalkDir is a method that adapts [afero.Walk] into a [filepath.WalkDir] compatible signature.
 func (w AferoWalker) WalkDir(root string, fn fs.WalkDirFunc) error {
 	return afero.Walk(w.Fs, root, func(path string, info fs.FileInfo, err error) error { //nolint:wrapcheck
@@ -101,6 +103,8 @@ func (w AferoWalker) WalkDir(root string, fn fs.WalkDirFunc) error {
 
 // OSWalker is a wrapper structure for the native [filepath.WalkDir] function.
 type OSWalker struct{}
+
+func (w OSWalker) Name() string { return "os" }
 
 // WalkDir is a wrapper method for the native [filepath.WalkDir] function.
 func (w OSWalker) WalkDir(root string, fn fs.WalkDirFunc) error {
@@ -127,6 +131,30 @@ func (fi fileInfoDirEntry) Name() string {
 	return fi.FileInfo.Name()
 }
 
+func ShouldIgnorePath(fsys afero.Fs, path string, rootDir string) bool {
+	dir := filepath.Dir(path)
+
+	ignorePath := filepath.Join(dir, schema.IgnoreFile)
+	if _, err := fsys.Stat(ignorePath); err == nil {
+		return true
+	}
+
+	for {
+		ignoreAllPath := filepath.Join(dir, schema.IgnoreAllFile)
+		if _, err := fsys.Stat(ignoreAllPath); err == nil {
+			return true
+		}
+		if dir == rootDir || dir == filepath.Dir(dir) {
+			break
+		}
+		dir = filepath.Dir(dir)
+	}
+
+	return false
+}
+
+// Deprecated: IgnoreChecker is unused because it's much slower (more .Stat);
+// keeping if needed later as it allows to [filepath.SkipDir] large subtrees.
 type IgnoreChecker struct {
 	fsys afero.Fs
 

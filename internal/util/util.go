@@ -26,13 +26,21 @@ func NewResultTracker() *ResultTracker {
 }
 
 func IsPar2Base(path string) bool {
-	lower := strings.ToLower(path)
-
-	if !strings.HasSuffix(lower, schema.Par2Extension) {
+	if !endsWithFold(path, schema.Par2Extension) {
 		return false
 	}
 
+	lower := strings.ToLower(path)
+
 	return !strings.Contains(lower, ".vol")
+}
+
+func endsWithFold(s, suffix string) bool {
+	if len(s) < len(suffix) {
+		return false
+	}
+
+	return strings.EqualFold(s[len(s)-len(suffix):], suffix)
 }
 
 func FmtDur(d time.Duration) string {

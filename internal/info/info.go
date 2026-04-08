@@ -61,7 +61,7 @@ func (prog *Service) Info(ctx context.Context, rootDir string, args Options) err
 		return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, errNoCalcInterval)
 	}
 
-	fmt.Fprintln(prog.log.Options.Stdout, "Scanning filesystem for jobs...")
+	fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem for jobs (using '%s')...\n", prog.walker.Name())
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
 	now := time.Now()

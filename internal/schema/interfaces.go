@@ -8,6 +8,7 @@ import (
 
 // FilesystemWalker is an interface describing a filesystem walking function.
 type FilesystemWalker interface {
+	Name() string
 	WalkDir(root string, fn fs.WalkDirFunc) error
 }
 

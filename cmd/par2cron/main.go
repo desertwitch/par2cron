@@ -36,6 +36,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"runtime/pprof"
 	"syscall"
 
 	"github.com/desertwitch/par2cron/internal/create"
@@ -49,6 +50,16 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
+
+var profFile *os.File
+
+func stopProf() {
+	if profFile != nil {
+		pprof.StopCPUProfile()
+		_ = profFile.Close()
+		profFile = nil
+	}
+}
 
 func wrapArgsError(validator cobra.PositionalArgs) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
@@ -69,10 +80,23 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 		Version:           schema.ProgramVersion,
 		SilenceUsage:      true,
 		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
-		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			pp, _ := cmd.Flags().GetString("prof")
+			if pp != "" {
+				pf, err := os.Create(pp)
+				if err != nil {
+					return fmt.Errorf("%w: failed to create --prof: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+				profFile = pf
+				if err := pprof.StartCPUProfile(pf); err != nil {
+					return fmt.Errorf("%w: failed to start --prof: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+			}
+
 			par2cmd := exec.CommandContext(ctx, "par2", "-V")
 			par2cmd.WaitDelay = util.ProcessKillTimeout
-
 			if err := par2cmd.Run(); err != nil {
 				fmt.Fprintln(os.Stderr, "This program requires a \"par2\" (par2cmdline) installation in your $PATH")
 
@@ -82,6 +106,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 	}
+	rootCmd.PersistentFlags().String("prof", "", "write CPU profile to file")
 
 	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -541,6 +566,11 @@ func main() {
 		<-sigs
 		cancel()
 	}()
+
+	cobra.OnFinalize(func() {
+		// https://github.com/spf13/cobra/issues/1893#issuecomment-1573951697
+		stopProf()
+	})
 
 	rootCmd := newRootCmd(ctx)
 	err := rootCmd.Execute()

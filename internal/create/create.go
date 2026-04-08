@@ -146,7 +146,7 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 	}
 
 	logger := prog.creationLogger(ctx, nil, rootDir)
-	logger.Info("Scanning filesystem for jobs...")
+	logger.Info("Scanning filesystem for jobs...", "walker", prog.walker.Name())
 
 	jobs, err := prog.Enumerate(ctx, rootDir, opts)
 	if err != nil {
@@ -217,7 +217,6 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
-	chkr := util.NewIgnoreChecker(prog.fsys)
 
 	var parseErrors int
 	err := prog.walker.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
@@ -230,14 +229,14 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 			return nil
 		}
-		if skip, err := chkr.ShouldSkip(path, d.IsDir()); skip {
-			logger := prog.creationLogger(ctx, nil, path)
-			logger.Debug("A path was skipped due to a present ignore-file", "error", err)
 
-			return err //nolint:wrapcheck
+		if !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
+			return nil
 		}
+		if util.ShouldIgnorePath(prog.fsys, path, rootDir) {
+			logger := prog.creationLogger(ctx, nil, path)
+			logger.Debug("A path was skipped due to a present ignore-file")
 
-		if !strings.HasPrefix(filepath.Base(path), createMarkerPathPrefix) {
 			return nil
 		}
 
