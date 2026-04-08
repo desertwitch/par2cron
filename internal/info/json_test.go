@@ -65,6 +65,7 @@ func Test_Service_PrintJSON_NoKnownDurations_Success(t *testing.T) {
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
+	require.NotEmpty(t, result.Root)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.NotNil(t, result.Options)
@@ -110,6 +111,7 @@ func Test_Service_PrintJSON_WithOptions_Success(t *testing.T) {
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
+	require.NotEmpty(t, result.Root)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.NotNil(t, result.Options)
@@ -148,6 +150,7 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
+	require.NotEmpty(t, result.Root)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.Equal(t, 1, result.Summary.JobCount)
@@ -189,6 +192,7 @@ func Test_Service_PrintJSON_WithJobs_ZeroLastVerified_Success(t *testing.T) {
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
+	require.NotEmpty(t, result.Root)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.Equal(t, 1, result.Summary.JobCount)
@@ -622,6 +626,7 @@ func Test_Service_PrintJSON_AllSections_Success(t *testing.T) {
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
+	require.NotEmpty(t, result.Root)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.NotNil(t, result.AgeInfo)
@@ -664,6 +669,7 @@ func Test_Service_PrintJSON_MinimalSections_Success(t *testing.T) {
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
+	require.NotEmpty(t, result.Root)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.Nil(t, result.AgeInfo)
