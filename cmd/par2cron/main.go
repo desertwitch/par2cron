@@ -199,6 +199,11 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			}
 			args[0] = path
 
+			if _, err := fsys.Stat(path); err != nil {
+				return fmt.Errorf("%w: failed to access root directory: %w",
+					schema.ErrExitBadInvocation, err)
+			}
+
 			if hasExternalArgs {
 				createArgs.Par2Args = append([]string{}, args[dashAt:]...)
 			}
@@ -294,6 +299,11 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			}
 			args[0] = path
 
+			if _, err := fsys.Stat(path); err != nil {
+				return fmt.Errorf("%w: failed to access root directory: %w",
+					schema.ErrExitBadInvocation, err)
+			}
+
 			if hasExternalArgs {
 				verifyArgs.Par2Args = append([]string{}, args[dashAt:]...)
 			}
@@ -377,6 +387,11 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			}
 			args[0] = path
 
+			if _, err := fsys.Stat(path); err != nil {
+				return fmt.Errorf("%w: failed to access root directory: %w",
+					schema.ErrExitBadInvocation, err)
+			}
+
 			if hasExternalArgs {
 				repairArgs.Par2Args = append([]string{}, args[dashAt:]...)
 			}
@@ -454,6 +469,11 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 					schema.ErrExitBadInvocation, err)
 			}
 			args[0] = path
+
+			if _, err := fsys.Stat(path); err != nil {
+				return fmt.Errorf("%w: failed to access root directory: %w",
+					schema.ErrExitBadInvocation, err)
+			}
 
 			return nil
 		},
