@@ -15,6 +15,9 @@ import (
 
 // Result contains the complete info command output.
 type Result struct {
+	// Root directory for this result.
+	Root string `json:"root"`
+
 	// Time is when this result was generated.
 	Time time.Time `json:"time"`
 
@@ -180,6 +183,7 @@ func (prog *Service) Result(ctx context.Context, rootDir string, args Options) (
 	va := verify.Options{IncludeExternal: args.IncludeExternal, SkipNotCreated: args.SkipNotCreated}
 
 	result := &Result{
+		Root:    rootDir,
 		Time:    now,
 		Options: &args,
 	}
