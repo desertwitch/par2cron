@@ -3545,6 +3545,8 @@ func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/test", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test2"+schema.Par2Extension, []byte("par2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("par2"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("par2"), 0o644))
@@ -3574,6 +3576,12 @@ func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
 	}
 
 	prog.cleanupAfterFailure(t.Context(), job)
+
+	exists0a, _ := afero.Exists(fs, "/data/folder/test")
+	require.True(t, exists0a)
+
+	exists0b, _ := afero.Exists(fs, "/data/folder/test2"+schema.Par2Extension)
+	require.True(t, exists0b)
 
 	exists1, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
 	require.False(t, exists1)
