@@ -17,6 +17,7 @@ const (
 	Par2ExitCodeRepairPossible   int = 1
 	Par2ExitCodeRepairImpossible int = 2
 
+	Par2VolPrefix     string = ".vol"
 	Par2Extension     string = ".par2" // used as par2Extension
 	LockExtension     string = ".lock" // used as par2Extension+lockExtension
 	ManifestExtension string = ".json" // used as par2Extension+manifestExtension

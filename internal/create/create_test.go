@@ -3575,20 +3575,80 @@ func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
 
 	prog.cleanupAfterFailure(t.Context(), job)
 
-	exists1, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
-	require.False(t, exists1)
+	for _, tt := range []struct {
+		path   string
+		exists bool
+	}{
+		{"/data/folder/test" + schema.Par2Extension, false},
+		{"/data/folder/test" + schema.Par2Extension + schema.ManifestExtension, false},
+		{"/data/folder/test" + schema.Par2Extension + schema.LockExtension, false},
+		{"/data/folder/test.vol01+02" + schema.Par2Extension, false},
+		{"/data/folder/existing" + schema.Par2Extension, true},
+	} {
+		exists, _ := afero.Exists(fs, tt.path)
+		require.Equal(t, tt.exists, exists, tt.path)
+	}
+}
 
-	exists2, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
-	require.False(t, exists2)
+// Expectation: Cleanup should not touch unrelated files or directories.
+func Test_Service_cleanupAfterFailure_EdgeCases_Success(t *testing.T) {
+	t.Parallel()
 
-	exists3, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension)
-	require.False(t, exists3)
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/test", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test2"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.txt", []byte("text"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/unrelated.vol01+02"+schema.Par2Extension, []byte("vol"), 0o644))
 
-	exists4, _ := afero.Exists(fs, "/data/folder/test.vol01+02"+schema.Par2Extension)
-	require.False(t, exists4)
+	var logBuf testutil.SafeBuffer
 
-	exists5, _ := afero.Exists(fs, "/data/folder/existing"+schema.Par2Extension)
-	require.True(t, exists5)
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	prog.cleanupAfterFailure(t.Context(), job)
+
+	for _, tt := range []struct {
+		path   string
+		exists bool
+	}{
+		{"/data/folder/test" + schema.Par2Extension, false},
+		{"/data/folder/test" + schema.Par2Extension + schema.ManifestExtension, false},
+		{"/data/folder/test" + schema.Par2Extension + schema.LockExtension, false},
+		{"/data/folder/test2" + schema.Par2Extension, true},
+		{"/data/folder/test.txt", true},
+		{"/data/folder/unrelated.vol01+02" + schema.Par2Extension, true},
+	} {
+		exists, _ := afero.Exists(fs, tt.path)
+		require.Equal(t, tt.exists, exists, tt.path)
+	}
+
+	// Subdirectory with a prefix-matching name should not be removed.
+	info, err := fs.Stat("/data/folder/test")
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
 }
 
 // Expectation: Non-failing files should be removed regardless of failure.
@@ -3628,20 +3688,19 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 
 	prog.cleanupAfterFailure(t.Context(), job)
 
-	exists1, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
-	require.False(t, exists1)
-
-	exists2, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
-	require.False(t, exists2)
-
-	exists3, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension)
-	require.True(t, exists3)
-
-	exists4, _ := afero.Exists(fs, "/data/folder/test.vol01+02"+schema.Par2Extension)
-	require.False(t, exists4)
-
-	exists5, _ := afero.Exists(fs, "/data/folder/existing"+schema.Par2Extension)
-	require.True(t, exists5)
+	for _, tt := range []struct {
+		path   string
+		exists bool
+	}{
+		{"/data/folder/test" + schema.Par2Extension, false},
+		{"/data/folder/test" + schema.Par2Extension + schema.ManifestExtension, false},
+		{"/data/folder/test" + schema.Par2Extension + schema.LockExtension, true},
+		{"/data/folder/test.vol01+02" + schema.Par2Extension, false},
+		{"/data/folder/existing" + schema.Par2Extension, true},
+	} {
+		exists, _ := afero.Exists(fs, tt.path)
+		require.Equal(t, tt.exists, exists, tt.path)
+	}
 
 	require.Contains(t, logBuf.String(), "Failed to cleanup a file after failure")
 }

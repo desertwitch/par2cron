@@ -599,27 +599,37 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 }
 
 func (prog *Service) cleanupAfterFailure(ctx context.Context, job *Job) {
-	basePath := strings.TrimSuffix(job.par2Path, schema.Par2Extension)
-
-	p2f, err := afero.Glob(prog.fsys, basePath+"*"+schema.Par2Extension)
+	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
 	if err != nil {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
-		logger.Warn(fmt.Sprintf("Failed to cleanup after failure (%s need manual deletion)", schema.Par2Extension), "error", err)
+		logger.Warn("Failed to read directory for cleanup (needs manual deletion)", "error", err)
 
 		return
 	}
 
-	p2f = append(p2f, job.manifestPath)
-	p2f = append(p2f, job.lockPath)
-
-	for _, f := range p2f {
-		// Just to be safe, in case of pathing insanity.
-		if !strings.HasSuffix(strings.ToLower(f), schema.Par2Extension) &&
-			!strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.ManifestExtension) &&
-			!strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.LockExtension) {
+	baseName := strings.TrimSuffix(job.par2Name, schema.Par2Extension) + "."
+	for _, entry := range entries {
+		if entry.IsDir() {
 			continue
 		}
 
+		name := entry.Name()
+
+		if !strings.HasPrefix(name, baseName) {
+			continue
+		}
+		if !util.IsPar2Index(name) && !util.IsPar2Volume(name) {
+			continue
+		}
+
+		path := filepath.Join(job.workingDir, name)
+		if err := prog.fsys.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			logger := prog.creationLogger(ctx, job, path)
+			logger.Warn("Failed to cleanup a file after failure (needs manual deletion)", "error", err)
+		}
+	}
+
+	for _, f := range []string{job.manifestPath, job.lockPath} {
 		if err := prog.fsys.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			logger := prog.creationLogger(ctx, job, f)
 			logger.Warn("Failed to cleanup a file after failure (needs manual deletion)", "error", err)

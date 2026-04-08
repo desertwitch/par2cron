@@ -1,11 +1,9 @@
 package util
 
 import (
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,30 +18,114 @@ func Test_NewResultTracker_ZeroValues_Success(t *testing.T) {
 	require.Equal(t, 0, tracker.Error)
 }
 
-// Expectation: The PAR2 base should be identified as case-insensitive.
-func Test_IsPar2Base_ValidBase_Success(t *testing.T) {
+// Expectation: The function should meet the table's expectations.
+func Test_IsPar2Index_Table(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name   string
+		input  string
+		expect bool
+	}{
+		{"lowercase extension", "/data/test.par2", true},
+		{"uppercase extension", "/data/test.PAR2", true},
+		{"mixed case extension", "/data/test.Par2", true},
+		{"no directory", "test.par2", true},
+		{"vol in directory path", "/data/.vol01/test.par2", true},
+		{"vol+digits in directory path", "/data/vol00+01/test.PAR2", true},
+		{"dot vol in directory path", "/mnt/.vol/archive.par2", true},
 
-	require.True(t, IsPar2Base("/data/test"+schema.Par2Extension))
-	require.True(t, IsPar2Base("/data/test"+strings.ToUpper(schema.Par2Extension)))
-	require.True(t, IsPar2Base("test"+schema.Par2Extension))
+		{"volume file lowercase", "/data/test.vol01+02.par2", false},
+		{"volume file uppercase", "/data/test.vol10+20.PAR2", false},
+		{"volume file mixed case", "/data/test.VOL00+01.Par2", false},
+
+		{"txt file", "/data/test.txt", false},
+		{"par file (no 2)", "/data/test.par", false},
+		{"no extension", "/data/test", false},
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expect, IsPar2Index(tt.input))
+		})
+	}
 }
 
-// Expectation: The PAR2 volumes should not be identified as base.
-func Test_IsPar2Base_VolumeFile_Success(t *testing.T) {
+// Expectation: The function should meet the table's expectations.
+func Test_IsPar2Volume_Table(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name   string
+		input  string
+		expect bool
+	}{
+		{"lowercase", "test.vol00+01.par2", true},
+		{"uppercase extension", "test.vol25+22.PAR2", true},
+		{"mixed case", "test.VOL00+01.Par2", true},
+		{"with directory", "/data/test.vol10+20.par2", true},
+		{"nested directory", "/data/folder/test.vol99+50.PAR2", true},
+		{"large block count", "test.vol000+100.par2", true},
+		{"single digit blocks", "test.vol0+1.par2", true},
 
-	require.False(t, IsPar2Base("/data/test.vol01+02"+schema.Par2Extension))
-	require.False(t, IsPar2Base("/data/test.vol10+20"+strings.ToUpper(schema.Par2Extension)))
+		{"index lowercase", "test.par2", false},
+		{"index uppercase", "test.PAR2", false},
+		{"index with directory", "/data/test.par2", false},
+
+		{"txt file", "test.txt", false},
+		{"vol pattern but txt", "test.vol01+02.txt", false},
+		{"no extension", "test", false},
+		{"empty string", "", false},
+
+		{"vol dir with index file", "/data/.vol01/test.par2", false},
+		{"vol+digits dir with index file", "/data/vol00+01/test.PAR2", false},
+		{"dot vol dir with index file", "/mnt/.vol/archive.par2", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expect, IsPar2Volume(tt.input))
+		})
+	}
 }
 
-// Expectation: Other unrelated files should not be identified as base.
-func Test_IsPar2Base_NonPar2_Success(t *testing.T) {
+// Expectation: The function should meet the table's expectations.
+func Test_EndsWithFold_Table(t *testing.T) {
 	t.Parallel()
+	tests := []struct {
+		name   string
+		s      string
+		suffix string
+		expect bool
+	}{
+		{"exact lowercase", "test.par2", ".par2", true},
+		{"uppercase input", "test.PAR2", ".par2", true},
+		{"mixed case input", "test.Par2", ".par2", true},
+		{"mixed case both", "test.pAr2", ".PAR2", true},
+		{"with directory path", "/data/folder/test.PAR2", ".par2", true},
+		{"suffix equals string", ".par2", ".par2", true},
 
-	require.False(t, IsPar2Base("/data/test.txt"))
-	require.False(t, IsPar2Base("/data/test.par"))
-	require.False(t, IsPar2Base("/data/test"))
+		{"partial suffix", "test.par", ".par2", false},
+		{"different extension", "test.txt", ".par2", false},
+		{"no extension", "test", ".par2", false},
+		{"empty string", "", ".par2", false},
+		{"extension in directory", "", "/a/.par2/b", false},
+
+		{"shorter than suffix", ".pa", ".par2", false},
+		{"single char", "a", ".par2", false},
+
+		{"empty suffix", "test.par2", "", true},
+		{"both empty", "", "", true},
+		{"suffix longer than string", "ab", "abc", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expect, EndsWithFold(tt.s, tt.suffix))
+		})
+	}
 }
 
 // Expectation: The duration should be formatted to string with success.

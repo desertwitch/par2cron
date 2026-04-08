@@ -21,6 +21,7 @@ func Test_Constants_Success(t *testing.T) {
 	require.Equal(t, 1, Par2ExitCodeRepairPossible)
 	require.Equal(t, 2, Par2ExitCodeRepairImpossible)
 
+	require.Equal(t, ".vol", Par2VolPrefix)
 	require.Equal(t, ".par2", Par2Extension)
 	require.Equal(t, ".lock", LockExtension)
 	require.Equal(t, ".json", ManifestExtension)

@@ -2,6 +2,7 @@ package util
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,17 +26,27 @@ func NewResultTracker() *ResultTracker {
 	return &ResultTracker{}
 }
 
-func IsPar2Base(path string) bool {
-	if !endsWithFold(path, schema.Par2Extension) {
+func IsPar2Index(path string) bool {
+	if !EndsWithFold(path, schema.Par2Extension) {
 		return false
 	}
 
-	lower := strings.ToLower(path)
+	lower := strings.ToLower(filepath.Base(path))
 
-	return !strings.Contains(lower, ".vol")
+	return !strings.Contains(lower, schema.Par2VolPrefix)
 }
 
-func endsWithFold(s, suffix string) bool {
+func IsPar2Volume(path string) bool {
+	if !EndsWithFold(path, schema.Par2Extension) {
+		return false
+	}
+
+	lower := strings.ToLower(filepath.Base(path))
+
+	return strings.Contains(lower, schema.Par2VolPrefix)
+}
+
+func EndsWithFold(s, suffix string) bool {
 	if len(s) < len(suffix) {
 		return false
 	}
