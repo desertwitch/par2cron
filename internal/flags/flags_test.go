@@ -352,6 +352,19 @@ func Test_CreateMode_Set_RecursiveMode_Success(t *testing.T) {
 	require.Equal(t, schema.CreateRecursiveMode, f.Value)
 }
 
+// Expectation: The function should accept a valid mode string.
+func Test_CreateMode_Set_NestedMode_Success(t *testing.T) {
+	t.Parallel()
+
+	f := &CreateMode{}
+
+	err := f.Set(schema.CreateNestedMode)
+	require.NoError(t, err)
+
+	require.Equal(t, schema.CreateNestedMode, f.Raw)
+	require.Equal(t, schema.CreateNestedMode, f.Value)
+}
+
 // Expectation: The function should reject an invalid mode string.
 func Test_CreateMode_Set_InvalidMode_Error(t *testing.T) {
 	t.Parallel()

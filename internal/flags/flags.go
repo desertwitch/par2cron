@@ -137,6 +137,8 @@ func (f *CreateMode) Set(s string) error {
 		f.Value = schema.CreateFolderMode
 	case schema.CreateRecursiveMode:
 		f.Value = schema.CreateRecursiveMode
+	case schema.CreateNestedMode:
+		f.Value = schema.CreateNestedMode
 	default:
 		return fmt.Errorf("%w: %q is not recognized", errInvalidValue, s)
 	}

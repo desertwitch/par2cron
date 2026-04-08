@@ -43,7 +43,6 @@ type Options struct {
 }
 
 func (o *Options) Validate() error {
-	// Useful to avoid pattern issues in default configuration.
 	if ok := doublestar.ValidatePattern(o.Par2Glob); !ok {
 		return fmt.Errorf("glob: %w", doublestar.ErrBadPattern)
 	}
@@ -82,18 +81,19 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 }
 
 type Job struct {
-	workingDir   string
-	hiddenFiles  bool
-	markerPath   string
-	par2Mode     string
-	par2Name     string
-	par2Path     string
-	par2Args     []string
-	par2Glob     string
-	par2Verify   bool
-	lockPath     string
-	manifestName string
-	manifestPath string
+	workingDir    string
+	hiddenFiles   bool
+	markerPath    string
+	markerPersist bool
+	par2Mode      string
+	par2Name      string
+	par2Path      string
+	par2Args      []string
+	par2Glob      string
+	par2Verify    bool
+	lockPath      string
+	manifestName  string
+	manifestPath  string
 }
 
 func NewJob(markerPath string, cfg MarkerConfig) *Job {
@@ -104,6 +104,7 @@ func NewJob(markerPath string, cfg MarkerConfig) *Job {
 		cj.par2Name = "." + cj.par2Name
 	}
 	cj.hiddenFiles = *cfg.HideFiles
+	cj.markerPersist = *cfg.PersistMarker
 
 	cj.par2Mode = cfg.Par2Mode.Value
 	cj.par2Args = slices.Clone(*cfg.Par2Args)
@@ -137,6 +138,23 @@ func newFileModeJob(job Job, path string) Job {
 	return job
 }
 
+func newNestedModeJob(job Job, dir string) Job {
+	oldName := job.par2Name
+
+	job.par2Name = filepath.Base(dir) + schema.Par2Extension
+	if strings.HasPrefix(oldName, ".") {
+		job.par2Name = "." + job.par2Name
+	}
+
+	job.workingDir = dir
+	job.par2Path = filepath.Join(job.workingDir, job.par2Name)
+	job.manifestName = job.par2Name + schema.ManifestExtension
+	job.manifestPath = job.par2Path + schema.ManifestExtension
+	job.lockPath = job.par2Path + schema.LockExtension
+
+	return job
+}
+
 func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (*util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
@@ -146,7 +164,7 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 	}
 
 	logger := prog.creationLogger(ctx, nil, rootDir)
-	logger.Info("Scanning filesystem for jobs...")
+	logger.Info("Scanning filesystem for jobs...", "walker", prog.walker.Name())
 
 	jobs, err := prog.Enumerate(ctx, rootDir, opts)
 	if err != nil {
@@ -201,7 +219,7 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 		} else if errors.Is(err, schema.ErrFileIsLocked) {
 			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++
-		} else if !errors.Is(err, schema.ErrAlreadyExists) {
+		} else {
 			logger.Error("Job failure (will retry next run)", "error", err)
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 			results.Error++
@@ -217,7 +235,6 @@ func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
-	chkr := util.NewIgnoreChecker(prog.fsys)
 
 	var parseErrors int
 	err := prog.walker.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
@@ -230,14 +247,14 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 			return nil
 		}
-		if skip, err := chkr.ShouldSkip(path, d.IsDir()); skip {
-			logger := prog.creationLogger(ctx, nil, path)
-			logger.Debug("A path was skipped due to a present ignore-file", "error", err)
 
-			return err //nolint:wrapcheck
+		if !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
+			return nil
 		}
+		if util.ShouldIgnorePath(prog.fsys, path, rootDir) {
+			logger := prog.creationLogger(ctx, nil, path)
+			logger.Debug("A path was skipped due to a present ignore-file")
 
-		if !strings.HasPrefix(filepath.Base(path), createMarkerPathPrefix) {
 			return nil
 		}
 
@@ -270,28 +287,36 @@ func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to find to-protect elements: %w", err)
 	}
 
-	if job.par2Mode == schema.CreateFileMode {
+	switch job.par2Mode {
+	case schema.CreateFileMode:
 		if err := prog.createIndividual(ctx, job, files); err != nil {
 			return fmt.Errorf("failed to create par2: %w", err)
 		}
-	} else {
+
+	case schema.CreateNestedMode:
+		if err := prog.createNested(ctx, job, files); err != nil {
+			return fmt.Errorf("failed to create par2: %w", err)
+		}
+
+	default: // schema.CreateFolderMode
 		if err := prog.createCombined(ctx, job, files); err != nil {
 			return fmt.Errorf("failed to create par2: %w", err)
 		}
 	}
 
-	if err := prog.fsys.Remove(job.markerPath); err != nil {
-		logger := prog.creationLogger(ctx, job, job.markerPath)
-		logger.Error("Failed to delete marker file (needs manual deletion)", "error", err)
+	if !job.markerPersist {
+		if err := prog.fsys.Remove(job.markerPath); err != nil {
+			logger := prog.creationLogger(ctx, job, job.markerPath)
+			logger.Error("Failed to delete marker file (needs manual deletion)", "error", err)
 
-		return fmt.Errorf("failed to delete marker file: %w", err)
+			return fmt.Errorf("failed to delete marker file: %w", err)
+		}
 	}
 
 	return nil
 }
 
 func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]schema.FsElement, error) {
-	// Should be caught earlier during validation, but keeping it here as a last-minute seatbelt.
 	if job.par2Mode == schema.CreateRecursiveMode && strings.Contains(job.par2Glob, "/") {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
 		logger.Error("Recursive mode does not support deep (/) glob patterns, "+
@@ -308,8 +333,6 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 	globOptions = append(globOptions, doublestar.WithNoHidden())
 
 	if job.par2Mode != schema.CreateFileMode {
-		// In these modes the PAR2 is not created at the side of the protected file,
-		// so we do not want any symlinks possibly reaching out of the directory tree.
 		globOptions = append(globOptions, doublestar.WithNoFollow())
 	}
 
@@ -351,12 +374,13 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			continue
 		}
 
-		// In file/recursive mode, the structure is guaranteed to be shallow.
+		// In other modes, the structure is guaranteed to be shallow.
 		name := fi.Name()
 		if job.par2Mode == schema.CreateFolderMode {
 			if pname, err := filepath.Rel(job.workingDir, f); err != nil {
 				logger := prog.creationLogger(ctx, job, f)
 				logger.Warn("Failed to derive relative path for creation manifest", "error", err)
+				name = ""
 			} else {
 				name = pname
 			}
@@ -386,9 +410,13 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 	logger := prog.creationLogger(ctx, job, job.par2Path)
 
 	if _, err := prog.fsys.Stat(job.par2Path); err == nil {
-		logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+		if job.markerPersist {
+			logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+		} else {
+			logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+		}
 
-		return schema.ErrAlreadyExists
+		return nil
 	}
 
 	if err := prog.runCreate(ctx, job, elements); err != nil {
@@ -396,6 +424,59 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 	}
 
 	logger.Info("Succeeded to create PAR2")
+
+	return nil
+}
+
+func (prog *Service) createNested(ctx context.Context, job *Job, elements []schema.FsElement) error {
+	var errCount int
+
+	groups := make(map[string][]schema.FsElement)
+	order := make([]string, 0)
+
+	for _, e := range elements {
+		dir := filepath.Dir(e.Path)
+
+		if _, exists := groups[dir]; !exists {
+			order = append(order, dir)
+		}
+
+		groups[dir] = append(groups[dir], e)
+	}
+
+	for i, dir := range order {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
+		mpos := fmt.Sprintf("%d/%d", i+1, len(order))
+		ctx := context.WithValue(ctx, schema.MposKey, mpos)
+
+		j := newNestedModeJob(*job, dir)
+		logger := prog.creationLogger(ctx, &j, j.par2Path)
+
+		if _, err := prog.fsys.Stat(j.par2Path); err == nil {
+			if job.markerPersist {
+				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+			} else {
+				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+			}
+
+			continue
+		}
+
+		if err := prog.runCreate(ctx, &j, groups[dir]); err != nil {
+			errCount++
+
+			continue
+		}
+
+		logger.Info("Succeeded to create PAR2")
+	}
+
+	if errCount > 0 {
+		return fmt.Errorf("%w: %d/%d failed", errSubjobFailure, errCount, len(order))
+	}
 
 	return nil
 }
@@ -416,7 +497,11 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
 		if _, err := prog.fsys.Stat(j.par2Path); err == nil {
-			logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+			if job.markerPersist {
+				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+			} else {
+				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+			}
 
 			continue
 		}

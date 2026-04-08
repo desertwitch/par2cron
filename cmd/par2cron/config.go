@@ -27,8 +27,6 @@ type configFile struct {
 }
 
 func (cfg *configFile) Validate() error {
-	// Useful to avoid pattern issues in default configuration.
-	// For "create" we validate the merged and marker configuration, this is for "check-config".
 	if cfg.Create != nil && cfg.Create.Par2Glob != nil {
 		if ok := doublestar.ValidatePattern(*cfg.Create.Par2Glob); !ok {
 			return fmt.Errorf("glob: %w", doublestar.ErrBadPattern)
@@ -37,7 +35,6 @@ func (cfg *configFile) Validate() error {
 
 	// par2cmdline internally does recursion, so we cannot do double recursion.
 	// If the user wants recursive globbing, they'll have to do it in non-recursive mode.
-	// For "create" we validate the merged and marker configuration, this is for "check-config".
 	if cfg.Create != nil && cfg.Create.Par2Mode != nil && cfg.Create.Par2Glob != nil {
 		if cfg.Create.Par2Mode.Value == schema.CreateRecursiveMode && strings.Contains(*cfg.Create.Par2Glob, "/") {
 			return schema.ErrUnsupportedGlob

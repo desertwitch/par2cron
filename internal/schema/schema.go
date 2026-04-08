@@ -24,8 +24,9 @@ const (
 	IgnoreFile    string = ".par2cron-ignore"
 	IgnoreAllFile string = ".par2cron-ignore-all"
 
-	CreateFileMode      string = "file"
 	CreateFolderMode    string = "folder"
+	CreateNestedMode    string = "nested"
+	CreateFileMode      string = "file"
 	CreateRecursiveMode string = "recursive"
 )
 

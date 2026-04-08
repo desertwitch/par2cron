@@ -63,12 +63,13 @@ func Test_NewJob_Success(t *testing.T) {
 	t.Parallel()
 
 	cfg := MarkerConfig{
-		Par2Mode:   &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
-		Par2Name:   new("test" + schema.Par2Extension),
-		Par2Args:   &[]string{"-r10", "-n5"},
-		Par2Glob:   new("*.txt"),
-		Par2Verify: new(true),
-		HideFiles:  new(false),
+		Par2Mode:      &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
+		Par2Name:      new("test" + schema.Par2Extension),
+		Par2Args:      &[]string{"-r10", "-n5"},
+		Par2Glob:      new("*.txt"),
+		Par2Verify:    new(true),
+		HideFiles:     new(false),
+		PersistMarker: new(false),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -85,6 +86,7 @@ func Test_NewJob_Success(t *testing.T) {
 	require.Equal(t, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, job.manifestPath)
 	require.True(t, job.par2Verify)
 	require.False(t, job.hiddenFiles)
+	require.False(t, job.markerPersist)
 }
 
 // Expectation: The correct paths should be derived from the [createConfig].
@@ -92,12 +94,13 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 	t.Parallel()
 
 	cfg := MarkerConfig{
-		Par2Mode:   &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
-		Par2Name:   new("test" + schema.Par2Extension),
-		Par2Args:   &[]string{"-r10", "-n5"},
-		Par2Glob:   new("*.txt"),
-		Par2Verify: new(true),
-		HideFiles:  new(true),
+		Par2Mode:      &flags.CreateMode{Raw: schema.CreateFolderMode, Value: schema.CreateFolderMode},
+		Par2Name:      new("test" + schema.Par2Extension),
+		Par2Args:      &[]string{"-r10", "-n5"},
+		Par2Glob:      new("*.txt"),
+		Par2Verify:    new(true),
+		HideFiles:     new(true),
+		PersistMarker: new(true),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -114,6 +117,7 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 	require.Equal(t, "/data/folder/.test"+schema.Par2Extension+schema.ManifestExtension, job.manifestPath)
 	require.True(t, job.par2Verify)
 	require.True(t, job.hiddenFiles)
+	require.True(t, job.markerPersist)
 }
 
 // Expectation: The relevant fields should be changed for file mode, others not.
@@ -168,6 +172,67 @@ func Test_newFileModeJob_HideFiles_Success(t *testing.T) {
 	require.Equal(t, "/data/folder/.document.txt"+schema.Par2Extension+schema.ManifestExtension, got.manifestPath)
 	require.Equal(t, "/data/folder/.document.txt"+schema.Par2Extension+schema.LockExtension, got.lockPath)
 	require.Equal(t, "/data/folder", got.workingDir)
+	require.Equal(t, "/data/folder/_par2cron", got.markerPath)
+	require.Equal(t, schema.CreateFileMode, got.par2Mode)
+	require.Equal(t, []string{"-r10", "-n5"}, got.par2Args)
+	require.Equal(t, "*.txt", got.par2Glob)
+	require.True(t, got.par2Verify)
+
+	require.NotEqual(t, baseJob, got)
+}
+
+// Expectation: The relevant fields should be changed for nested mode, others not.
+func Test_newNestedModeJob_Success(t *testing.T) {
+	t.Parallel()
+
+	baseJob := Job{
+		workingDir: "/data/folder",
+		markerPath: "/data/folder/_par2cron",
+		par2Mode:   schema.CreateFileMode,
+		par2Args:   []string{"-r10", "-n5"},
+		par2Glob:   "*.txt",
+		par2Verify: true,
+	}
+
+	got := newNestedModeJob(baseJob, "/data/folder/subdir")
+
+	require.Equal(t, "subdir"+schema.Par2Extension, got.par2Name)
+	require.Equal(t, "/data/folder/subdir/subdir"+schema.Par2Extension, got.par2Path)
+	require.Equal(t, "subdir"+schema.Par2Extension+schema.ManifestExtension, got.manifestName)
+	require.Equal(t, "/data/folder/subdir/subdir"+schema.Par2Extension+schema.ManifestExtension, got.manifestPath)
+	require.Equal(t, "/data/folder/subdir/subdir"+schema.Par2Extension+schema.LockExtension, got.lockPath)
+	require.Equal(t, "/data/folder/subdir", got.workingDir)
+	require.Equal(t, "/data/folder/_par2cron", got.markerPath)
+	require.Equal(t, schema.CreateFileMode, got.par2Mode)
+	require.Equal(t, []string{"-r10", "-n5"}, got.par2Args)
+	require.Equal(t, "*.txt", got.par2Glob)
+	require.True(t, got.par2Verify)
+
+	require.NotEqual(t, baseJob, got)
+}
+
+// Expectation: The relevant fields should be changed for nested mode, others not.
+func Test_newNestedModeJob_HideFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	baseJob := Job{
+		workingDir: "/data/folder",
+		markerPath: "/data/folder/_par2cron",
+		par2Name:   ".folder" + schema.Par2Extension,
+		par2Mode:   schema.CreateFileMode,
+		par2Args:   []string{"-r10", "-n5"},
+		par2Glob:   "*.txt",
+		par2Verify: true,
+	}
+
+	got := newNestedModeJob(baseJob, "/data/folder/subdir")
+
+	require.Equal(t, ".subdir"+schema.Par2Extension, got.par2Name)
+	require.Equal(t, "/data/folder/subdir/.subdir"+schema.Par2Extension, got.par2Path)
+	require.Equal(t, ".subdir"+schema.Par2Extension+schema.ManifestExtension, got.manifestName)
+	require.Equal(t, "/data/folder/subdir/.subdir"+schema.Par2Extension+schema.ManifestExtension, got.manifestPath)
+	require.Equal(t, "/data/folder/subdir/.subdir"+schema.Par2Extension+schema.LockExtension, got.lockPath)
+	require.Equal(t, "/data/folder/subdir", got.workingDir)
 	require.Equal(t, "/data/folder/_par2cron", got.markerPath)
 	require.Equal(t, schema.CreateFileMode, got.par2Mode)
 	require.Equal(t, []string{"-r10", "-n5"}, got.par2Args)
@@ -932,6 +997,56 @@ func Test_Service_createPar2_FolderMode_Success(t *testing.T) {
 	require.False(t, markerExists)
 }
 
+// Expectation: The "persist" option of a marker configuration should be respected.
+func Test_Service_createPar2_FolderMode_PersistMarker_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file2.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:    "/data/folder",
+		markerPath:    "/data/folder/_par2cron",
+		par2Mode:      schema.CreateFolderMode,
+		par2Name:      "folder" + schema.Par2Extension,
+		par2Path:      "/data/folder/folder" + schema.Par2Extension,
+		par2Args:      []string{"-r10"},
+		par2Glob:      "*",
+		lockPath:      "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName:  "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath:  "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+		markerPersist: true,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Equal(t, 1, called)
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.True(t, markerExists)
+}
+
 // Expectation: A deep glob pattern in folder mode should match files in
 // subdirectories but create a single par2 set in the marker-containing directory.
 func Test_Service_createPar2_FolderMode_DeepGlob_Success(t *testing.T) {
@@ -1084,6 +1199,390 @@ func Test_Service_createPar2_FolderMode_CreateFailure_Error(t *testing.T) {
 
 	require.Error(t, prog.createPar2(t.Context(), job))
 	require.Equal(t, 1, called)
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.True(t, markerExists)
+}
+
+// Expectation: The creation mode "nested" should be respected.
+func Test_Service_createPar2_NestedMode_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/b", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/b/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	var workingDirs []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+			workingDirs = append(workingDirs, workingDir)
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Equal(t, 2, called)
+	require.Contains(t, workingDirs, "/data/folder/a")
+	require.Contains(t, workingDirs, "/data/folder/b")
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.False(t, markerExists)
+}
+
+// Expectation: Nested mode with a simple (non-deep) glob should only
+// include files in the marker-containing directory itself.
+func Test_Service_createPar2_NestedMode_ShallowGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	var workingDirs []string
+	var capturedArgs []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+			workingDirs = append(workingDirs, workingDir)
+			capturedArgs = append(capturedArgs, args...)
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Equal(t, 1, called)
+	require.Equal(t, []string{"/data/folder"}, workingDirs)
+
+	require.Contains(t, capturedArgs, "/data/folder/file.txt")
+	require.NotContains(t, capturedArgs, "/data/folder/a/file.txt")
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.False(t, markerExists)
+}
+
+// Expectation: The "persist" option in nested mode should keep the marker file.
+func Test_Service_createPar2_NestedMode_PersistMarker_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/b", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/b/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:    "/data/folder",
+		markerPath:    "/data/folder/_par2cron",
+		par2Mode:      schema.CreateNestedMode,
+		par2Name:      "folder" + schema.Par2Extension,
+		par2Path:      "/data/folder/folder" + schema.Par2Extension,
+		par2Args:      []string{"-r10"},
+		par2Glob:      "**/*",
+		lockPath:      "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName:  "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath:  "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+		markerPersist: true,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Equal(t, 2, called)
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.True(t, markerExists)
+}
+
+// Expectation: Nested mode with a deep glob should group files by their
+// containing folder and create one PAR2 set per folder with matches.
+func Test_Service_createPar2_NestedMode_DeepGlob_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/b", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/movie.mkv", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/subs.srt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/b/movie.mkv", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/b/other.bin", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	var workingDirs []string
+	var capturedArgs [][]string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+			workingDirs = append(workingDirs, workingDir)
+			capturedArgs = append(capturedArgs, args)
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*.mkv",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Equal(t, 2, called)
+	require.Contains(t, workingDirs, "/data/folder/a")
+	require.Contains(t, workingDirs, "/data/folder/b")
+
+	allArgs := []string{}
+	for _, args := range capturedArgs {
+		allArgs = append(allArgs, args...)
+	}
+	require.Contains(t, allArgs, "/data/folder/a/movie.mkv")
+	require.Contains(t, allArgs, "/data/folder/b/movie.mkv")
+	require.NotContains(t, allArgs, "/data/folder/a/subs.srt")
+	require.NotContains(t, allArgs, "/data/folder/b/other.bin")
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.False(t, markerExists)
+}
+
+// Expectation: Nested mode should include deeply nested folders.
+func Test_Service_createPar2_NestedMode_DeeplyNested_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a/extras", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/b", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/extras/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/b/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	var workingDirs []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+			workingDirs = append(workingDirs, workingDir)
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.NoError(t, prog.createPar2(t.Context(), job))
+	require.Equal(t, 3, called)
+	require.Contains(t, workingDirs, "/data/folder/a")
+	require.Contains(t, workingDirs, "/data/folder/a/extras")
+	require.Contains(t, workingDirs, "/data/folder/b")
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.False(t, markerExists)
+}
+
+// Expectation: The creation mode "nested" should handle no files to protect.
+func Test_Service_createPar2_NestedMode_NoFilesToProtect_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.ErrorIs(t, prog.createPar2(t.Context(), job), errNoFilesToProtect)
+	require.Equal(t, 0, called)
+
+	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
+	require.True(t, markerExists)
+}
+
+// Expectation: The creation mode "nested" should handle creation failure.
+func Test_Service_createPar2_NestedMode_CreateFailure_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/b", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/b/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			return testutil.CreateExitError(t, ctx, 5)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "**/*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	require.ErrorIs(t, prog.createPar2(t.Context(), job), errSubjobFailure)
+	require.Equal(t, 2, called)
 
 	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
 	require.True(t, markerExists)
@@ -1933,8 +2432,8 @@ func Test_Service_createCombined_Success(t *testing.T) {
 	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
 }
 
-// Expectation: The function should return the correct error when a PAR2 already exists.
-func Test_Service_createCombined_AlreadyExists_Error(t *testing.T) {
+// Expectation: The function should return no error when a PAR2 already exists.
+func Test_Service_createCombined_AlreadyExists_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1970,8 +2469,354 @@ func Test_Service_createCombined_AlreadyExists_Error(t *testing.T) {
 	}
 
 	err := prog.createCombined(t.Context(), job, files)
-	require.ErrorIs(t, err, schema.ErrAlreadyExists)
+	require.NoError(t, err)
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+}
+
+// Expectation: The function should succeed when both directories succeed.
+func Test_Service_createNested_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub1", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/sub2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub1/file1.txt", []byte("content1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub2/file2.txt", []byte("content2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub1/file1.txt", Name: "file1.txt"},
+		{Path: "/data/folder/sub2/file2.txt", Name: "file2.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.NoError(t, err)
+
+	require.Equal(t, 2, called)
+	require.Equal(t, 2, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+}
+
+// Expectation: Files in the same directory should be grouped together and passed to runCreate as one call.
+func Test_Service_createNested_Grouping_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub1", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/sub2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub1/a.txt", []byte("a"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub1/b.txt", []byte("b"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub2/c.txt", []byte("c"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	type runCall struct {
+		workingDir string
+		args       []string
+	}
+	var calls []runCall
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			calls = append(calls, runCall{workingDir: workingDir, args: append([]string{}, args...)})
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub1/a.txt", Name: "a.txt"},
+		{Path: "/data/folder/sub1/b.txt", Name: "b.txt"},
+		{Path: "/data/folder/sub2/c.txt", Name: "c.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.NoError(t, err)
+
+	// Two groups: sub1 (2 files) and sub2 (1 file).
+	require.Len(t, calls, 2)
+
+	// First call should be for sub1 with both files grouped together.
+	require.Equal(t, "/data/folder/sub1", calls[0].workingDir)
+	require.Contains(t, calls[0].args, "/data/folder/sub1/a.txt")
+	require.Contains(t, calls[0].args, "/data/folder/sub1/b.txt")
+
+	// Second call should be for sub2 with one file.
+	require.Equal(t, "/data/folder/sub2", calls[1].workingDir)
+	require.Contains(t, calls[1].args, "/data/folder/sub2/c.txt")
+
+	require.Equal(t, 2, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+}
+
+// Expectation: Files in deeply nested directories should be grouped by their immediate parent.
+func Test_Service_createNested_DeepNesting_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a/b/c", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/a/b/d", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/b/c/file1.txt", []byte("1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/b/c/file2.txt", []byte("2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/b/d/file3.txt", []byte("3"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/b/file4.txt", []byte("4"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	type runCall struct {
+		workingDir string
+		args       []string
+	}
+	var calls []runCall
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			calls = append(calls, runCall{workingDir: workingDir, args: append([]string{}, args...)})
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/a/b/c/file1.txt", Name: "file1.txt"},
+		{Path: "/data/folder/a/b/c/file2.txt", Name: "file2.txt"},
+		{Path: "/data/folder/a/b/d/file3.txt", Name: "file3.txt"},
+		{Path: "/data/folder/a/b/file4.txt", Name: "file4.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.NoError(t, err)
+
+	// Three groups: a/b/c (2 files), a/b/d (1 file), a/b (1 file).
+	require.Len(t, calls, 3)
+
+	// First call: a/b/c with two files grouped together.
+	require.Equal(t, "/data/folder/a/b/c", calls[0].workingDir)
+	require.Contains(t, calls[0].args, "/data/folder/a/b/c/file1.txt")
+	require.Contains(t, calls[0].args, "/data/folder/a/b/c/file2.txt")
+
+	// Second call: a/b/d with one file.
+	require.Equal(t, "/data/folder/a/b/d", calls[1].workingDir)
+	require.Contains(t, calls[1].args, "/data/folder/a/b/d/file3.txt")
+
+	// Third call: a/b with one file.
+	require.Equal(t, "/data/folder/a/b", calls[2].workingDir)
+	require.Contains(t, calls[2].args, "/data/folder/a/b/file4.txt")
+
+	require.Equal(t, 3, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+}
+
+// Expectation: The function should continue to second directory when first fails and return correct error.
+func Test_Service_createNested_FirstFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub1", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/sub2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub1/file1.txt", []byte("content1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub2/file2.txt", []byte("content2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			if called == 1 {
+				return errors.New("test error")
+			}
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub1/file1.txt", Name: "file1.txt"},
+		{Path: "/data/folder/sub2/file2.txt", Name: "file2.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.Equal(t, 2, called)
+
+	require.ErrorIs(t, err, errSubjobFailure)
+	require.Contains(t, err.Error(), "1/2 failed")
+	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+}
+
+// Expectation: The function should not fail when a same-named PAR2 already exists.
+func Test_Service_createNested_AlreadyExists_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub/sub"+schema.Par2Extension, []byte("existing"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.NoError(t, err)
+	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+}
+
+// Expectation: The function should respect cancellation and return the correct error.
+func Test_Service_createNested_CtxCancel_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub/file1.txt", []byte("content1"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub/file1.txt", Name: "file1.txt"},
+	}
+
+	err := prog.createNested(ctx, job, files)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // Expectation: The function should succeed when both files succeed.
