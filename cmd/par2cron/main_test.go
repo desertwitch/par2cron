@@ -845,7 +845,7 @@ func Test_logOperationResult_NoErrors_Success(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 	log := logging.NewLogger(ls)
 
-	result := &util.ResultTracker{
+	result := util.ResultTracker{
 		Success:  5,
 		Error:    0,
 		Skipped:  2,
@@ -877,7 +877,7 @@ func Test_logOperationResult_CompletedWithErrors_Success(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 	log := logging.NewLogger(ls)
 
-	result := &util.ResultTracker{
+	result := util.ResultTracker{
 		Success:  3,
 		Error:    2,
 		Skipped:  1,
@@ -910,7 +910,7 @@ func Test_logOperationResult_NoErrorValue_ButResultHasErrors_Success(t *testing.
 	_ = ls.LogLevel.Set("info")
 	log := logging.NewLogger(ls)
 
-	result := &util.ResultTracker{
+	result := util.ResultTracker{
 		Success:  3,
 		Error:    2,
 		Skipped:  1,
@@ -938,7 +938,7 @@ func Test_logOperationResult_ContextCanceled_Success(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 	log := logging.NewLogger(ls)
 
-	result := &util.ResultTracker{
+	result := util.ResultTracker{
 		Success:  2,
 		Error:    1,
 		Skipped:  1,
@@ -970,7 +970,7 @@ func Test_logOperationResult_ZeroCounts_Success(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 	log := logging.NewLogger(ls)
 
-	result := &util.ResultTracker{
+	result := util.ResultTracker{
 		Success:  0,
 		Error:    0,
 		Skipped:  0,
@@ -1002,7 +1002,7 @@ func Test_logOperationResult_PartialCompletion_Success(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 	log := logging.NewLogger(ls)
 
-	result := &util.ResultTracker{
+	result := util.ResultTracker{
 		Success:  5,
 		Error:    0,
 		Skipped:  0,

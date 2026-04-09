@@ -37,6 +37,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
+	"slices"
 	"syscall"
 
 	"github.com/desertwitch/par2cron/internal/create"
@@ -146,12 +147,11 @@ func newCheckConfigCmd(_ context.Context) *cobra.Command {
 }
 
 // newCreateCmd returns the "create" [cobra.Command] pointer for the program.
-//
-//nolint:funlen
 func newCreateCmd(ctx context.Context) *cobra.Command {
 	var createArgs create.Options
 	var logSettings logging.Options
 	var configPath string
+	var resolvedPaths []string
 
 	fsys := afero.NewOsFs()
 
@@ -172,8 +172,8 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			dashAt := cmd.ArgsLenAtDash()
 			hasExternalArgs := (dashAt != -1)
 
-			if (dashAt == -1 && len(args) > 1) || (dashAt != -1 && dashAt != 1) {
-				return fmt.Errorf("%w: unexpected arguments before -- or missing -- before par2 arguments",
+			if dashAt != -1 && dashAt < 1 {
+				return fmt.Errorf("%w: need at least one path before -- and par2 arguments",
 					schema.ErrExitBadInvocation)
 			}
 
@@ -192,21 +192,27 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			path, err := filepath.Abs(args[0])
-			if err != nil {
-				return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-					schema.ErrExitBadInvocation, err)
-			}
-			args[0] = path
-
-			if _, err := fsys.Stat(path); err != nil {
-				return fmt.Errorf("%w: failed to access root directory: %w",
-					schema.ErrExitBadInvocation, err)
-			}
-
+			pathArgs := args
 			if hasExternalArgs {
+				pathArgs = args[:dashAt]
 				createArgs.Par2Args = append([]string{}, args[dashAt:]...)
 			}
+
+			for i, p := range pathArgs {
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+				pathArgs[i] = abs
+
+				if _, err := fsys.Stat(abs); err != nil {
+					return fmt.Errorf("%w: failed to access root directory: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+			}
+
+			resolvedPaths = slices.Clone(pathArgs)
 
 			if err := createArgs.Validate(); err != nil {
 				if errors.Is(err, schema.ErrUnsupportedGlob) {
@@ -220,14 +226,12 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
+		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
-			result, err := prog.CreationService.Create(ctx, args[0], createArgs)
-			if result != nil {
-				logOperationResult(err, result, prog.log.With("op", "create"))
-			}
+			result, err := prog.CreationService.Create(ctx, resolvedPaths, createArgs)
+			logOperationResult(err, result, prog.log.With("op", "create"))
 			if err != nil {
 				return fmt.Errorf("create: %w", err)
 			}
@@ -252,6 +256,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 	var verifyArgs verify.Options
 	var logSettings logging.Options
 	var configPath string
+	var resolvedPaths []string
 
 	fsys := afero.NewOsFs()
 
@@ -272,8 +277,8 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			dashAt := cmd.ArgsLenAtDash()
 			hasExternalArgs := (dashAt != -1)
 
-			if (dashAt == -1 && len(args) > 1) || (dashAt != -1 && dashAt != 1) {
-				return fmt.Errorf("%w: unexpected arguments before -- or missing -- before par2 arguments",
+			if dashAt != -1 && dashAt < 1 {
+				return fmt.Errorf("%w: need at least one path before -- and par2 arguments",
 					schema.ErrExitBadInvocation)
 			}
 
@@ -292,32 +297,36 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			path, err := filepath.Abs(args[0])
-			if err != nil {
-				return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-					schema.ErrExitBadInvocation, err)
-			}
-			args[0] = path
-
-			if _, err := fsys.Stat(path); err != nil {
-				return fmt.Errorf("%w: failed to access root directory: %w",
-					schema.ErrExitBadInvocation, err)
-			}
-
+			pathArgs := args
 			if hasExternalArgs {
+				pathArgs = args[:dashAt]
 				verifyArgs.Par2Args = append([]string{}, args[dashAt:]...)
 			}
 
+			for i, p := range pathArgs {
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+				pathArgs[i] = abs
+
+				if _, err := fsys.Stat(abs); err != nil {
+					return fmt.Errorf("%w: failed to access root directory: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+			}
+
+			resolvedPaths = slices.Clone(pathArgs)
+
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
+		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
-			result, err := prog.VerificationService.Verify(ctx, args[0], verifyArgs)
-			if result != nil {
-				logOperationResult(err, result, prog.log.With("op", "verify"))
-			}
+			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyArgs)
+			logOperationResult(err, result, prog.log.With("op", "verify"))
 			if err != nil {
 				return fmt.Errorf("verify: %w", err)
 			}
@@ -342,6 +351,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 	var repairArgs repair.Options
 	var logSettings logging.Options
 	var configPath string
+	var resolvedPaths []string
 
 	fsys := afero.NewOsFs()
 
@@ -360,8 +370,8 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			dashAt := cmd.ArgsLenAtDash()
 			hasExternalArgs := (dashAt != -1)
 
-			if (dashAt == -1 && len(args) > 1) || (dashAt != -1 && dashAt != 1) {
-				return fmt.Errorf("%w: unexpected arguments before -- or missing -- before par2 arguments",
+			if dashAt != -1 && dashAt < 1 {
+				return fmt.Errorf("%w: need at least one path before -- and par2 arguments",
 					schema.ErrExitBadInvocation)
 			}
 
@@ -380,32 +390,36 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			path, err := filepath.Abs(args[0])
-			if err != nil {
-				return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-					schema.ErrExitBadInvocation, err)
-			}
-			args[0] = path
-
-			if _, err := fsys.Stat(path); err != nil {
-				return fmt.Errorf("%w: failed to access root directory: %w",
-					schema.ErrExitBadInvocation, err)
-			}
-
+			pathArgs := args
 			if hasExternalArgs {
+				pathArgs = args[:dashAt]
 				repairArgs.Par2Args = append([]string{}, args[dashAt:]...)
 			}
 
+			for i, p := range pathArgs {
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+				pathArgs[i] = abs
+
+				if _, err := fsys.Stat(abs); err != nil {
+					return fmt.Errorf("%w: failed to access root directory: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+			}
+
+			resolvedPaths = slices.Clone(pathArgs)
+
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
+		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
-			result, err := prog.RepairService.Repair(ctx, args[0], repairArgs)
-			if result != nil {
-				logOperationResult(err, result, prog.log.With("op", "repair"))
-			}
+			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairArgs)
+			logOperationResult(err, result, prog.log.With("op", "repair"))
 			if err != nil {
 				return fmt.Errorf("repair: %w", err)
 			}
@@ -446,7 +460,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 		Short:   infoHelpShort,
 		Long:    infoHelpLong,
 		Example: infoHelpExample,
-		Args:    wrapArgsError(cobra.ExactArgs(1)),
+		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if configPath != "" {
 				cfg, err := parseConfigFile(fsys, configPath)
@@ -463,16 +477,18 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
-			path, err := filepath.Abs(args[0])
-			if err != nil {
-				return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-					schema.ErrExitBadInvocation, err)
-			}
-			args[0] = path
+			for i, p := range args {
+				abs, err := filepath.Abs(p)
+				if err != nil {
+					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+				args[i] = abs
 
-			if _, err := fsys.Stat(path); err != nil {
-				return fmt.Errorf("%w: failed to access root directory: %w",
-					schema.ErrExitBadInvocation, err)
+				if _, err := fsys.Stat(abs); err != nil {
+					return fmt.Errorf("%w: failed to access root directory: %w",
+						schema.ErrExitBadInvocation, err)
+				}
 			}
 
 			return nil
@@ -481,7 +497,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
-			return prog.InfoService.Info(ctx, args[0], infoArgs)
+			return prog.InfoService.Info(ctx, args, infoArgs)
 		},
 	}
 	infoCmd.Flags().BoolVar(&infoArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
@@ -526,7 +542,7 @@ func recoverOperationPanic(ret *error, log *logging.Logger) {
 	}
 }
 
-func logOperationResult(err error, result *util.ResultTracker, log *logging.Logger) {
+func logOperationResult(err error, result util.ResultTracker, log *logging.Logger) {
 	processedCount := result.Success + result.Error + result.Skipped
 
 	switch {

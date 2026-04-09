@@ -49,9 +49,9 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 }
 
-func (prog *Service) Info(ctx context.Context, rootDir string, args Options) error {
+func (prog *Service) Info(ctx context.Context, rootDirs []string, args Options) error {
 	if prog.log.Options.WantJSON {
-		return prog.PrintJSON(ctx, rootDir, args)
+		return prog.PrintJSON(ctx, rootDirs, args)
 	}
 
 	if args.RunInterval.Value <= 0 {
@@ -61,23 +61,27 @@ func (prog *Service) Info(ctx context.Context, rootDir string, args Options) err
 		return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, errNoCalcInterval)
 	}
 
-	fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem for jobs (using '%s')...\n", prog.walker.Name())
-	fmt.Fprintf(prog.log.Options.Stdout, "\n")
-
 	now := time.Now()
 
 	vs := verify.NewService(prog.fsys, prog.log, prog.runner)
 	va := verify.Options{IncludeExternal: args.IncludeExternal, SkipNotCreated: args.SkipNotCreated}
 
-	jobs, err := vs.Enumerate(ctx, rootDir, va)
-	if err != nil {
-		if !errors.Is(err, schema.ErrNonFatal) {
-			return fmt.Errorf("failed to enumerate jobs: %w", err)
+	jobs := []*verify.Job{}
+	for _, rootDir := range rootDirs {
+		fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem '%s' for jobs (using '%s')...\n", rootDir, prog.walker.Name())
+
+		js, err := vs.Enumerate(ctx, rootDir, va)
+		if err != nil {
+			if !errors.Is(err, schema.ErrNonFatal) {
+				return fmt.Errorf("failed to enumerate jobs: %w", err)
+			}
+
+			fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read for '%s' (%v)\n", rootDir, err)
 		}
 
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read (%v)\n", err)
-		fmt.Fprintf(prog.log.Options.Stdout, "\n")
+		jobs = append(jobs, js...)
 	}
+	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
 	js := vs.Stats(jobs)
 

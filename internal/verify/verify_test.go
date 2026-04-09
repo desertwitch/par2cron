@@ -91,11 +91,85 @@ func Test_Service_Verify_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.True(t, called)
 	require.Contains(t, logBuf.String(), "Job completed with success")
+}
+
+// Expectation: The program should handle multiple provided root directories.
+func Test_Service_Verify_MultiRoot_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+	createWithManifest(t, fs, "/data2/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Verify(t.Context(), []string{"/data", "/data2"}, args)
+	require.NoError(t, err)
+
+	require.Equal(t, 2, called)
+	require.Contains(t, logBuf.String(), "Job completed with success")
+}
+
+// Expectation: The program should skip remaining jobs when --duration is exceeded.
+func Test_Service_Verify_DurationExceeded_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test1")
+	createWithManifest(t, fs, "/data/test2")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+			time.Sleep(50 * time.Millisecond)
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	args := Options{Par2Args: []string{"-v"}}
+	require.NoError(t, args.MaxDuration.Set("10ms"))
+
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, called)
+	require.Equal(t, 1, strings.Count(logBuf.String(), "Job completed with success"))
+	require.Contains(t, logBuf.String(), "Exceeded the --duration budget")
+	require.Contains(t, logBuf.String(), "unprocessedJobs")
 }
 
 // Expectation: A locked file should not fail the verification process.
@@ -124,7 +198,7 @@ func Test_Service_Verify_FileLocked_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.True(t, called)
@@ -155,7 +229,7 @@ func Test_Service_Verify_Generic_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	require.Contains(t, logBuf.String(), "Job failure (will retry next run)")
@@ -185,7 +259,7 @@ func Test_Service_Verify_CorruptionDetected_Repairable_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitRepairable)
 
 	require.Contains(t, logBuf.String(), "Job completed with corruption detected")
@@ -215,7 +289,7 @@ func Test_Service_Verify_CorruptionDetected_Unrepairable_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitUnrepairable)
 
 	require.Contains(t, logBuf.String(), "Job completed with corruption detected")
@@ -248,7 +322,7 @@ func Test_Service_Verify_MultipleJobs_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, called)
@@ -286,7 +360,7 @@ func Test_Service_Verify_MultipleJobs_OneFails_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	require.Equal(t, 2, called)
@@ -328,7 +402,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 	require.ErrorIs(t, err, schema.ErrNonFatal)
@@ -370,7 +444,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_NoOtherJobs_Error(t *test
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 	require.ErrorIs(t, err, schema.ErrNonFatal)
@@ -410,7 +484,7 @@ func Test_Service_Verify_MultipleJobs_ErrorOrdering_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitUnrepairable)
 
 	require.Equal(t, 2, called)
@@ -434,7 +508,7 @@ func Test_Service_Verify_NoJobs_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(t.Context(), "/data", args)
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.Contains(t, logBuf.String(), "Nothing to do")
@@ -461,7 +535,7 @@ func Test_Service_Verify_CtxCancel_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Verify(ctx, "/data", args)
+	_, err := prog.Verify(ctx, []string{"/data"}, args)
 
 	require.ErrorIs(t, err, context.Canceled)
 }

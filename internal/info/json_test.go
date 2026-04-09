@@ -34,7 +34,7 @@ func Test_Service_PrintJSON_NoRunInterval_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{}
-	err := prog.PrintJSON(t.Context(), "/data", args)
+	err := prog.PrintJSON(t.Context(), []string{"/data"}, args)
 
 	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
 	require.ErrorIs(t, err, errNoCalcInterval)
@@ -60,12 +60,12 @@ func Test_Service_PrintJSON_NoKnownDurations_Success(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
-	require.NotEmpty(t, result.Root)
+	require.NotEmpty(t, result.Roots)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.NotNil(t, result.Options)
@@ -106,12 +106,12 @@ func Test_Service_PrintJSON_WithOptions_Success(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
-	require.NotEmpty(t, result.Root)
+	require.NotEmpty(t, result.Roots)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.NotNil(t, result.Options)
@@ -145,12 +145,12 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
-	require.NotEmpty(t, result.Root)
+	require.NotEmpty(t, result.Roots)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.Equal(t, 1, result.Summary.JobCount)
@@ -187,12 +187,12 @@ func Test_Service_PrintJSON_WithJobs_ZeroLastVerified_Success(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
-	require.NotEmpty(t, result.Root)
+	require.NotEmpty(t, result.Roots)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.Equal(t, 1, result.Summary.JobCount)
@@ -230,7 +230,7 @@ func Test_Service_PrintJSON_WithAgeFlag_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -270,7 +270,7 @@ func Test_Service_PrintJSON_WithDurationFlag_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MaxDuration.Set("10m")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -311,7 +311,7 @@ func Test_Service_PrintJSON_HealthyBacklog_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -352,7 +352,7 @@ func Test_Service_PrintJSON_UnhealthyBacklog_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("10m")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -394,7 +394,7 @@ func Test_Service_PrintJSON_HealthyBacklog_UnknownDurations_Success(t *testing.T
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -432,7 +432,7 @@ func Test_Service_PrintJSON_LargeJobWarning_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -472,7 +472,7 @@ func Test_Service_PrintJSON_AgeLessThanInterval_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("12h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -510,7 +510,7 @@ func Test_Service_PrintJSON_CycleInfo_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -553,7 +553,7 @@ func Test_Service_PrintJSON_CycleInfo_UnknownDurations_Success(t *testing.T) {
 	args := Options{IncludeExternal: true}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -586,7 +586,7 @@ func Test_Service_PrintJSON_CtxCancel_Error(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	err := prog.PrintJSON(ctx, "/data", args)
+	err := prog.PrintJSON(ctx, []string{"/data"}, args)
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -621,12 +621,12 @@ func Test_Service_PrintJSON_AllSections_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
-	require.NotEmpty(t, result.Root)
+	require.NotEmpty(t, result.Roots)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.NotNil(t, result.AgeInfo)
@@ -664,12 +664,12 @@ func Test_Service_PrintJSON_MinimalSections_Success(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	require.NoError(t, prog.PrintJSON(t.Context(), "/data", args))
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 
-	require.NotEmpty(t, result.Root)
+	require.NotEmpty(t, result.Roots)
 	require.NotZero(t, result.Time)
 	require.NotNil(t, result.Summary)
 	require.Nil(t, result.AgeInfo)

@@ -87,21 +87,27 @@ func NewRepairJob(par2Path string, args Options, mf *schema.Manifest) *Job {
 	return rj
 }
 
-func (prog *Service) Repair(ctx context.Context, rootDir string, args Options) (*util.ResultTracker, error) {
+func (prog *Service) Repair(ctx context.Context, rootDirs []string, args Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
+	logger := prog.repairLogger(ctx, nil, nil)
 
-	logger := prog.repairLogger(ctx, nil, rootDir)
-	logger.Info("Scanning filesystem for jobs...", "walker", prog.walker.Name())
+	jobs := []*Job{}
+	for _, rootDir := range rootDirs {
+		logger.Info("Scanning filesystem for jobs...",
+			"walker", prog.walker.Name(), "path", rootDir)
 
-	jobs, err := prog.Enumerate(ctx, rootDir, args)
-	if err != nil {
-		if !errors.Is(err, schema.ErrNonFatal) {
-			return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+		js, err := prog.Enumerate(ctx, rootDir, args)
+		if err != nil {
+			if !errors.Is(err, schema.ErrNonFatal) {
+				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+			}
+
+			err = fmt.Errorf("failed to enumerate some jobs: %w", err)
+			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 		}
 
-		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
-		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+		jobs = append(jobs, js...)
 	}
 
 	if len(jobs) > 0 {

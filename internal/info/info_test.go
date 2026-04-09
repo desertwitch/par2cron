@@ -26,6 +26,61 @@ func writeTestManifest(t *testing.T, fs afero.Fs, path string, mf *schema.Manife
 	return afero.WriteFile(fs, path, data, 0o644)
 }
 
+// Expectation: The filesystem should be walked for jobs.
+func Test_Service_Info_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: false,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+	_ = args.MaxDuration.Set("1h")
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{})
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
+
+	require.Contains(t, stdoutBuf.String(), "Scanning filesystem '/data' for jobs")
+}
+
+// Expectation: The program should handle multiple provided root directories.
+func Test_Service_Info_MultiRoot_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: false,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+	_ = args.MaxDuration.Set("1h")
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{})
+	require.NoError(t, prog.Info(t.Context(), []string{"/data", "/data2"}, args))
+
+	require.Contains(t, stdoutBuf.String(), "Scanning filesystem '/data' for jobs")
+	require.Contains(t, stdoutBuf.String(), "Scanning filesystem '/data2' for jobs")
+}
+
 // Expectation: The JSON output should be valid and decode back to the Result struct.
 func Test_Service_Info_JSON_Success(t *testing.T) {
 	t.Parallel()
@@ -57,7 +112,7 @@ func Test_Service_Info_JSON_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	var result Result
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -82,6 +137,72 @@ func Test_Service_Info_JSON_Success(t *testing.T) {
 	require.Equal(t, 1, result.CycleInfo.VerifiedCount)
 }
 
+// Expectation: The program should handle multiple provided root directories.
+func Test_Service_Info_JSON_MultiRoot_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, fs.MkdirAll("/data2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data2/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now(),
+		Duration: 5 * time.Minute,
+	}
+	require.NoError(t, writeTestManifest(t, fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, manifest))
+
+	manifest = schema.NewManifest("test" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now(),
+		Duration: 5 * time.Minute,
+	}
+	require.NoError(t, writeTestManifest(t, fs, "/data2/test"+schema.Par2Extension+schema.ManifestExtension, manifest))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+	_ = args.MaxDuration.Set("1h")
+	require.NoError(t, prog.Info(t.Context(), []string{"/data", "/data2"}, args))
+
+	var result Result
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+
+	require.Len(t, result.Roots, 2)
+	require.NotZero(t, result.Time)
+	require.NotNil(t, result.Summary)
+	require.Equal(t, 2, result.Summary.JobCount)
+	require.Equal(t, 2, result.Summary.KnownCount)
+	require.Equal(t, 10*time.Minute, result.Summary.TotalDuration)
+
+	require.NotNil(t, result.AgeInfo)
+	require.Equal(t, 7*24*time.Hour, result.Options.MinAge.Value)
+
+	require.NotNil(t, result.DurationInfo)
+	require.Equal(t, 1*time.Hour, result.Options.MaxDuration.Value)
+	require.True(t, result.DurationInfo.CompleteInOneRun)
+
+	require.NotNil(t, result.BacklogInfo)
+	require.True(t, result.BacklogInfo.Healthy)
+
+	require.NotNil(t, result.CycleInfo)
+	require.Equal(t, 2, result.CycleInfo.VerifiedCount)
+}
+
 // Expectation: No specified run interval should output the usage message.
 func Test_Service_Info_NoRunInterval_Error(t *testing.T) {
 	t.Parallel()
@@ -101,7 +222,7 @@ func Test_Service_Info_NoRunInterval_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{}
-	err := prog.Info(t.Context(), "/data", args)
+	err := prog.Info(t.Context(), []string{"/data"}, args)
 
 	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
 	require.ErrorIs(t, err, errNoCalcInterval)
@@ -129,7 +250,7 @@ func Test_Service_Info_NoKnownDurations_Error(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	err := prog.Info(t.Context(), "/data", args)
+	err := prog.Info(t.Context(), []string{"/data"}, args)
 
 	require.NoError(t, err)
 	require.Contains(t, stdoutBuf.String(), "No duration data available")
@@ -163,7 +284,7 @@ func Test_Service_Info_WithJobs_Success(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "Total jobs found: 1")
@@ -199,7 +320,7 @@ func Test_Service_Info_WithAgeFlag_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "With just --age")
@@ -235,7 +356,7 @@ func Test_Service_Info_WithDurationFlag_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MaxDuration.Set("10m")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "With just --duration")
@@ -271,7 +392,7 @@ func Test_Service_Info_HealthyBacklog_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "HEALTHY")
@@ -308,7 +429,7 @@ func Test_Service_Info_HealthyBacklog_UnknownDurations_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "HEALTHY (based on known durations)")
@@ -344,7 +465,7 @@ func Test_Service_Info_UnhealthyBacklog_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 	_ = args.MaxDuration.Set("10m")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "UNHEALTHY")
@@ -380,7 +501,7 @@ func Test_Service_Info_LargeJobWarning_Success(t *testing.T) {
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
 	_ = args.MaxDuration.Set("1h")
-	require.NoError(t, prog.Info(t.Context(), "/data", args))
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "Largest job")
@@ -410,7 +531,7 @@ func Test_Service_Info_CtxCancel_Error(t *testing.T) {
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
-	err := prog.Info(ctx, "/data", args)
+	err := prog.Info(ctx, []string{"/data"}, args)
 
 	require.ErrorIs(t, err, context.Canceled)
 }

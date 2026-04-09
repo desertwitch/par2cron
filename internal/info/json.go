@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -15,8 +16,8 @@ import (
 
 // Result contains the complete info command output.
 type Result struct {
-	// Root directory for this result.
-	Root string `json:"root"`
+	// Root directories for this result.
+	Roots []string `json:"roots"`
 
 	// Time is when this result was generated.
 	Time time.Time `json:"time"`
@@ -157,8 +158,8 @@ type CycleInfo struct {
 	Warning string `json:"warning,omitempty"`
 }
 
-func (prog *Service) PrintJSON(ctx context.Context, rootDir string, args Options) error {
-	result, err := prog.Result(ctx, rootDir, args)
+func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, args Options) error {
+	result, err := prog.Result(ctx, rootDirs, args)
 	if err != nil {
 		return fmt.Errorf("failed to get result: %w", err)
 	}
@@ -172,7 +173,7 @@ func (prog *Service) PrintJSON(ctx context.Context, rootDir string, args Options
 	return nil
 }
 
-func (prog *Service) Result(ctx context.Context, rootDir string, args Options) (*Result, error) {
+func (prog *Service) Result(ctx context.Context, rootDirs []string, args Options) (*Result, error) {
 	if args.RunInterval.Value <= 0 {
 		return nil, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, errNoCalcInterval)
 	}
@@ -183,17 +184,26 @@ func (prog *Service) Result(ctx context.Context, rootDir string, args Options) (
 	va := verify.Options{IncludeExternal: args.IncludeExternal, SkipNotCreated: args.SkipNotCreated}
 
 	result := &Result{
-		Root:    rootDir,
+		Roots:   slices.Clone(rootDirs),
 		Time:    now,
 		Options: &args,
 	}
 
-	jobs, err := vs.Enumerate(ctx, rootDir, va)
-	if err != nil {
-		if !errors.Is(err, schema.ErrNonFatal) {
-			return nil, fmt.Errorf("failed to enumerate jobs: %w", err)
+	jobs := []*verify.Job{}
+	errs := []error{}
+	for _, rootDir := range rootDirs {
+		js, err := vs.Enumerate(ctx, rootDir, va)
+		if err != nil {
+			if !errors.Is(err, schema.ErrNonFatal) {
+				return nil, fmt.Errorf("failed to enumerate jobs: %w", err)
+			}
+
+			errs = append(errs, err)
 		}
 
+		jobs = append(jobs, js...)
+	}
+	if err := errors.Join(errs...); err != nil {
 		result.Warning = fmt.Sprintf("Not all manifests could be read: %v", err)
 	}
 

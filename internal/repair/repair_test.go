@@ -105,10 +105,70 @@ func Test_Service_Repair_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err = prog.Repair(t.Context(), "/data", args)
+	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.True(t, called)
+	require.Contains(t, logBuf.String(), "Job completed with success")
+}
+
+// Expectation: The program should handle multiple provided root directories.
+func Test_Service_Repair_MultiRoot_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	require.NoError(t, fs.MkdirAll("/data2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data2/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+	hash, err = util.HashFile(fs, "/data2/test"+schema.Par2Extension)
+	require.NoError(t, err)
+	mf = schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err = json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data2/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+	args := Options{Par2Args: []string{"-v"}}
+	_, err = prog.Repair(t.Context(), []string{"/data", "/data2"}, args)
+	require.NoError(t, err)
+
+	require.Equal(t, 2, called)
 	require.Contains(t, logBuf.String(), "Job completed with success")
 }
 
@@ -152,7 +212,7 @@ func Test_Service_Repair_FileLocked_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err = prog.Repair(t.Context(), "/data", args)
+	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.True(t, called)
@@ -197,7 +257,7 @@ func Test_Service_Repair_Generic_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err = prog.Repair(t.Context(), "/data", args)
+	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	require.Contains(t, logBuf.String(), "Job failure (will retry next run)")
@@ -246,7 +306,7 @@ func Test_Service_Repair_MultipleJobs_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Repair(t.Context(), "/data", args)
+	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.Equal(t, 2, called)
@@ -300,7 +360,7 @@ func Test_Service_Repair_MultipleJobs_OneFails_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Repair(t.Context(), "/data", args)
+	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	require.Equal(t, 2, called)
@@ -357,7 +417,7 @@ func Test_Service_Repair_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Repair(t.Context(), "/data", args)
+	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
 
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 	require.ErrorIs(t, err, schema.ErrNonFatal)
@@ -384,7 +444,7 @@ func Test_Service_Repair_NoJobs_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Repair(t.Context(), "/data", args)
+	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.Contains(t, logBuf.String(), "Nothing to do")
@@ -421,7 +481,7 @@ func Test_Service_Repair_CtxCancel_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err = prog.Repair(ctx, "/data", args)
+	_, err = prog.Repair(ctx, []string{"/data"}, args)
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -474,7 +534,7 @@ func Test_Service_Repair_MaxDuration_Success(t *testing.T) {
 	args := Options{Par2Args: []string{"-v"}}
 	_ = args.MaxDuration.Set("1ms")
 
-	_, err := prog.Repair(t.Context(), "/data", args)
+	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.GreaterOrEqual(t, called, 1)
@@ -519,7 +579,7 @@ func Test_Service_Repair_HashMismatch_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner)
 	args := Options{Par2Args: []string{"-v"}}
 
-	_, err = prog.Repair(t.Context(), "/data", args)
+	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
 
 	require.False(t, called)

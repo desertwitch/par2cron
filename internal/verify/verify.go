@@ -85,21 +85,28 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 }
 
-func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) (*util.ResultTracker, error) {
+//nolint:funlen
+func (prog *Service) Verify(ctx context.Context, rootDirs []string, args Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
+	logger := prog.verificationLogger(ctx, nil, nil)
 
-	logger := prog.verificationLogger(ctx, nil, rootDir)
-	logger.Info("Scanning filesystem for jobs...", "walker", prog.walker.Name())
+	jobs := []*Job{}
+	for _, rootDir := range rootDirs {
+		logger.Info("Scanning filesystem for jobs...",
+			"walker", prog.walker.Name(), "path", rootDir)
 
-	jobs, err := prog.Enumerate(ctx, rootDir, args)
-	if err != nil {
-		if !errors.Is(err, schema.ErrNonFatal) {
-			return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+		js, err := prog.Enumerate(ctx, rootDir, args)
+		if err != nil {
+			if !errors.Is(err, schema.ErrNonFatal) {
+				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+			}
+
+			err = fmt.Errorf("failed to enumerate some jobs: %w", err)
+			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 		}
 
-		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
-		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+		jobs = append(jobs, js...)
 	}
 
 	jobs = filterByAge(jobs, args.MinAge.Value)
@@ -118,9 +125,27 @@ func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) (
 
 	prog.considerDurations(jobs, args)
 
+	var deadlineCtx context.Context //nolint:contextcheck
+	var deadlineCancel context.CancelFunc
+	if args.MaxDuration.Value > 0 {
+		deadlineCtx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(args.MaxDuration.Value))
+		defer deadlineCancel()
+	}
+
 	for i, job := range jobs {
 		if err := ctx.Err(); err != nil {
 			return results, fmt.Errorf("context error: %w", err)
+		}
+
+		if deadlineCtx != nil {
+			if err := deadlineCtx.Err(); errors.Is(err, context.DeadlineExceeded) {
+				logger := prog.verificationLogger(ctx, nil, nil)
+				logger.Warn("Exceeded the --duration budget (will continue next run)",
+					"unprocessedJobs", len(jobs)-i, "totalJobs", len(jobs),
+					"maxDuration", args.MaxDuration.Value.String())
+
+				break
+			}
 		}
 
 		pos := fmt.Sprintf("%d/%d", i+1, len(jobs))
