@@ -98,7 +98,7 @@ func runPrelude[A any, C configMergeable[A]](in *preludeInput[A, C]) (*preludeRe
 	if validator, ok := any(in.CommandOptions).(schema.OptionsValidatable); ok {
 		if err := validator.Validate(); err != nil {
 			if errors.Is(err, schema.ErrUnsupportedGlob) {
-				return nil, fmt.Errorf("%w: %w: cannot use deep glob (/) in recursive mode, "+
+				return nil, fmt.Errorf("%w: %w: cannot use deep globs (/, **) in recursive mode, "+
 					"use non-recursive modes with deep globs instead (see documentation)",
 					schema.ErrExitBadInvocation, err)
 			}

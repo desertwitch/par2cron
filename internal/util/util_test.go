@@ -157,3 +157,39 @@ func Test_FmtDur_ZeroDuration_Success(t *testing.T) {
 	require.NotEmpty(t, result)
 	require.NotEqual(t, "?", result)
 }
+
+// Expectation: The function should meet the table's expectations.
+func Test_IsGlobRecursive_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+		expect  bool
+	}{
+		{"contains forward slash", "dir/file", true},
+		{"contains double star", "dir**file", true},
+		{"contains both slash and double star", "dir/**/file", true},
+		{"starts with double star", "**/file", true},
+		{"ends with double star", "dir/**", true},
+		{"only forward slash", "/", true},
+		{"only double star", "**", true},
+		{"simple glob star", "*.txt", false},
+		{"question mark glob", "file?.txt", false},
+		{"no special chars", "file.txt", false},
+		{"empty string", "", false},
+		{"single star no slash", "dir*file", false},
+		{"bracket glob", "[abc].txt", false},
+		{"triple star", "***", true},
+		{"multiple slashes", "a/b/c", true},
+		{"backslash not forward", "dir\\file", false},
+		{"star before extension", "*.par2", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expect, IsGlobRecursive(tt.pattern))
+		})
+	}
+}

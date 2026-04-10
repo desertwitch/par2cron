@@ -22,7 +22,7 @@ create:
   # See here for a list of supported patterns:
   # https://github.com/bmatcuk/doublestar#patterns
   #
-  # Beware deep glob patterns (/) only work in non-recursive creation modes
+  # Note deep glob patterns (/, **) only work in non-recursive creation modes
   # Refer to par2cron documentation for detailed information on creation modes
   #
   # Default: "*" (all files)

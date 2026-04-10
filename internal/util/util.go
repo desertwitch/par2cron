@@ -64,3 +64,13 @@ func FmtDur(d time.Duration) string {
 
 	return str
 }
+
+func IsGlobRecursive(pattern string) bool {
+	for _, n := range []string{"/", "**"} {
+		if strings.Contains(pattern, n) {
+			return true
+		}
+	}
+
+	return false
+}
