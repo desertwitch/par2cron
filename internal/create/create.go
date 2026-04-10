@@ -56,7 +56,7 @@ func (o *Options) Validate() error {
 
 	// par2cmdline internally does recursion, so we cannot do double recursion.
 	// If the user wants recursive globbing, they'll have to do it in non-recursive mode.
-	if o.Par2Mode.Value == schema.CreateRecursiveMode && strings.Contains(o.Par2Glob, "/") {
+	if o.Par2Mode.Value == schema.CreateRecursiveMode && util.IsGlobRecursive(o.Par2Glob) {
 		return schema.ErrUnsupportedGlob
 	}
 
@@ -330,9 +330,9 @@ func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 }
 
 func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]schema.FsElement, error) {
-	if job.par2Mode == schema.CreateRecursiveMode && strings.Contains(job.par2Glob, "/") {
+	if job.par2Mode == schema.CreateRecursiveMode && util.IsGlobRecursive(job.par2Glob) {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
-		logger.Error("Recursive mode does not support deep (/) glob patterns, "+
+		logger.Error("Recursive mode does not support deep (/, **) glob patterns, "+
 			"use non-recursive modes with deep globs instead (see documentation)",
 			"error", schema.ErrUnsupportedGlob)
 

@@ -55,7 +55,7 @@ for the individual job, refer to documentation for examples.
 One PAR2 per folder: By default a marker file only triggers
 PAR2 creation for files in its immediate directory, it does
 not recurse into subdirectories. Recursion is possible using
-deep globs (/) or in recursive mode, refer to documentation.
+deep globs (**) or in recursive mode, refer to documentation.
 
 To exclude directories from this operation, put ignore files:
   ".par2cron-ignore" - ignore directory

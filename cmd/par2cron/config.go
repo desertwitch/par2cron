@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/desertwitch/par2cron/internal/create"
@@ -14,6 +13,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/repair"
 	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
@@ -36,7 +36,7 @@ func (cfg *configFile) Validate() error {
 	// par2cmdline internally does recursion, so we cannot do double recursion.
 	// If the user wants recursive globbing, they'll have to do it in non-recursive mode.
 	if cfg.Create != nil && cfg.Create.Par2Mode != nil && cfg.Create.Par2Glob != nil {
-		if cfg.Create.Par2Mode.Value == schema.CreateRecursiveMode && strings.Contains(*cfg.Create.Par2Glob, "/") {
+		if cfg.Create.Par2Mode.Value == schema.CreateRecursiveMode && util.IsGlobRecursive(*cfg.Create.Par2Glob) {
 			return schema.ErrUnsupportedGlob
 		}
 	}
@@ -60,7 +60,7 @@ func parseConfigFile(fsys afero.Fs, path string) (*configFile, error) {
 
 	if err := yamlConfig.Validate(); err != nil {
 		if errors.Is(err, schema.ErrUnsupportedGlob) {
-			return nil, fmt.Errorf("%w: cannot use deep glob (/) in recursive mode, "+
+			return nil, fmt.Errorf("%w: cannot use deep globs (/, **) in recursive mode, "+
 				"use non-recursive modes with deep globs instead (see documentation)", err)
 		}
 

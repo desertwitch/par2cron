@@ -46,8 +46,8 @@
   - [`file` mode](#file-mode)
   - [`recursive` mode](#recursive-mode)
 - [Creation Glob Patterns](#creation-glob-patterns)
-  - [Shallow patterns (no `/`)](#shallow-patterns-no-)
-  - [Deep patterns (containing `/`)](#deep-patterns-containing-)
+  - [Shallow patterns (no `/` or `**`)](#shallow-patterns-no--or-)
+  - [Deep patterns (containing `/` or `**`)](#deep-patterns-containing--or-)
   - [Pattern examples](#pattern-examples)
 - [Marker Files](#marker-files)
   - [Marker filename](#marker-filename)
@@ -471,7 +471,7 @@ The PAR2 set is placed in the marker-containing directory and named after it,
 like in folder mode. The key difference is that `par2` handles the recursion
 internally rather than par2cron building a recursive path list from a glob.
 
-Beware this mode does not support deep glob patterns containing `/`, as
+Beware this mode does not support deep glob patterns containing `/` or `**`, as
 combining par2cron's glob recursion with `par2` internal recursion would result
 in unpredictable behavior and double recursion. For fine-grained control over
 what gets protected across subfolders, use folder, nested or file mode with deep
@@ -491,7 +491,7 @@ the full range of glob patterns including `**` for crossing directory
 boundaries. The glob pattern can be changed in the default configuration or on a
 per-job basis using the marker configurations.
 
-### Shallow patterns (no `/`)
+### Shallow patterns (no `/` or `**`)
 
 Shallow patterns like `*`, `*.jpg` or `*.{jpg,png}` match files within a single
 directory. In folder, nested and file modes, this means only files directly in
@@ -499,11 +499,11 @@ the marker-containing folder are considered. In recursive mode, the pattern is
 applied to files and folders in the marker-containing directory, with `par2`
 recursing into any matching folders.
 
-### Deep patterns (containing `/`)
+### Deep patterns (containing `/` or `**`)
 
-Patterns containing `/` such as `**/*.jpg` or `*/data/*.csv` cross directory
-boundaries. This allows all non-recursive modes (folder, nested, file) to
-match specific files across subfolders:
+Patterns containing `/` or `**` such as `**/*.jpg` or `*/data/*.csv` cross
+directory boundaries. This allows all non-recursive modes (folder, nested, file)
+to match specific files across subfolders:
 
 - **folder** collects all matches into one PAR2 set in the marker directory
 - **nested** groups matches by their containing folder, one PAR2 set per folder
@@ -514,14 +514,14 @@ recursion internally. Combining both would result in unpredictable behavior.
 
 ### Pattern examples
 
-| Pattern          | Matches                                              |
-| :--------------- | :--------------------------------------------------- |
-| `*`              | All files in the marker directory                    |
-| `*.mp4`          | All `.mp4` files in the marker directory             |
-| `*.{mkv,srt}`    | All `.mkv` and `.srt` files in the marker directory  |
-| `**/*`           | All files in the marker directory and subfolders     |
-| `**/*.mkv`       | All `.mkv` files in the marker directory and below   |
-| `*/data/*.iso`   | All `.iso` files in `data/` subdirectories           |
+| Pattern         | Matches                                              |
+| :-------------- | :--------------------------------------------------- |
+| `*`             | All files in the marker directory                    |
+| `*.mp4`         | All `.mp4` files in the marker directory             |
+| `*.{mkv,srt}`   | All `.mkv` and `.srt` files in the marker directory  |
+| `**/*`          | All files in the marker directory and its subfolders |
+| `**/*.mkv`      | All `.mkv` files in the marker directory and below   |
+| `data/**/*.iso` | All `.iso` files in `data/` and its subdirectories   |
 
 **For a full list of supported patterns, refer to the [doublestar](https://github.com/bmatcuk/doublestar#patterns) documentation.**
 
