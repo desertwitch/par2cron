@@ -22,8 +22,8 @@ type ResultTracker struct {
 	Error    int
 }
 
-func NewResultTracker() *ResultTracker {
-	return &ResultTracker{}
+func NewResultTracker() ResultTracker {
+	return ResultTracker{}
 }
 
 func IsPar2Index(path string) bool {

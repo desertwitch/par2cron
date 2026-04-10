@@ -24,6 +24,8 @@ const (
 	prioOther          = 3
 )
 
+var _ schema.OptionsPar2ArgsSettable = (*Options)(nil)
+
 type Options struct {
 	Par2Args        []string
 	MinAge          flags.Duration
@@ -31,6 +33,10 @@ type Options struct {
 	RunInterval     flags.Duration
 	IncludeExternal bool
 	SkipNotCreated  bool
+}
+
+func (o *Options) SetPar2Args(args []string) {
+	o.Par2Args = slices.Clone(args)
 }
 
 type Job struct {
@@ -45,13 +51,13 @@ type Job struct {
 	manifest *schema.Manifest
 }
 
-func NewJob(par2Path string, args Options, mf *schema.Manifest) *Job {
+func NewJob(par2Path string, opts Options, mf *schema.Manifest) *Job {
 	vj := &Job{}
 
 	vj.workingDir = filepath.Dir(par2Path)
 	vj.par2Name = filepath.Base(par2Path)
 	vj.par2Path = par2Path
-	vj.par2Args = slices.Clone(args.Par2Args)
+	vj.par2Args = slices.Clone(opts.Par2Args)
 	vj.manifestName = vj.par2Name + schema.ManifestExtension
 	vj.manifestPath = vj.par2Path + schema.ManifestExtension
 	vj.lockPath = vj.par2Path + schema.LockExtension
@@ -85,42 +91,67 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 }
 
-func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) (*util.ResultTracker, error) {
+//nolint:funlen
+func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
+	logger := prog.verificationLogger(ctx, nil, nil)
 
-	logger := prog.verificationLogger(ctx, nil, rootDir)
-	logger.Info("Scanning filesystem for jobs...", "walker", prog.walker.Name())
+	jobs := []*Job{}
+	for _, rootDir := range rootDirs {
+		logger.Info("Scanning filesystem for jobs...",
+			"walker", prog.walker.Name(), "path", rootDir)
 
-	jobs, err := prog.Enumerate(ctx, rootDir, args)
-	if err != nil {
-		if !errors.Is(err, schema.ErrNonFatal) {
-			return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+		js, err := prog.Enumerate(ctx, rootDir, opts)
+		if err != nil {
+			if !errors.Is(err, schema.ErrNonFatal) {
+				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+			}
+
+			err = fmt.Errorf("failed to enumerate some jobs: %w", err)
+			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 		}
 
-		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
-		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+		jobs = append(jobs, js...)
 	}
 
-	jobs = filterByAge(jobs, args.MinAge.Value)
+	jobs = filterByAge(jobs, opts.MinAge.Value)
 	sortJobs(jobs)
-	prog.considerBacklog(jobs, args)
-	jobs = filterByDuration(jobs, args.MaxDuration.Value)
+	prog.considerBacklog(jobs, opts)
+	jobs = filterByDuration(jobs, opts.MaxDuration.Value)
 
 	if len(jobs) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
-			"maxDuration", args.MaxDuration.Value.String())
+			"maxDuration", opts.MaxDuration.Value.String())
 		results.Selected = len(jobs)
 	} else {
 		logger.Info("Nothing to do (will check again next run)",
-			"minAge", args.MinAge.Value.String())
+			"minAge", opts.MinAge.Value.String())
 	}
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(jobs, opts)
+
+	var deadlineCtx context.Context //nolint:contextcheck
+	var deadlineCancel context.CancelFunc
+	if opts.MaxDuration.Value > 0 {
+		deadlineCtx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(opts.MaxDuration.Value))
+		defer deadlineCancel()
+	}
 
 	for i, job := range jobs {
 		if err := ctx.Err(); err != nil {
 			return results, fmt.Errorf("context error: %w", err)
+		}
+
+		if deadlineCtx != nil {
+			if err := deadlineCtx.Err(); errors.Is(err, context.DeadlineExceeded) {
+				logger := prog.verificationLogger(ctx, nil, nil)
+				logger.Warn("Exceeded the --duration budget (will continue next run)",
+					"unprocessedJobs", len(jobs)-i, "totalJobs", len(jobs),
+					"maxDuration", opts.MaxDuration.Value.String())
+
+				break
+			}
 		}
 
 		pos := fmt.Sprintf("%d/%d", i+1, len(jobs))
@@ -173,7 +204,7 @@ func (prog *Service) Verify(ctx context.Context, rootDir string, args Options) (
 	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
-func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options) ([]*Job, error) {
+func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
 
 	var partialErrors int
@@ -198,7 +229,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options
 			return nil
 		}
 
-		job, err := prog.processManifest(ctx, par2path, args)
+		job, err := prog.processManifest(ctx, par2path, opts)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) && !errors.Is(err, schema.ErrSilentSkip) {
 				return fmt.Errorf("failed to process manifest: %w", err)
@@ -224,18 +255,18 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options
 	return jobs, nil
 }
 
-func (prog *Service) processManifest(ctx context.Context, par2path string, args Options) (*Job, error) { //nolint:funcorder
+func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) { //nolint:funcorder
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.verificationLogger(ctx, nil, manifestPath)
 
 	if _, err := prog.fsys.Stat(manifestPath); err != nil {
-		if !args.IncludeExternal {
+		if !opts.IncludeExternal {
 			logger.Debug("No manifest found (skipping)")
 
 			return nil, schema.ErrSilentSkip
 		}
 
-		job := NewJob(par2path, args, nil)
+		job := NewJob(par2path, opts, nil)
 
 		logger := prog.verificationLogger(ctx, job, manifestPath)
 		logger.Debug("Failed to find par2cron manifest (resetting manifest)", "error", err)
@@ -264,13 +295,13 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, args 
 
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(data, mf); err != nil {
-		if args.SkipNotCreated {
+		if opts.SkipNotCreated {
 			logger.Debug("No unmarshalable manifest (skipping; --skip-not-created)")
 
 			return nil, schema.ErrSilentSkip
 		}
 
-		job := NewJob(par2path, args, nil)
+		job := NewJob(par2path, opts, nil)
 
 		logger := prog.verificationLogger(ctx, job, manifestPath)
 		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
@@ -278,13 +309,13 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, args 
 		return job, nil
 	}
 
-	if args.SkipNotCreated && mf.Creation == nil {
+	if opts.SkipNotCreated && mf.Creation == nil {
 		logger.Debug("No creation manifest (skipping; --skip-not-created)")
 
 		return nil, schema.ErrSilentSkip
 	}
 
-	job := NewJob(par2path, args, mf)
+	job := NewJob(par2path, opts, mf)
 
 	return job, nil
 }
@@ -405,8 +436,8 @@ func (prog *Service) parseExitCode(job *Job, err error) error {
 	}
 }
 
-func (prog *Service) considerBacklog(jobs []*Job, args Options) {
-	if len(jobs) == 0 || args.MinAge.Value <= 0 || args.MaxDuration.Value <= 0 || args.RunInterval.Value <= 0 {
+func (prog *Service) considerBacklog(jobs []*Job, opts Options) {
+	if len(jobs) == 0 || opts.MinAge.Value <= 0 || opts.MaxDuration.Value <= 0 || opts.RunInterval.Value <= 0 {
 		return
 	}
 
@@ -415,8 +446,8 @@ func (prog *Service) considerBacklog(jobs []*Job, args Options) {
 		return
 	}
 
-	runsPerCycle := max(int(args.MinAge.Value/args.RunInterval.Value), 1)
-	capacity := time.Duration(runsPerCycle) * args.MaxDuration.Value
+	runsPerCycle := max(int(opts.MinAge.Value/opts.RunInterval.Value), 1)
+	capacity := time.Duration(runsPerCycle) * opts.MaxDuration.Value
 
 	if js.TotalDuration > capacity {
 		prog.log.Warn("Backlog is growing indefinitely (increase --age, increase --duration, "+
@@ -428,31 +459,31 @@ func (prog *Service) considerBacklog(jobs []*Job, args Options) {
 	}
 }
 
-func (prog *Service) considerDurations(jobs []*Job, args Options) {
+func (prog *Service) considerDurations(jobs []*Job, opts Options) {
 	if len(jobs) == 0 {
 		return
 	}
 
-	if args.MaxDuration.Value > 0 {
+	if opts.MaxDuration.Value > 0 {
 		est := jobs[0].lastDuration()
 		switch {
 		case est == 0:
 			prog.log.Warn("First job has (still) unknown duration, may exceed --duration",
 				"job", jobs[0].par2Path,
-				"maxDuration", args.MaxDuration.Value.String(),
+				"maxDuration", opts.MaxDuration.Value.String(),
 			)
-		case est > args.MaxDuration.Value:
+		case est > opts.MaxDuration.Value:
 			prog.log.Warn("First job is estimated to exceed --duration (required to prevent starvation)",
 				"job", jobs[0].par2Path,
 				"estDuration", est.String(),
-				"maxDuration", args.MaxDuration.Value.String(),
+				"maxDuration", opts.MaxDuration.Value.String(),
 			)
 		}
 
 		for _, job := range jobs[1:] {
 			if job.lastDuration() == 0 {
 				prog.log.Warn("Some jobs have a (still) unknown duration, may exceed --duration",
-					"maxDuration", args.MaxDuration.Value.String(),
+					"maxDuration", opts.MaxDuration.Value.String(),
 				)
 
 				break

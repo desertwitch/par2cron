@@ -164,7 +164,7 @@ Scans a directory tree for "_par2cron" marker files
 Creates PAR2 sets for directories containing a marker file
 
 Usage:
-  par2cron create [flags] <dir> [-- par2-args...]
+  par2cron create [flags] <dir>... [-- par2-args...]
 
 Examples:
 
@@ -195,7 +195,7 @@ Verifies all protected data using the existing PAR2 sets
 Corrupted/missing files are flagged for the repair operation
 
 Usage:
-  par2cron verify [flags] <dir> [-- par2-args...]
+  par2cron verify [flags] <dir>... [-- par2-args...]
 
 Examples:
 
@@ -230,7 +230,7 @@ Repair all data flagged as repairable during verification
 Uses existing PAR2 sets to recover corrupted/missing files
 
 Usage:
-  par2cron repair [flags] <dir> [-- par2-args...]
+  par2cron repair [flags] <dir>... [-- par2-args...]
 
 Examples:
 
@@ -263,7 +263,7 @@ Analyzes the directory tree for statistics about PAR2 sets
 Shows verification statistics and configuration information
 
 Usage:
-  par2cron info [flags] <dir>
+  par2cron info [flags] <dir>...
 
 Examples:
 

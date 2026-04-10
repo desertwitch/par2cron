@@ -31,6 +31,9 @@ var (
 
 	// https://github.com/bmatcuk/doublestar/blob/master/utils.go#L153
 	globMetaReplacer = strings.NewReplacer("*", "\\*", "?", "\\?", "[", "\\[", "]", "\\]", "{", "\\{", "}", "\\}")
+
+	_ schema.OptionsValidatable      = (*Options)(nil)
+	_ schema.OptionsPar2ArgsSettable = (*Options)(nil)
 )
 
 type Options struct {
@@ -40,6 +43,10 @@ type Options struct {
 	Par2Verify  bool
 	MaxDuration flags.Duration
 	HideFiles   bool
+}
+
+func (o *Options) SetPar2Args(args []string) {
+	o.Par2Args = slices.Clone(args)
 }
 
 func (o *Options) Validate() error {
@@ -155,25 +162,31 @@ func newNestedModeJob(job Job, dir string) Job {
 	return job
 }
 
-func (prog *Service) Create(ctx context.Context, rootDir string, opts Options) (*util.ResultTracker, error) {
+func (prog *Service) Create(ctx context.Context, rootDirs []string, opts Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
+	logger := prog.creationLogger(ctx, nil, nil)
 
 	if err := prog.considerRecursive(&opts); err != nil {
 		return results, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 	}
 
-	logger := prog.creationLogger(ctx, nil, rootDir)
-	logger.Info("Scanning filesystem for jobs...", "walker", prog.walker.Name())
+	jobs := []*Job{}
+	for _, rootDir := range rootDirs {
+		logger.Info("Scanning filesystem for jobs...",
+			"walker", prog.walker.Name(), "path", rootDir)
 
-	jobs, err := prog.Enumerate(ctx, rootDir, opts)
-	if err != nil {
-		if !errors.Is(err, schema.ErrNonFatal) {
-			return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+		js, err := prog.Enumerate(ctx, rootDir, opts)
+		if err != nil {
+			if !errors.Is(err, schema.ErrNonFatal) {
+				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+			}
+
+			err = fmt.Errorf("failed to enumerate some jobs: %w", err)
+			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 		}
 
-		err = fmt.Errorf("failed to enumerate some jobs: %w", err)
-		errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+		jobs = append(jobs, js...)
 	}
 
 	if len(jobs) > 0 {

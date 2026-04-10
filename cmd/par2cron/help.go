@@ -35,7 +35,7 @@ const checkConfigHelpExample = `
 Validate a par2cron YAML configuration file:
   par2cron check-config /tmp/par2cron.yaml`
 
-const createUsage = "create [flags] <dir> [-- par2-args...]"
+const createUsage = "create [flags] <dir>... [-- par2-args...]"
 
 const createHelpShort = "Creates PAR2 sets for directories with marker files"
 
@@ -73,7 +73,7 @@ Pass "-r15 -n1" (15% redundancy, 1 recovery file) to par2:
 Run for around 1 hour (as soft limit), hide created files:
   par2cron create -d 1h --hidden /mnt/storage`
 
-const verifyUsage = "verify [flags] <dir> [-- par2-args...]"
+const verifyUsage = "verify [flags] <dir>... [-- par2-args...]"
 
 const verifyHelpShort = "Verifies the existing PAR2 sets found in a directory tree"
 
@@ -102,7 +102,7 @@ Verify all sets, argument "-q" (quiet mode) for par2:
 Verify sets not verified < 7 days, run around 2 hours:
   par2cron verify -a 7d -d 2h /mnt/storage`
 
-const repairUsage = "repair [flags] <dir> [-- par2-args...]"
+const repairUsage = "repair [flags] <dir>... [-- par2-args...]"
 
 const repairHelpShort = "Repairs any corrupted files using the PAR2 recovery data"
 
@@ -132,7 +132,7 @@ Repair all sets, argument "-q" (quiet mode) for par2:
 Repair repairable, verify after, run for around 1 hour:
   par2cron repair -d 1h -v /mnt/storage`
 
-const infoUsage = "info [flags] <dir>"
+const infoUsage = "info [flags] <dir>..."
 
 const infoHelpShort = "Shows verification cycle and configuration statistics"
 

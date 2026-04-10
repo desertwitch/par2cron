@@ -49,35 +49,39 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 }
 
-func (prog *Service) Info(ctx context.Context, rootDir string, args Options) error {
+func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) error {
 	if prog.log.Options.WantJSON {
-		return prog.PrintJSON(ctx, rootDir, args)
+		return prog.PrintJSON(ctx, rootDirs, opts)
 	}
 
-	if args.RunInterval.Value <= 0 {
+	if opts.RunInterval.Value <= 0 {
 		fmt.Fprintf(prog.log.Options.Stdout, "You need to define how often you run par2cron with --calc-run-interval\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
 		return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, errNoCalcInterval)
 	}
 
-	fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem for jobs (using '%s')...\n", prog.walker.Name())
-	fmt.Fprintf(prog.log.Options.Stdout, "\n")
-
 	now := time.Now()
 
 	vs := verify.NewService(prog.fsys, prog.log, prog.runner)
-	va := verify.Options{IncludeExternal: args.IncludeExternal, SkipNotCreated: args.SkipNotCreated}
+	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
-	jobs, err := vs.Enumerate(ctx, rootDir, va)
-	if err != nil {
-		if !errors.Is(err, schema.ErrNonFatal) {
-			return fmt.Errorf("failed to enumerate jobs: %w", err)
+	jobs := []*verify.Job{}
+	for _, rootDir := range rootDirs {
+		fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem '%s' for jobs (using '%s')...\n", rootDir, prog.walker.Name())
+
+		js, err := vs.Enumerate(ctx, rootDir, va)
+		if err != nil {
+			if !errors.Is(err, schema.ErrNonFatal) {
+				return fmt.Errorf("failed to enumerate jobs: %w", err)
+			}
+
+			fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read for '%s' (%v)\n", rootDir, err)
 		}
 
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read (%v)\n", err)
-		fmt.Fprintf(prog.log.Options.Stdout, "\n")
+		jobs = append(jobs, js...)
 	}
+	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
 	js := vs.Stats(jobs)
 
@@ -99,81 +103,81 @@ func (prog *Service) Info(ctx context.Context, rootDir string, args Options) err
 		return nil
 	}
 
-	if args.MinAge.Value > 0 {
-		prog.printAgeInfo(js, args)
+	if opts.MinAge.Value > 0 {
+		prog.printAgeInfo(js, opts)
 	}
 
-	if args.MaxDuration.Value > 0 {
-		prog.printDurationInfo(js, args)
+	if opts.MaxDuration.Value > 0 {
+		prog.printDurationInfo(js, opts)
 	}
 
-	if args.MinAge.Value > 0 && args.MaxDuration.Value > 0 {
-		prog.printBacklogInfo(js, args)
+	if opts.MinAge.Value > 0 && opts.MaxDuration.Value > 0 {
+		prog.printBacklogInfo(js, opts)
 	}
 
-	if args.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
-		prog.printCycleInfo(js, jobs, args, now)
+	if opts.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
+		prog.printCycleInfo(js, jobs, opts, now)
 	}
 
 	return nil
 }
 
-func (prog *Service) printAgeInfo(js verify.Stats, args Options) {
-	if args.MinAge.Value <= 0 {
+func (prog *Service) printAgeInfo(js verify.Stats, opts Options) {
+	if opts.MinAge.Value <= 0 {
 		return
 	}
 
-	runsPerCycle := max(int(args.MinAge.Value/args.RunInterval.Value), 1)
+	runsPerCycle := max(int(opts.MinAge.Value/opts.RunInterval.Value), 1)
 	requiredDuration := max(js.TotalDuration/time.Duration(runsPerCycle), time.Second)
 
-	fmt.Fprintf(prog.log.Options.Stdout, "With just --age %s (no --duration, running par2cron every %s):\n", &args.MinAge, &args.RunInterval)
+	fmt.Fprintf(prog.log.Options.Stdout, "With just --age %s (no --duration, running par2cron every %s):\n", &opts.MinAge, &opts.RunInterval)
 	fmt.Fprintf(prog.log.Options.Stdout, "  Runs per verification cycle: %d\n", runsPerCycle)
 	fmt.Fprintf(prog.log.Options.Stdout, "  If using --duration, minimum should be: %s\n", util.FmtDur(requiredDuration))
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
-	if args.MinAge.Value < args.RunInterval.Value {
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: --age (%s) is less than --calc-run-interval (%s)\n", &args.MinAge, &args.RunInterval)
+	if opts.MinAge.Value < opts.RunInterval.Value {
+		fmt.Fprintf(prog.log.Options.Stdout, "Warning: --age (%s) is less than --calc-run-interval (%s)\n", &opts.MinAge, &opts.RunInterval)
 		fmt.Fprintf(prog.log.Options.Stdout, "  Files will always be stale, increase --age or run more frequently\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	}
 }
 
-func (prog *Service) printDurationInfo(js verify.Stats, args Options) {
-	if args.MaxDuration.Value <= 0 {
+func (prog *Service) printDurationInfo(js verify.Stats, opts Options) {
+	if opts.MaxDuration.Value <= 0 {
 		return
 	}
 
-	runsNeeded := max(int((js.TotalDuration+args.MaxDuration.Value-1)/args.MaxDuration.Value), 1)
-	cycleLength := time.Duration(runsNeeded) * args.RunInterval.Value
+	runsNeeded := max(int((js.TotalDuration+opts.MaxDuration.Value-1)/opts.MaxDuration.Value), 1)
+	cycleLength := time.Duration(runsNeeded) * opts.RunInterval.Value
 
-	fmt.Fprintf(prog.log.Options.Stdout, "With just --duration %s (no --age, running par2cron every %s):\n", &args.MaxDuration, &args.RunInterval)
+	fmt.Fprintf(prog.log.Options.Stdout, "With just --duration %s (no --age, running par2cron every %s):\n", &opts.MaxDuration, &opts.RunInterval)
 	fmt.Fprintf(prog.log.Options.Stdout, "  Runs needed to achieve a full verification: %d\n", runsNeeded)
 
-	if js.TotalDuration <= args.MaxDuration.Value {
+	if js.TotalDuration <= opts.MaxDuration.Value {
 		fmt.Fprintf(prog.log.Options.Stdout, "  A full verification is achieved in a single run\n")
 	} else {
 		fmt.Fprintf(prog.log.Options.Stdout, "  A full verification is eventually achieved every: %s\n", util.FmtDur(cycleLength))
 	}
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
-	if js.LargestDuration > args.MaxDuration.Value {
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Largest job (%s) exceeds --duration %s\n", util.FmtDur(js.LargestDuration), &args.MaxDuration)
+	if js.LargestDuration > opts.MaxDuration.Value {
+		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Largest job (%s) exceeds --duration %s\n", util.FmtDur(js.LargestDuration), &opts.MaxDuration)
 		fmt.Fprintf(prog.log.Options.Stdout, "  Job: %s\n", filepath.Base(js.LargestJob.Par2Path()))
 		fmt.Fprintf(prog.log.Options.Stdout, "  At least one job will overshoot the soft duration limit when it runs (to avoid starvation)\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	}
 }
 
-func (prog *Service) printBacklogInfo(js verify.Stats, args Options) {
-	if args.MinAge.Value <= 0 || args.MaxDuration.Value <= 0 {
+func (prog *Service) printBacklogInfo(js verify.Stats, opts Options) {
+	if opts.MinAge.Value <= 0 || opts.MaxDuration.Value <= 0 {
 		return
 	}
 
-	runsPerCycle := max(int(args.MinAge.Value/args.RunInterval.Value), 1)
-	capacity := time.Duration(runsPerCycle) * args.MaxDuration.Value
+	runsPerCycle := max(int(opts.MinAge.Value/opts.RunInterval.Value), 1)
+	capacity := time.Duration(runsPerCycle) * opts.MaxDuration.Value
 	margin := capacity - js.TotalDuration
 
-	fmt.Fprintf(prog.log.Options.Stdout, "With --age %s and --duration %s (running par2cron every %s):\n", &args.MinAge, &args.MaxDuration, &args.RunInterval)
+	fmt.Fprintf(prog.log.Options.Stdout, "With --age %s and --duration %s (running par2cron every %s):\n", &opts.MinAge, &opts.MaxDuration, &opts.RunInterval)
 	fmt.Fprintf(prog.log.Options.Stdout, "  Processing capacity: %s\n", util.FmtDur(capacity))
 	fmt.Fprintf(prog.log.Options.Stdout, "  Minimum needed to avoid backlog growing: %s\n", util.FmtDur(js.TotalDuration))
 
@@ -192,12 +196,12 @@ func (prog *Service) printBacklogInfo(js verify.Stats, args Options) {
 	}
 }
 
-func (prog *Service) printCycleInfo(js verify.Stats, jobs []*verify.Job, args Options, now time.Time) {
-	if args.MinAge.Value <= 0 || js.TotalDuration <= 0 || js.JobCount == 0 {
+func (prog *Service) printCycleInfo(js verify.Stats, jobs []*verify.Job, opts Options, now time.Time) {
+	if opts.MinAge.Value <= 0 || js.TotalDuration <= 0 || js.JobCount == 0 {
 		return
 	}
 
-	cycleStart := now.Add(-args.MinAge.Value)
+	cycleStart := now.Add(-opts.MinAge.Value)
 
 	var verifiedCount int
 	var verifiedDuration time.Duration
@@ -213,7 +217,7 @@ func (prog *Service) printCycleInfo(js verify.Stats, jobs []*verify.Job, args Op
 	countPct := float64(verifiedCount) / float64(js.JobCount) * 100            //nolint:mnd
 	durationPct := float64(verifiedDuration) / float64(js.TotalDuration) * 100 //nolint:mnd
 
-	fmt.Fprintf(prog.log.Options.Stdout, "Verification progress (--age %s, rolling window):\n", &args.MinAge)
+	fmt.Fprintf(prog.log.Options.Stdout, "Verification progress (--age %s, rolling window):\n", &opts.MinAge)
 	fmt.Fprintf(prog.log.Options.Stdout, "  Jobs verified: %d/%d (%.1f%%)\n", verifiedCount, js.JobCount, countPct)
 	fmt.Fprintf(prog.log.Options.Stdout, "  Known duration covered:\n")
 	fmt.Fprintf(prog.log.Options.Stdout, "    %s/%s (%.1f%%)\n", util.FmtDur(verifiedDuration), util.FmtDur(js.TotalDuration), durationPct)
