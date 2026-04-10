@@ -34,7 +34,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
 	"slices"
@@ -49,7 +48,6 @@ import (
 	"github.com/desertwitch/par2cron/internal/verify"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 var profFile *os.File
@@ -148,7 +146,7 @@ func newCheckConfigCmd(_ context.Context) *cobra.Command {
 
 // newCreateCmd returns the "create" [cobra.Command] pointer for the program.
 func newCreateCmd(ctx context.Context) *cobra.Command {
-	var createArgs create.Options
+	var createOptions create.Options
 	var logSettings logging.Options
 	var configPath string
 	var resolvedPaths []string
@@ -160,7 +158,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 	logSettings.Stdout = os.Stdout
 	logSettings.Stderr = os.Stderr
 
-	_ = createArgs.Par2Mode.Set(schema.CreateFolderMode)
+	_ = createOptions.Par2Mode.Set(schema.CreateFolderMode)
 
 	createCmd := &cobra.Command{
 		Use:     createUsage,
@@ -169,60 +167,21 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 		Example: createHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			dashAt := cmd.ArgsLenAtDash()
-			hasExternalArgs := (dashAt != -1)
-
-			if dashAt != -1 && dashAt < 1 {
-				return fmt.Errorf("%w: need at least one path before -- and par2 arguments",
-					schema.ErrExitBadInvocation)
+			result, err := runPrelude(&preludeInput[*create.Options, *configFileCreate]{
+				FSys:           fsys,
+				Args:           args,
+				DashAt:         cmd.ArgsLenAtDash(),
+				ConfigPath:     configPath,
+				CommandOptions: &createOptions, // mutated
+				LogSettings:    &logSettings,   // mutated
+				ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
+				VisitFlags:     cmd.Flags().Visit,
+			})
+			if err != nil {
+				return err
 			}
 
-			if configPath != "" {
-				cfg, err := parseConfigFile(fsys, configPath)
-				if err != nil {
-					return fmt.Errorf("%w: failed to parse --config file: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				if cfg.Create != nil {
-					setFlags := make(map[string]bool)
-					cmd.Flags().Visit(func(f *pflag.Flag) {
-						setFlags[f.Name] = true
-					})
-					cfg.Create.Merge(&createArgs, &logSettings, hasExternalArgs, setFlags)
-				}
-			}
-
-			pathArgs := args
-			if hasExternalArgs {
-				pathArgs = args[:dashAt]
-				createArgs.Par2Args = append([]string{}, args[dashAt:]...)
-			}
-
-			for i, p := range pathArgs {
-				abs, err := filepath.Abs(p)
-				if err != nil {
-					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				pathArgs[i] = abs
-
-				if _, err := fsys.Stat(abs); err != nil {
-					return fmt.Errorf("%w: failed to access root directory: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-			}
-
-			resolvedPaths = slices.Clone(pathArgs)
-
-			if err := createArgs.Validate(); err != nil {
-				if errors.Is(err, schema.ErrUnsupportedGlob) {
-					return fmt.Errorf("%w: %w: cannot use deep glob (/) in recursive mode, "+
-						"use non-recursive modes with deep globs instead (see documentation)",
-						schema.ErrExitBadInvocation, err)
-				}
-
-				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
-			}
+			resolvedPaths = slices.Clone(result.ResolvedPaths)
 
 			return nil
 		},
@@ -230,7 +189,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
-			result, err := prog.CreationService.Create(ctx, resolvedPaths, createArgs)
+			result, err := prog.CreationService.Create(ctx, resolvedPaths, createOptions)
 			logOperationResult(err, result, prog.log.With("op", "create"))
 			if err != nil {
 				return fmt.Errorf("create: %w", err)
@@ -240,12 +199,12 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 	createCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
-	createCmd.Flags().BoolVar(&createArgs.HideFiles, "hidden", false, "create PAR2 sets and related files as hidden (dotfiles)")
-	createCmd.Flags().BoolVarP(&createArgs.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of creation")
+	createCmd.Flags().BoolVar(&createOptions.HideFiles, "hidden", false, "create PAR2 sets and related files as hidden (dotfiles)")
+	createCmd.Flags().BoolVarP(&createOptions.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of creation")
 	createCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
-	createCmd.Flags().StringVarP(&createArgs.Par2Glob, "glob", "g", "*", "PAR2 set default glob (files to include)")
-	createCmd.Flags().VarP(&createArgs.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
-	createCmd.Flags().VarP(&createArgs.Par2Mode, "mode", "m", "PAR2 set default mode; creates a set per (folder|nested|file|recursive)")
+	createCmd.Flags().StringVarP(&createOptions.Par2Glob, "glob", "g", "*", "PAR2 set default glob (files to include)")
+	createCmd.Flags().VarP(&createOptions.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
+	createCmd.Flags().VarP(&createOptions.Par2Mode, "mode", "m", "PAR2 set default mode; creates a set per (folder|nested|file|recursive)")
 	createCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return createCmd
@@ -253,7 +212,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 
 // newVerifyCmd returns the "verify" [cobra.Command] pointer for the program.
 func newVerifyCmd(ctx context.Context) *cobra.Command {
-	var verifyArgs verify.Options
+	var verifyOptions verify.Options
 	var logSettings logging.Options
 	var configPath string
 	var resolvedPaths []string
@@ -265,7 +224,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 	logSettings.Stdout = os.Stdout
 	logSettings.Stderr = os.Stderr
 
-	_ = verifyArgs.RunInterval.Set("24h")
+	_ = verifyOptions.RunInterval.Set("24h")
 
 	verifyCmd := &cobra.Command{
 		Use:     verifyUsage,
@@ -274,50 +233,21 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 		Example: verifyHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			dashAt := cmd.ArgsLenAtDash()
-			hasExternalArgs := (dashAt != -1)
-
-			if dashAt != -1 && dashAt < 1 {
-				return fmt.Errorf("%w: need at least one path before -- and par2 arguments",
-					schema.ErrExitBadInvocation)
+			result, err := runPrelude(&preludeInput[*verify.Options, *configFileVerify]{
+				FSys:           fsys,
+				Args:           args,
+				DashAt:         cmd.ArgsLenAtDash(),
+				ConfigPath:     configPath,
+				CommandOptions: &verifyOptions, // mutated
+				LogSettings:    &logSettings,   // mutated
+				ExtractSection: func(cfg *configFile) *configFileVerify { return cfg.Verify },
+				VisitFlags:     cmd.Flags().Visit,
+			})
+			if err != nil {
+				return err
 			}
 
-			if configPath != "" {
-				cfg, err := parseConfigFile(fsys, configPath)
-				if err != nil {
-					return fmt.Errorf("%w: failed to parse --config file: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				if cfg.Verify != nil {
-					setFlags := make(map[string]bool)
-					cmd.Flags().Visit(func(f *pflag.Flag) {
-						setFlags[f.Name] = true
-					})
-					cfg.Verify.Merge(&verifyArgs, &logSettings, hasExternalArgs, setFlags)
-				}
-			}
-
-			pathArgs := args
-			if hasExternalArgs {
-				pathArgs = args[:dashAt]
-				verifyArgs.Par2Args = append([]string{}, args[dashAt:]...)
-			}
-
-			for i, p := range pathArgs {
-				abs, err := filepath.Abs(p)
-				if err != nil {
-					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				pathArgs[i] = abs
-
-				if _, err := fsys.Stat(abs); err != nil {
-					return fmt.Errorf("%w: failed to access root directory: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-			}
-
-			resolvedPaths = slices.Clone(pathArgs)
+			resolvedPaths = slices.Clone(result.ResolvedPaths)
 
 			return nil
 		},
@@ -325,7 +255,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
-			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyArgs)
+			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyOptions)
 			logOperationResult(err, result, prog.log.With("op", "verify"))
 			if err != nil {
 				return fmt.Errorf("verify: %w", err)
@@ -335,20 +265,20 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 	verifyCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
-	verifyCmd.Flags().BoolVar(&verifyArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
-	verifyCmd.Flags().BoolVarP(&verifyArgs.IncludeExternal, "include-external", "e", false, "include PAR2 sets without a par2cron manifest (and create one)")
+	verifyCmd.Flags().BoolVar(&verifyOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	verifyCmd.Flags().BoolVarP(&verifyOptions.IncludeExternal, "include-external", "e", false, "include PAR2 sets without a par2cron manifest (and create one)")
 	verifyCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	verifyCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
-	verifyCmd.Flags().VarP(&verifyArgs.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
-	verifyCmd.Flags().VarP(&verifyArgs.MinAge, "age", "a", "minimum time between re-verifications (skip if verified within this period)")
-	verifyCmd.Flags().VarP(&verifyArgs.RunInterval, "calc-run-interval", "i", "how often you run par2cron verify (for backlog calculations)")
+	verifyCmd.Flags().VarP(&verifyOptions.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
+	verifyCmd.Flags().VarP(&verifyOptions.MinAge, "age", "a", "minimum time between re-verifications (skip if verified within this period)")
+	verifyCmd.Flags().VarP(&verifyOptions.RunInterval, "calc-run-interval", "i", "how often you run par2cron verify (for backlog calculations)")
 
 	return verifyCmd
 }
 
 // newRepairCmd returns the "repair" [cobra.Command] pointer for the program.
 func newRepairCmd(ctx context.Context) *cobra.Command {
-	var repairArgs repair.Options
+	var repairOptions repair.Options
 	var logSettings logging.Options
 	var configPath string
 	var resolvedPaths []string
@@ -367,50 +297,21 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 		Example: repairHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			dashAt := cmd.ArgsLenAtDash()
-			hasExternalArgs := (dashAt != -1)
-
-			if dashAt != -1 && dashAt < 1 {
-				return fmt.Errorf("%w: need at least one path before -- and par2 arguments",
-					schema.ErrExitBadInvocation)
+			result, err := runPrelude(&preludeInput[*repair.Options, *configFileRepair]{
+				FSys:           fsys,
+				Args:           args,
+				DashAt:         cmd.ArgsLenAtDash(),
+				ConfigPath:     configPath,
+				CommandOptions: &repairOptions, // mutated
+				LogSettings:    &logSettings,   // mutated
+				ExtractSection: func(cfg *configFile) *configFileRepair { return cfg.Repair },
+				VisitFlags:     cmd.Flags().Visit,
+			})
+			if err != nil {
+				return err
 			}
 
-			if configPath != "" {
-				cfg, err := parseConfigFile(fsys, configPath)
-				if err != nil {
-					return fmt.Errorf("%w: failed to parse --config file: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				if cfg.Repair != nil {
-					setFlags := make(map[string]bool)
-					cmd.Flags().Visit(func(f *pflag.Flag) {
-						setFlags[f.Name] = true
-					})
-					cfg.Repair.Merge(&repairArgs, &logSettings, hasExternalArgs, setFlags)
-				}
-			}
-
-			pathArgs := args
-			if hasExternalArgs {
-				pathArgs = args[:dashAt]
-				repairArgs.Par2Args = append([]string{}, args[dashAt:]...)
-			}
-
-			for i, p := range pathArgs {
-				abs, err := filepath.Abs(p)
-				if err != nil {
-					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				pathArgs[i] = abs
-
-				if _, err := fsys.Stat(abs); err != nil {
-					return fmt.Errorf("%w: failed to access root directory: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-			}
-
-			resolvedPaths = slices.Clone(pathArgs)
+			resolvedPaths = slices.Clone(result.ResolvedPaths)
 
 			return nil
 		},
@@ -418,7 +319,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
-			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairArgs)
+			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairOptions)
 			logOperationResult(err, result, prog.log.With("op", "repair"))
 			if err != nil {
 				return fmt.Errorf("repair: %w", err)
@@ -428,23 +329,24 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 		},
 	}
 	repairCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
-	repairCmd.Flags().BoolVar(&repairArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
-	repairCmd.Flags().BoolVarP(&repairArgs.AttemptUnrepairables, "attempt-unrepairables", "u", false, "attempt to repair PAR2 sets marked as unrepairable")
-	repairCmd.Flags().BoolVarP(&repairArgs.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of repair")
-	repairCmd.Flags().BoolVarP(&repairArgs.PurgeBackups, "purge-backups", "p", false, "remove obsolete backup files (.1, .2, ...) after successful repair")
-	repairCmd.Flags().BoolVarP(&repairArgs.RestoreBackups, "restore-backups", "r", false, "roll back protected files to pre-repair state after unsuccessful repair")
-	repairCmd.Flags().IntVarP(&repairArgs.MinTestedCount, "min-tested", "t", 0, "repair only when verified as corrupted at least X times")
+	repairCmd.Flags().BoolVar(&repairOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	repairCmd.Flags().BoolVarP(&repairOptions.AttemptUnrepairables, "attempt-unrepairables", "u", false, "attempt to repair PAR2 sets marked as unrepairable")
+	repairCmd.Flags().BoolVarP(&repairOptions.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of repair")
+	repairCmd.Flags().BoolVarP(&repairOptions.PurgeBackups, "purge-backups", "p", false, "remove obsolete backup files (.1, .2, ...) after successful repair")
+	repairCmd.Flags().BoolVarP(&repairOptions.RestoreBackups, "restore-backups", "r", false, "roll back protected files to pre-repair state after unsuccessful repair")
+	repairCmd.Flags().IntVarP(&repairOptions.MinTestedCount, "min-tested", "t", 0, "repair only when verified as corrupted at least X times")
 	repairCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	repairCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
-	repairCmd.Flags().VarP(&repairArgs.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
+	repairCmd.Flags().VarP(&repairOptions.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
 
 	return repairCmd
 }
 
 func newInfoCmd(ctx context.Context) *cobra.Command {
-	var infoArgs info.Options
+	var infoOptions info.Options
 	var logSettings logging.Options
 	var configPath string
+	var resolvedPaths []string
 
 	fsys := afero.NewOsFs()
 
@@ -453,7 +355,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 	logSettings.Stdout = os.Stdout
 	logSettings.Stderr = os.Stderr
 
-	_ = infoArgs.RunInterval.Set("24h")
+	_ = infoOptions.RunInterval.Set("24h")
 
 	infoCmd := &cobra.Command{
 		Use:     infoUsage,
@@ -462,50 +364,37 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 		Example: infoHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if configPath != "" {
-				cfg, err := parseConfigFile(fsys, configPath)
-				if err != nil {
-					return fmt.Errorf("%w: failed to parse --config file: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				if cfg.Info != nil {
-					setFlags := make(map[string]bool)
-					cmd.Flags().Visit(func(f *pflag.Flag) {
-						setFlags[f.Name] = true
-					})
-					cfg.Info.Merge(&infoArgs, &logSettings, false, setFlags)
-				}
+			result, err := runPrelude(&preludeInput[*info.Options, *configFileInfo]{
+				FSys:           fsys,
+				Args:           args,
+				DashAt:         -1, // no --
+				ConfigPath:     configPath,
+				CommandOptions: &infoOptions, // mutated
+				LogSettings:    &logSettings, // mutated
+				ExtractSection: func(cfg *configFile) *configFileInfo { return cfg.Info },
+				VisitFlags:     cmd.Flags().Visit,
+			})
+			if err != nil {
+				return err
 			}
 
-			for i, p := range args {
-				abs, err := filepath.Abs(p)
-				if err != nil {
-					return fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-				args[i] = abs
-
-				if _, err := fsys.Stat(abs); err != nil {
-					return fmt.Errorf("%w: failed to access root directory: %w",
-						schema.ErrExitBadInvocation, err)
-				}
-			}
+			resolvedPaths = slices.Clone(result.ResolvedPaths)
 
 			return nil
 		},
-		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
+		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
-			return prog.InfoService.Info(ctx, args, infoArgs)
+			return prog.InfoService.Info(ctx, resolvedPaths, infoOptions)
 		},
 	}
-	infoCmd.Flags().BoolVar(&infoArgs.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
-	infoCmd.Flags().BoolVarP(&infoArgs.IncludeExternal, "include-external", "e", false, "include external PAR2 sets without a par2cron manifest")
+	infoCmd.Flags().BoolVar(&infoOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	infoCmd.Flags().BoolVarP(&infoOptions.IncludeExternal, "include-external", "e", false, "include external PAR2 sets without a par2cron manifest")
 	infoCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
-	infoCmd.Flags().VarP(&infoArgs.MaxDuration, "duration", "d", "target time budget for each verify run (soft limit)")
-	infoCmd.Flags().VarP(&infoArgs.MinAge, "age", "a", "target cycle length (time between re-verifications)")
-	infoCmd.Flags().VarP(&infoArgs.RunInterval, "calc-run-interval", "i", "how often you run par2cron verify")
+	infoCmd.Flags().VarP(&infoOptions.MaxDuration, "duration", "d", "target time budget for each verify run (soft limit)")
+	infoCmd.Flags().VarP(&infoOptions.MinAge, "age", "a", "target cycle length (time between re-verifications)")
+	infoCmd.Flags().VarP(&infoOptions.RunInterval, "calc-run-interval", "i", "how often you run par2cron verify")
 	infoCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 	infoCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output in JSON format (result to stdout, logs to stderr)")
 

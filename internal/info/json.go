@@ -158,8 +158,8 @@ type CycleInfo struct {
 	Warning string `json:"warning,omitempty"`
 }
 
-func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, args Options) error {
-	result, err := prog.Result(ctx, rootDirs, args)
+func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, opts Options) error {
+	result, err := prog.Result(ctx, rootDirs, opts)
 	if err != nil {
 		return fmt.Errorf("failed to get result: %w", err)
 	}
@@ -173,20 +173,20 @@ func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, args Opti
 	return nil
 }
 
-func (prog *Service) Result(ctx context.Context, rootDirs []string, args Options) (*Result, error) {
-	if args.RunInterval.Value <= 0 {
+func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options) (*Result, error) {
+	if opts.RunInterval.Value <= 0 {
 		return nil, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, errNoCalcInterval)
 	}
 
 	now := time.Now()
 
 	vs := verify.NewService(prog.fsys, prog.log, prog.runner)
-	va := verify.Options{IncludeExternal: args.IncludeExternal, SkipNotCreated: args.SkipNotCreated}
+	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
 	result := &Result{
 		Roots:   slices.Clone(rootDirs),
 		Time:    now,
-		Options: &args,
+		Options: &opts,
 	}
 
 	jobs := []*verify.Job{}
@@ -230,27 +230,27 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, args Options
 		return result, nil
 	}
 
-	if args.MinAge.Value > 0 {
-		result.AgeInfo = prog.buildAgeInfo(js, args)
+	if opts.MinAge.Value > 0 {
+		result.AgeInfo = prog.buildAgeInfo(js, opts)
 	}
 
-	if args.MaxDuration.Value > 0 {
-		result.DurationInfo = prog.buildDurationInfo(js, args)
+	if opts.MaxDuration.Value > 0 {
+		result.DurationInfo = prog.buildDurationInfo(js, opts)
 	}
 
-	if args.MinAge.Value > 0 && args.MaxDuration.Value > 0 {
-		result.BacklogInfo = prog.buildBacklogInfo(js, args)
+	if opts.MinAge.Value > 0 && opts.MaxDuration.Value > 0 {
+		result.BacklogInfo = prog.buildBacklogInfo(js, opts)
 	}
 
-	if args.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
-		result.CycleInfo = prog.buildCycleInfo(js, jobs, args, now)
+	if opts.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
+		result.CycleInfo = prog.buildCycleInfo(js, jobs, opts, now)
 	}
 
 	return result, nil
 }
 
-func (prog *Service) buildAgeInfo(js verify.Stats, args Options) *AgeInfo {
-	runsPerCycle := max(int(args.MinAge.Value/args.RunInterval.Value), 1)
+func (prog *Service) buildAgeInfo(js verify.Stats, opts Options) *AgeInfo {
+	runsPerCycle := max(int(opts.MinAge.Value/opts.RunInterval.Value), 1)
 	requiredDuration := max(js.TotalDuration/time.Duration(runsPerCycle), time.Second)
 
 	info := &AgeInfo{
@@ -258,17 +258,17 @@ func (prog *Service) buildAgeInfo(js verify.Stats, args Options) *AgeInfo {
 		MinDuration:  requiredDuration,
 	}
 
-	if args.MinAge.Value < args.RunInterval.Value {
+	if opts.MinAge.Value < opts.RunInterval.Value {
 		info.Warning = "min_age is less than run_interval; files will always be stale"
 	}
 
 	return info
 }
 
-func (prog *Service) buildDurationInfo(js verify.Stats, args Options) *DurationInfo {
-	runsNeeded := max(int((js.TotalDuration+args.MaxDuration.Value-1)/args.MaxDuration.Value), 1)
-	cycleLength := time.Duration(runsNeeded) * args.RunInterval.Value
-	singleRun := js.TotalDuration <= args.MaxDuration.Value
+func (prog *Service) buildDurationInfo(js verify.Stats, opts Options) *DurationInfo {
+	runsNeeded := max(int((js.TotalDuration+opts.MaxDuration.Value-1)/opts.MaxDuration.Value), 1)
+	cycleLength := time.Duration(runsNeeded) * opts.RunInterval.Value
+	singleRun := js.TotalDuration <= opts.MaxDuration.Value
 
 	info := &DurationInfo{
 		RunsNeeded:       runsNeeded,
@@ -279,7 +279,7 @@ func (prog *Service) buildDurationInfo(js verify.Stats, args Options) *DurationI
 		info.FullCycleEvery = cycleLength
 	}
 
-	if js.LargestDuration > args.MaxDuration.Value {
+	if js.LargestDuration > opts.MaxDuration.Value {
 		info.Warning = fmt.Sprintf("Largest job (%s) exceeds max_duration; will overshoot soft limit", util.FmtDur(js.LargestDuration))
 		info.LargestJob = filepath.Base(js.LargestJob.Par2Path())
 	}
@@ -287,9 +287,9 @@ func (prog *Service) buildDurationInfo(js verify.Stats, args Options) *DurationI
 	return info
 }
 
-func (prog *Service) buildBacklogInfo(js verify.Stats, args Options) *BacklogInfo {
-	runsPerCycle := max(int(args.MinAge.Value/args.RunInterval.Value), 1)
-	capacity := time.Duration(runsPerCycle) * args.MaxDuration.Value
+func (prog *Service) buildBacklogInfo(js verify.Stats, opts Options) *BacklogInfo {
+	runsPerCycle := max(int(opts.MinAge.Value/opts.RunInterval.Value), 1)
+	capacity := time.Duration(runsPerCycle) * opts.MaxDuration.Value
 	margin := capacity - js.TotalDuration
 
 	info := &BacklogInfo{
@@ -310,8 +310,8 @@ func (prog *Service) buildBacklogInfo(js verify.Stats, args Options) *BacklogInf
 	return info
 }
 
-func (prog *Service) buildCycleInfo(js verify.Stats, jobs []*verify.Job, args Options, now time.Time) *CycleInfo {
-	cycleStart := now.Add(-args.MinAge.Value)
+func (prog *Service) buildCycleInfo(js verify.Stats, jobs []*verify.Job, opts Options, now time.Time) *CycleInfo {
+	cycleStart := now.Add(-opts.MinAge.Value)
 
 	var verifiedCount int
 	var verifiedDuration time.Duration

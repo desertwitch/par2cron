@@ -26,15 +26,15 @@ type MarkerConfig struct {
 	PersistMarker *bool             `yaml:"persist"`
 }
 
-func NewMarkerConfig(markerPath string, args Options) *MarkerConfig {
+func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	cfg := &MarkerConfig{}
 
 	par2Name := filepath.Base(filepath.Dir(markerPath)) + schema.Par2Extension
-	par2Args := slices.Clone(args.Par2Args)
-	par2Glob := args.Par2Glob
-	par2Mode := args.Par2Mode
-	par2Verify := args.Par2Verify
-	hideFiles := args.HideFiles
+	par2Args := slices.Clone(opts.Par2Args)
+	par2Glob := opts.Par2Glob
+	par2Mode := opts.Par2Mode
+	par2Verify := opts.Par2Verify
+	hideFiles := opts.HideFiles
 	persistMarker := false
 
 	cfg.Par2Name = &par2Name
@@ -62,11 +62,11 @@ func (m *MarkerConfig) Validate() error {
 	return nil
 }
 
-func (prog *Service) parseMarkerFile(markerPath string, args Options) (*MarkerConfig, error) {
+func (prog *Service) parseMarkerFile(markerPath string, opts Options) (*MarkerConfig, error) {
 	logger := prog.markerLogger(markerPath, nil, nil)
 	logger.Debug("Found marker file")
 
-	cfg := NewMarkerConfig(markerPath, args)
+	cfg := NewMarkerConfig(markerPath, opts)
 
 	prog.parseMarkerFilename(markerPath, cfg)
 

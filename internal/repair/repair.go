@@ -18,6 +18,8 @@ import (
 	"github.com/spf13/afero"
 )
 
+var _ schema.OptionsPar2ArgsSettable = (*Options)(nil)
+
 type Options struct {
 	Par2Args             []string
 	Par2Verify           bool
@@ -27,6 +29,10 @@ type Options struct {
 	AttemptUnrepairables bool
 	PurgeBackups         bool
 	RestoreBackups       bool
+}
+
+func (o *Options) SetPar2Args(args []string) {
+	o.Par2Args = slices.Clone(args)
 }
 
 type Service struct {
@@ -68,26 +74,26 @@ type Job struct {
 	manifest *schema.Manifest
 }
 
-func NewRepairJob(par2Path string, args Options, mf *schema.Manifest) *Job {
+func NewRepairJob(par2Path string, opts Options, mf *schema.Manifest) *Job {
 	rj := &Job{}
 
 	rj.workingDir = filepath.Dir(par2Path)
 	rj.par2Name = filepath.Base(par2Path)
 	rj.par2Path = par2Path
-	rj.par2Args = slices.Clone(args.Par2Args)
-	rj.par2Verify = args.Par2Verify
+	rj.par2Args = slices.Clone(opts.Par2Args)
+	rj.par2Verify = opts.Par2Verify
 	rj.manifestName = rj.par2Name + schema.ManifestExtension
 	rj.manifestPath = rj.par2Path + schema.ManifestExtension
 	rj.lockPath = rj.par2Path + schema.LockExtension
-	rj.purgeBackups = args.PurgeBackups
-	rj.restoreBackups = args.RestoreBackups
+	rj.purgeBackups = opts.PurgeBackups
+	rj.restoreBackups = opts.RestoreBackups
 
 	rj.manifest = mf
 
 	return rj
 }
 
-func (prog *Service) Repair(ctx context.Context, rootDirs []string, args Options) (util.ResultTracker, error) {
+func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
 	logger := prog.repairLogger(ctx, nil, nil)
@@ -97,7 +103,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, args Options
 		logger.Info("Scanning filesystem for jobs...",
 			"walker", prog.walker.Name(), "path", rootDir)
 
-		js, err := prog.Enumerate(ctx, rootDir, args)
+		js, err := prog.Enumerate(ctx, rootDir, opts)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
@@ -112,7 +118,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, args Options
 
 	if len(jobs) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
-			"maxDuration", args.MaxDuration.Value.String())
+			"maxDuration", opts.MaxDuration.Value.String())
 		results.Selected = len(jobs)
 	} else {
 		logger.Info("Nothing to do (will check again next run)")
@@ -120,8 +126,8 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, args Options
 
 	var deadlineCtx context.Context //nolint:contextcheck
 	var deadlineCancel context.CancelFunc
-	if args.MaxDuration.Value > 0 {
-		deadlineCtx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(args.MaxDuration.Value))
+	if opts.MaxDuration.Value > 0 {
+		deadlineCtx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(opts.MaxDuration.Value))
 		defer deadlineCancel()
 	}
 
@@ -135,7 +141,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, args Options
 				logger := prog.repairLogger(ctx, nil, nil)
 				logger.Warn("Exceeded the --duration budget (will continue next run)",
 					"unprocessedJobs", len(jobs)-i, "totalJobs", len(jobs),
-					"maxDuration", args.MaxDuration.Value.String())
+					"maxDuration", opts.MaxDuration.Value.String())
 
 				break
 			}
@@ -167,7 +173,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, args Options
 	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
-func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options) ([]*Job, error) {
+func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
 
 	var partialErrors int
@@ -192,7 +198,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options
 			return nil
 		}
 
-		job, err := prog.processManifest(ctx, par2path, args)
+		job, err := prog.processManifest(ctx, par2path, opts)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) && !errors.Is(err, schema.ErrSilentSkip) {
 				return fmt.Errorf("failed to process manifest: %w", err)
@@ -218,7 +224,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options
 	return jobs, nil
 }
 
-func (prog *Service) processManifest(ctx context.Context, par2path string, args Options) (*Job, error) {
+func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) {
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.repairLogger(ctx, nil, manifestPath)
 
@@ -254,7 +260,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, args 
 		return nil, schema.ErrSilentSkip
 	}
 
-	if args.SkipNotCreated && mf.Creation == nil {
+	if opts.SkipNotCreated && mf.Creation == nil {
 		logger.Debug("No creation manifest (skipping; --skip-not-created)")
 
 		return nil, schema.ErrSilentSkip
@@ -266,14 +272,14 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, args 
 		return nil, schema.ErrSilentSkip
 	}
 
-	if mf.Verification.RepairNeeded && (mf.Verification.CountCorrupted >= args.MinTestedCount) {
-		if args.AttemptUnrepairables || mf.Verification.RepairPossible {
-			return NewRepairJob(par2path, args, mf), nil
+	if mf.Verification.RepairNeeded && (mf.Verification.CountCorrupted >= opts.MinTestedCount) {
+		if opts.AttemptUnrepairables || mf.Verification.RepairPossible {
+			return NewRepairJob(par2path, opts, mf), nil
 		}
 	}
 
 	logger.Debug("Not a candidate for repair",
-		"minTested", args.MinTestedCount,
+		"minTested", opts.MinTestedCount,
 		"actualTested", mf.Verification.CountCorrupted,
 		"repairNeeded", mf.Verification.RepairNeeded,
 		"repairPossible", mf.Verification.RepairPossible,

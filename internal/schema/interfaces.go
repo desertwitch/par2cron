@@ -15,3 +15,11 @@ type FilesystemWalker interface {
 type CommandRunner interface {
 	Run(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error
 }
+
+type OptionsValidatable interface {
+	Validate() error
+}
+
+type OptionsPar2ArgsSettable interface {
+	SetPar2Args(args []string)
+}

@@ -31,6 +31,9 @@ var (
 
 	// https://github.com/bmatcuk/doublestar/blob/master/utils.go#L153
 	globMetaReplacer = strings.NewReplacer("*", "\\*", "?", "\\?", "[", "\\[", "]", "\\]", "{", "\\{", "}", "\\}")
+
+	_ schema.OptionsValidatable      = (*Options)(nil)
+	_ schema.OptionsPar2ArgsSettable = (*Options)(nil)
 )
 
 type Options struct {
@@ -40,6 +43,10 @@ type Options struct {
 	Par2Verify  bool
 	MaxDuration flags.Duration
 	HideFiles   bool
+}
+
+func (o *Options) SetPar2Args(args []string) {
+	o.Par2Args = slices.Clone(args)
 }
 
 func (o *Options) Validate() error {
@@ -155,12 +162,12 @@ func newNestedModeJob(job Job, dir string) Job {
 	return job
 }
 
-func (prog *Service) Create(ctx context.Context, rootDirs []string, args Options) (util.ResultTracker, error) {
+func (prog *Service) Create(ctx context.Context, rootDirs []string, opts Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
 	logger := prog.creationLogger(ctx, nil, nil)
 
-	if err := prog.considerRecursive(&args); err != nil {
+	if err := prog.considerRecursive(&opts); err != nil {
 		return results, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 	}
 
@@ -169,7 +176,7 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, args Options
 		logger.Info("Scanning filesystem for jobs...",
 			"walker", prog.walker.Name(), "path", rootDir)
 
-		js, err := prog.Enumerate(ctx, rootDir, args)
+		js, err := prog.Enumerate(ctx, rootDir, opts)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
@@ -184,7 +191,7 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, args Options
 
 	if len(jobs) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
-			"maxDuration", args.MaxDuration.Value.String())
+			"maxDuration", opts.MaxDuration.Value.String())
 		results.Selected = len(jobs)
 	} else {
 		logger.Info("Nothing to do (will check again next run)")
@@ -192,8 +199,8 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, args Options
 
 	var deadlineCtx context.Context //nolint:contextcheck
 	var deadlineCancel context.CancelFunc
-	if args.MaxDuration.Value > 0 {
-		deadlineCtx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(args.MaxDuration.Value))
+	if opts.MaxDuration.Value > 0 {
+		deadlineCtx, deadlineCancel = context.WithDeadline(ctx, time.Now().Add(opts.MaxDuration.Value))
 		defer deadlineCancel()
 	}
 
@@ -207,7 +214,7 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, args Options
 				logger := prog.creationLogger(ctx, nil, nil)
 				logger.Warn("Exceeded the --duration budget (will continue next run)",
 					"unprocessedJobs", len(jobs)-i, "totalJobs", len(jobs),
-					"maxDuration", args.MaxDuration.Value.String())
+					"maxDuration", opts.MaxDuration.Value.String())
 
 				break
 			}
@@ -239,7 +246,7 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, args Options
 	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
-func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options) ([]*Job, error) {
+func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
 
 	var parseErrors int
@@ -264,7 +271,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, args Options
 			return nil
 		}
 
-		cfg, err := prog.parseMarkerFile(path, args)
+		cfg, err := prog.parseMarkerFile(path, opts)
 		if err != nil {
 			logger := prog.creationLogger(ctx, nil, path)
 			logger.Error("A found marker file could not be parsed (will retry next run)", "error", err)
