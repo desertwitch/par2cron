@@ -2461,7 +2461,7 @@ func Test_Service_findElementsToProtect_SymlinkInGlobPrefix_Error(t *testing.T) 
 
 	require.Nil(t, files)
 	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
-	require.Contains(t, logBuf.String(), "symlink")
+	require.Contains(t, logBuf.String(), "symbolic link")
 }
 
 // Expectation: Symlinks found during globbing should be skipped with a warning, not cause an error.

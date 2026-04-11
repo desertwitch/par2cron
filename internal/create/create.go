@@ -297,7 +297,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 	files, err := prog.findElementsToProtect(ctx, job)
 	if err != nil {
-		return fmt.Errorf("failed to find to-protect elements: %w", err)
+		return fmt.Errorf("failed to find protectables: %w", err)
 	}
 
 	switch job.par2Mode {
@@ -350,7 +350,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 
 	if link, hasLink := util.HasGlobSymlinks(prog.fsys, job.workingDir, globPattern); hasLink {
 		logger := prog.creationLogger(ctx, job, link)
-		logger.Error("Glob pattern contains a symlink (par2 does not support them; will retry next run)",
+		logger.Error("Glob pattern contains a symbolic link (par2 does not support symbolic links; will retry next run)",
 			"error", schema.ErrUnsupportedGlob)
 
 		return nil, schema.ErrUnsupportedGlob
@@ -396,7 +396,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 
 		if fi.Mode()&fs.ModeSymlink != 0 {
 			logger := prog.creationLogger(ctx, job, f)
-			logger.Warn("A symbolic link was skipped (par2 does not support them)")
+			logger.Warn("A symbolic link was skipped (par2 does not support symbolic links)")
 
 			continue
 		}
