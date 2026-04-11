@@ -3,6 +3,9 @@ package schema
 // ProgramVersion is the program version as filled in by the Makefile.
 var ProgramVersion = "devel"
 
+// Par2Version is the program version of "par2" as filled in at runtime.
+var Par2Version = ""
+
 const (
 	ExitCodeSuccess        int = 0
 	ExitCodePartialFailure int = 1 // ErrExitPartialFailure

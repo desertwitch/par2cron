@@ -353,7 +353,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	if job.manifest.Verification == nil {
-		job.manifest.Verification = &schema.VerificationManifest{}
+		job.manifest.Verification = schema.NewVerificationManifest()
 	}
 
 	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)

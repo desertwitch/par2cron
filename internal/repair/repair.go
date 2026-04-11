@@ -321,7 +321,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	cmdArgs = append(cmdArgs, job.par2Path)
 
 	if job.manifest.Repair == nil {
-		job.manifest.Repair = &schema.RepairManifest{}
+		job.manifest.Repair = schema.NewRepairManifest()
 	}
 	job.manifest.Repair.Args = slices.Clone(job.par2Args)
 	job.manifest.Repair.Count++

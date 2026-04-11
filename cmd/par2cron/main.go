@@ -28,6 +28,8 @@ periodic verification and repair cycle - now protected from corruption/bitrot.
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -96,10 +98,17 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 
 			par2cmd := exec.CommandContext(ctx, "par2", "-V")
 			par2cmd.WaitDelay = util.ProcessKillTimeout
-			if err := par2cmd.Run(); err != nil {
+
+			b, err := par2cmd.Output()
+			if err != nil {
 				fmt.Fprintln(os.Stderr, "This program requires a \"par2\" (par2cmdline) installation in your $PATH")
 
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
+			scanner := bufio.NewScanner(bytes.NewReader(b))
+			if scanner.Scan() {
+				schema.Par2Version = scanner.Text()
 			}
 
 			return nil
