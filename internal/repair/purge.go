@@ -95,7 +95,7 @@ func (p *backupPurger) hasValidOriginal(backupPath string) (bool, error) {
 		return false, nil
 	}
 
-	info, err := p.fsys.Stat(originalPath)
+	info, err := p.fsys.Stat(originalPath) // We care about the real file, so stat().
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			p.log.Warn("No original file found (not purging backup)",

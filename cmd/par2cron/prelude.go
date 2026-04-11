@@ -89,9 +89,12 @@ func runPrelude[A any, C configMergeable[A]](in *preludeInput[A, C]) (*preludeRe
 		}
 
 		resolved[i] = abs
-		if _, err := in.FSys.Stat(abs); err != nil {
+		if fi, err := in.FSys.Stat(abs); err != nil {
 			return nil, fmt.Errorf("%w: failed to access root directory: %w",
 				schema.ErrExitBadInvocation, err)
+		} else if !fi.IsDir() {
+			return nil, fmt.Errorf("%w: root directory is not a directory: %s",
+				schema.ErrExitBadInvocation, abs)
 		}
 	}
 

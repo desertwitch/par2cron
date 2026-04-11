@@ -3,6 +3,7 @@ package util
 import (
 	"encoding/json"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,6 +12,73 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
+
+// Expectation: LstatIfPossible should fall back to Stat when the filesystem does not implement Lstater.
+func Test_LstatIfPossible_NoLstater_FallsBackToStat_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fsys, "/testfile.txt", []byte("hello"), 0o644))
+
+	fi, err := LstatIfPossible(fsys, "/testfile.txt")
+
+	require.NoError(t, err)
+	require.Equal(t, "testfile.txt", fi.Name())
+}
+
+// Expectation: LstatIfPossible should return a stat-prefixed error when the filesystem does not implement Lstater and the file does not exist.
+func Test_LstatIfPossible_NoLstater_FileNotFound_ReturnsStatError(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	_, err := LstatIfPossible(fsys, "/nonexistent.txt")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "stat:")
+}
+
+// Expectation: LstatIfPossible should use Lstat when the filesystem implements Lstater.
+func Test_LstatIfPossible_WithLstater_UsesLstat_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewOsFs()
+	tmpDir := t.TempDir()
+	filePath := filepath.Join(tmpDir, "testfile.txt")
+	require.NoError(t, afero.WriteFile(fsys, filePath, []byte("hello"), 0o644))
+
+	fi, err := LstatIfPossible(fsys, filePath)
+
+	require.NoError(t, err)
+	require.Equal(t, "testfile.txt", fi.Name())
+}
+
+// Expectation: LstatIfPossible should return an lstat-prefixed error when the filesystem implements Lstater and the file does not exist.
+func Test_LstatIfPossible_WithLstater_FileNotFound_ReturnsLstatError(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewOsFs()
+	_, err := LstatIfPossible(fsys, "/nonexistent_path_that_should_not_exist.txt")
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "lstat:")
+}
+
+// Expectation: LstatIfPossible should return symlink info (not target info) when the filesystem implements Lstater.
+func Test_LstatIfPossible_WithLstater_Symlink_ReturnsSymlinkInfo(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	targetPath := filepath.Join(tmpDir, "target.txt")
+	linkPath := filepath.Join(tmpDir, "link.txt")
+	require.NoError(t, os.WriteFile(targetPath, []byte("hello"), 0o600))
+	require.NoError(t, os.Symlink(targetPath, linkPath))
+	fsys := afero.NewOsFs()
+
+	fi, err := LstatIfPossible(fsys, linkPath)
+
+	require.NoError(t, err)
+	require.NotZero(t, fi.Mode()&fs.ModeSymlink, "expected symlink mode bit to be set")
+}
 
 // Expectation: The function should hash the file as requested.
 func Test_HashFile_Success(t *testing.T) {
@@ -453,4 +521,332 @@ func Test_IgnoreChecker_ShouldSkip_UpdatesCacheOnDirChange_Success(t *testing.T)
 
 	require.True(t, skip1)
 	require.False(t, skip2)
+}
+
+// Expectation: No available lstat should pass all table tests.
+func Test_HasGlobSymlinks_MemMapFs_NoLstat_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		workingDir string
+		dirs       []string
+		pattern    string
+		want       bool
+	}{
+		{
+			name:       "simple file pattern no symlinks",
+			workingDir: "/project",
+			dirs:       []string{"/project/src"},
+			pattern:    "/project/src/*.go",
+			want:       false,
+		},
+		{
+			name:       "deep glob no symlinks",
+			workingDir: "/project",
+			dirs:       []string{"/project/src/pkg/internal"},
+			pattern:    "/project/src/**/*.go",
+			want:       false,
+		},
+		{
+			name:       "dot pattern",
+			workingDir: "/project",
+			dirs:       []string{"/project"},
+			pattern:    "/project/./*.go",
+			want:       false,
+		},
+		{
+			name:       "pattern base is dot",
+			workingDir: "/project",
+			dirs:       []string{"/project"},
+			pattern:    "/project/*.go",
+			want:       false,
+		},
+		{
+			name:       "deeply nested dirs no symlinks",
+			workingDir: "/project",
+			dirs:       []string{"/project/a/b/c/d/e"},
+			pattern:    "/project/a/b/c/d/e/*.txt",
+			want:       false,
+		},
+		{
+			name:       "double star at root",
+			workingDir: "/project",
+			dirs:       []string{"/project/foo"},
+			pattern:    "/project/**/*.go",
+			want:       false,
+		},
+		{
+			name:       "nonexistent intermediate dir",
+			workingDir: "/project",
+			dirs:       []string{"/project"},
+			pattern:    "/project/nonexistent/deep/path/**/*.go",
+			want:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fsys := afero.NewMemMapFs()
+			for _, d := range tt.dirs {
+				require.NoError(t, fsys.MkdirAll(d, 0o755))
+			}
+			_, got := HasGlobSymlinks(fsys, tt.workingDir, tt.pattern)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Expectation: Available lstat should match symlinks in the pattern base.
+func Test_HasGlobSymlinks_OsFs_HasLstat_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		setup      func(t *testing.T, root string, mkDir func(path string), symlink func(target, path string))
+		workingDir string
+		pattern    string // relative to workingDir, will be prefixed in runner
+		want       bool
+		wantPath   string // relative to workingDir
+	}{
+		{
+			name: "no symlinks shallow glob",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// src/
+				mkDir("src")
+			},
+			workingDir: "project",
+			pattern:    "src/*.go",
+			want:       false,
+			wantPath:   "",
+		},
+		{
+			name: "no symlinks deep glob",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// src/pkg/internal/
+				mkDir("src/pkg/internal")
+			},
+			workingDir: "project",
+			pattern:    "src/**/*.go",
+			want:       false,
+			wantPath:   "",
+		},
+		{
+			name: "symlink as direct pattern base",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// <link>
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(target, 0o750))
+				symlink(target, "link")
+			},
+			workingDir: "project",
+			pattern:    "link/*.go",
+			want:       true,
+			wantPath:   "link",
+		},
+		{
+			name: "symlink as beginning dir in longer pattern",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// <link>/sub/
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(filepath.Join(target, "sub"), 0o750))
+				symlink(target, "link")
+			},
+			workingDir: "project",
+			pattern:    "link/sub/*.go",
+			want:       true,
+			wantPath:   "link",
+		},
+		{
+			name: "symlink as intermediate dir in longer pattern",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// a/<link>
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(target, 0o750))
+				mkDir("a")
+				symlink(target, "a/link")
+			},
+			workingDir: "project",
+			pattern:    "a/link/*.go",
+			want:       true,
+			wantPath:   "a/link",
+		},
+		{
+			name: "symlink deep in path with double star",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// a/b/<link>
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(target, 0o750))
+				mkDir("a/b")
+				symlink(target, "a/b/link")
+			},
+			workingDir: "project",
+			pattern:    "a/b/link/**/*.go",
+			want:       true,
+			wantPath:   "a/b/link",
+		},
+		{
+			name: "symlink only in non-pattern part (workingDir itself)",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// src/ (workingDir is a symlink)
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(filepath.Join(target, "src"), 0o750))
+				require.NoError(t, os.Symlink(target, filepath.Join(root, "project_link")))
+			},
+			workingDir: "project_link",
+			pattern:    "src/*.go",
+			want:       false,
+			wantPath:   "",
+		},
+		{
+			name: "no symlinks deeply nested double star",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// a/b/c/d/
+				mkDir("a/b/c/d")
+			},
+			workingDir: "project",
+			pattern:    "a/b/c/d/**/*.go",
+			want:       false,
+			wantPath:   "",
+		},
+		{
+			name: "symlink at first level of pattern",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// <vendor>/deep/nested/
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(filepath.Join(target, "deep", "nested"), 0o750))
+				symlink(target, "vendor")
+			},
+			workingDir: "project",
+			pattern:    "vendor/deep/nested/**/*.go",
+			want:       true,
+			wantPath:   "vendor",
+		},
+		{
+			name: "regular dir then symlink then regular dir",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// a/<sym>/child/
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(filepath.Join(target, "child"), 0o750))
+				mkDir("a")
+				symlink(target, "a/sym")
+			},
+			workingDir: "project",
+			pattern:    "a/sym/child/*.go",
+			want:       true,
+			wantPath:   "a/sym",
+		},
+		{
+			name: "pattern base is dot",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+			},
+			workingDir: "project",
+			pattern:    "*.go",
+			want:       false,
+			wantPath:   "",
+		},
+		{
+			name: "nonexistent path in pattern",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+			},
+			workingDir: "project",
+			pattern:    "does/not/exist/**/*.go",
+			want:       false,
+			wantPath:   "",
+		},
+		{
+			name: "multiple symlinks in path finds deepest",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// <sym1>/sub/<sym2>
+				require.NoError(t, os.MkdirAll(filepath.Join(root, "target1", "sub"), 0o750))
+				require.NoError(t, os.MkdirAll(filepath.Join(root, "target2"), 0o750))
+				symlink(filepath.Join(root, "target1"), "sym1")
+				require.NoError(t, os.Symlink(filepath.Join(root, "target2"), filepath.Join(root, "target1", "sub", "sym2")))
+			},
+			workingDir: "project",
+			pattern:    "sym1/sub/sym2/**/*.go",
+			want:       true,
+			wantPath:   "sym1/sub/sym2",
+		},
+		{
+			name: "escaped meta chars in path portion",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// a/b[1]/c*d/
+				mkDir("a/b[1]/c*d")
+			},
+			workingDir: "project",
+			pattern:    "a/b\\[1\\]/c\\*d/*.go",
+			want:       false,
+			wantPath:   "",
+		},
+		{
+			name: "symlink with escaped meta chars in path",
+			setup: func(t *testing.T, root string, mkDir func(string), symlink func(string, string)) {
+				t.Helper()
+				// a/<link{1}>
+				target := filepath.Join(root, "real_project")
+				require.NoError(t, os.MkdirAll(target, 0o750))
+				mkDir("a")
+				symlink(target, "a/link{1}")
+			},
+			workingDir: "project",
+			pattern:    "a/link\\{1\\}/*.go",
+			want:       true,
+			wantPath:   "a/link{1}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			workingDir := filepath.Join(root, tt.workingDir)
+
+			mkDir := func(path string) {
+				require.NoError(t, os.MkdirAll(filepath.Join(workingDir, path), 0o750))
+			}
+			symlink := func(target, path string) {
+				require.NoError(t, os.Symlink(target, filepath.Join(workingDir, path)))
+			}
+
+			// Ensure workingDir exists before setup (unless the test creates it as a symlink)
+			if tt.name != "symlink only in non-pattern part (workingDir itself)" {
+				mkDir(".")
+			}
+
+			tt.setup(t, root, mkDir, symlink)
+
+			// Prefix the pattern with workingDir to make it absolute
+			pattern := workingDir + "/" + tt.pattern
+
+			fsys := afero.NewOsFs()
+			gotPath, got := HasGlobSymlinks(fsys, workingDir, pattern)
+			require.Equal(t, tt.want, got)
+
+			if tt.wantPath != "" {
+				relPath, err := filepath.Rel(workingDir, gotPath)
+				require.NoError(t, err)
+				require.Equal(t, tt.wantPath, relPath)
+			} else {
+				require.Empty(t, gotPath)
+			}
+		})
+	}
 }
