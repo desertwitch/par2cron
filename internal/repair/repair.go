@@ -323,6 +323,8 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	if job.manifest.Repair == nil {
 		job.manifest.Repair = schema.NewRepairManifest()
 	}
+	job.manifest.Repair.ProgramVersion = schema.ProgramVersion
+	job.manifest.Repair.Par2Version = schema.Par2Version
 	job.manifest.Repair.Args = slices.Clone(job.par2Args)
 	job.manifest.Repair.Count++
 

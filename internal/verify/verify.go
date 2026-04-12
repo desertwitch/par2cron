@@ -355,6 +355,9 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	if job.manifest.Verification == nil {
 		job.manifest.Verification = schema.NewVerificationManifest()
 	}
+	job.manifest.Verification.ProgramVersion = schema.ProgramVersion
+	job.manifest.Verification.Par2Version = schema.Par2Version
+	job.manifest.Verification.Args = slices.Clone(job.par2Args)
 
 	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)
 	cmdArgs = append(cmdArgs, "verify")
@@ -365,7 +368,6 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	job.manifest.Verification.Time = time.Now()
 	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
 	job.manifest.Verification.Duration = time.Since(job.manifest.Verification.Time)
-	job.manifest.Verification.Args = slices.Clone(job.par2Args)
 
 	if err := prog.parseExitCode(job, err); err != nil {
 		err = fmt.Errorf("par2cmdline: %w", err)

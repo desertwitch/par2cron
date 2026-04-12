@@ -39,6 +39,7 @@ import (
 	"runtime/debug"
 	"runtime/pprof"
 	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/desertwitch/par2cron/internal/create"
@@ -108,7 +109,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 
 			scanner := bufio.NewScanner(bytes.NewReader(b))
 			if scanner.Scan() {
-				schema.Par2Version = scanner.Text()
+				schema.Par2Version = strings.TrimSpace(scanner.Text())
 			}
 
 			return nil
