@@ -688,7 +688,7 @@ ever accessed by one par2cron computer at a time (e.g. different weekdays).
 
 `par2` (the dependency) itself does not support protecting files through
 symbolic links ("symlinks"). It is also strongly discouraged to organize
-important files this way, because it makes keeping files logically close more
+important files this way, because it makes keeping files physically close more
 difficult and backup planning more brittle and error-prone. `par2cron` skips
 over symbolic links with a warning, and rejects with an error any glob patterns
 where it is already obvious from the non-glob parts that a symlink will need to
