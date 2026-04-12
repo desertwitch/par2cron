@@ -297,7 +297,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 	files, err := prog.findElementsToProtect(ctx, job)
 	if err != nil {
-		return fmt.Errorf("failed to find to-protect elements: %w", err)
+		return fmt.Errorf("failed to find protectables: %w", err)
 	}
 
 	switch job.par2Mode {
@@ -348,6 +348,14 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 		doublestar.WithNoFollow(),
 	}
 
+	if link, hasLink := util.HasGlobSymlinks(prog.fsys, job.workingDir, globPattern); hasLink {
+		logger := prog.creationLogger(ctx, job, link)
+		logger.Error("Glob pattern contains a symbolic link (par2 does not support symbolic links; will retry next run)",
+			"error", schema.ErrUnsupportedGlob)
+
+		return nil, schema.ErrUnsupportedGlob
+	}
+
 	protectablePaths, err := doublestar.Glob(globFsys, globPattern, globOptions...)
 	if err != nil {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
@@ -374,15 +382,22 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			}
 		}
 
-		fi, err := prog.fsys.Stat(f)
+		fi, err := util.LstatIfPossible(prog.fsys, f)
 		if err != nil {
 			logger := prog.creationLogger(ctx, job, f)
-			logger.Error("Failed to stat file (will retry next run)", "error", err)
+			logger.Error("Failed to lstat file (will retry next run)", "error", err)
 
-			return nil, fmt.Errorf("failed to stat: %w", err)
+			return nil, fmt.Errorf("failed to lstat: %w", err)
 		}
 
 		if fi.IsDir() && job.par2Mode != schema.CreateRecursiveMode {
+			continue
+		}
+
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			logger := prog.creationLogger(ctx, job, f)
+			logger.Warn("A symbolic link was skipped (par2 does not support symbolic links)")
+
 			continue
 		}
 
@@ -421,7 +436,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 func (prog *Service) createCombined(ctx context.Context, job *Job, elements []schema.FsElement) error {
 	logger := prog.creationLogger(ctx, job, job.par2Path)
 
-	if _, err := prog.fsys.Stat(job.par2Path); err == nil {
+	if _, err := util.LstatIfPossible(prog.fsys, job.par2Path); err == nil {
 		if job.markerPersist {
 			logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
 		} else {
@@ -467,7 +482,7 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 		j := newNestedModeJob(*job, dir)
 		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
-		if _, err := prog.fsys.Stat(j.par2Path); err == nil {
+		if _, err := util.LstatIfPossible(prog.fsys, j.par2Path); err == nil {
 			if job.markerPersist {
 				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
 			} else {
@@ -508,7 +523,7 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 		je := []schema.FsElement{elements[i]}
 		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
-		if _, err := prog.fsys.Stat(j.par2Path); err == nil {
+		if _, err := util.LstatIfPossible(prog.fsys, j.par2Path); err == nil {
 			if job.markerPersist {
 				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
 			} else {
@@ -558,7 +573,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 	cmdArgs = append(cmdArgs, getPaths(elements)...)
 
 	mf := schema.NewManifest(job.par2Name)
-	mf.Creation = &schema.CreationManifest{}
+	mf.Creation = schema.NewCreationManifest()
 	mf.Creation.Args = slices.Clone(job.par2Args)
 	mf.Creation.Elements = elements
 

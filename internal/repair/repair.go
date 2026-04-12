@@ -228,7 +228,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.repairLogger(ctx, nil, manifestPath)
 
-	if _, err := prog.fsys.Stat(manifestPath); err != nil {
+	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
 		logger.Debug("Failed to find par2cron manifest (will retry next run)", "error", err)
 
 		return nil, schema.ErrSilentSkip
@@ -321,7 +321,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	cmdArgs = append(cmdArgs, job.par2Path)
 
 	if job.manifest.Repair == nil {
-		job.manifest.Repair = &schema.RepairManifest{}
+		job.manifest.Repair = schema.NewRepairManifest()
 	}
 	job.manifest.Repair.Args = slices.Clone(job.par2Args)
 	job.manifest.Repair.Count++

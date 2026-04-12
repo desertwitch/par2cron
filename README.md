@@ -677,7 +677,7 @@ updates as possible corruption. If you need to update any protected files,
 you will need to manually delete the PAR2 set and then have it recreated using
 the marker file approach (equals the process for new sets of protectable data).
 
-par2cron-generated PAR2 set will consist of at least 4 files and possibly more
+A par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in
 directories, which can be mitigated by using the `--hidden` argument with
 `create` (read more about this in the above section *State Management*).
@@ -685,6 +685,14 @@ directories, which can be mitigated by using the `--hidden` argument with
 While the lockfile ensures multiple par2cron instances on the same computer
 do not collide, you need to ensure that shared (network) locations are only
 ever accessed by one par2cron computer at a time (e.g. different weekdays).
+
+`par2` (the dependency) itself does not support protecting files through
+symbolic links ("symlinks"). It is also strongly discouraged to organize
+important files this way, because it makes keeping files physically close more
+difficult and backup planning more brittle and error-prone. `par2cron` skips
+over symbolic links with a warning, and rejects with an error any glob patterns
+where it is already obvious from the non-glob parts that a symlink will need to
+be followed to glob the files that need protecting. (e.g. `symlink/**/*.txt`).
 
 ## License
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -2421,6 +2423,136 @@ func Test_Service_findElementsToProtect_DeepGlobInRecursiveMode_Error(t *testing
 
 	require.Nil(t, files)
 	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+}
+
+// Expectation: Function should reject glob patterns where the static prefix contains a symlink.
+func Test_Service_findElementsToProtect_SymlinkInGlobPrefix_Error(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	target := filepath.Join(root, "real_folder")
+	require.NoError(t, os.MkdirAll(filepath.Join(target, "sub"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "sub", "file.txt"), []byte("content"), 0o600))
+
+	workingDir := filepath.Join(root, "project")
+	require.NoError(t, os.MkdirAll(workingDir, 0o750))
+	require.NoError(t, os.Symlink(target, filepath.Join(workingDir, "link")))
+	require.NoError(t, os.WriteFile(filepath.Join(workingDir, "_par2cron"), []byte(""), 0o600))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir: workingDir,
+		markerPath: filepath.Join(workingDir, "_par2cron"),
+		par2Mode:   schema.CreateFolderMode,
+		par2Glob:   "link/sub/*.txt",
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.Nil(t, files)
+	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
+	require.Contains(t, logBuf.String(), "symbolic link")
+}
+
+// Expectation: Symlinks found during globbing should be skipped with a warning, not cause an error.
+func Test_Service_findElementsToProtect_SymlinkInGlobResults_Success(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	workingDir := filepath.Join(root, "project")
+	require.NoError(t, os.MkdirAll(workingDir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(workingDir, "real.txt"), []byte("content"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workingDir, "_par2cron"), []byte(""), 0o600))
+
+	target := filepath.Join(root, "other.txt")
+	require.NoError(t, os.WriteFile(target, []byte("other"), 0o600))
+	require.NoError(t, os.Symlink(target, filepath.Join(workingDir, "symlinked.txt")))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir: workingDir,
+		markerPath: filepath.Join(workingDir, "_par2cron"),
+		par2Mode:   schema.CreateFileMode,
+		par2Glob:   "*.txt",
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, filepath.Join(workingDir, "real.txt"), files[0].Path)
+	require.Equal(t, "real.txt", files[0].Name)
+
+	require.Contains(t, logBuf.String(), "symbolic link was skipped")
+}
+
+// Expectation: WithNoFollow should not traverse into symlinked directories during deep glob expansion.
+func Test_Service_findElementsToProtect_SymlinkDir_NoFollow_Success(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	workingDir := filepath.Join(root, "project")
+	require.NoError(t, os.MkdirAll(filepath.Join(workingDir, "realdir"), 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(workingDir, "realdir", "real.txt"), []byte("content"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(workingDir, "_par2cron"), []byte(""), 0o600))
+
+	// Create a symlinked directory with files that should not be traversed
+	symlinkTarget := filepath.Join(root, "external")
+	require.NoError(t, os.MkdirAll(symlinkTarget, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(symlinkTarget, "hidden.txt"), []byte("secret"), 0o600))
+
+	require.NoError(t, os.Symlink(symlinkTarget, filepath.Join(workingDir, "linkeddir")))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+
+	job := &Job{
+		workingDir: workingDir,
+		markerPath: filepath.Join(workingDir, "_par2cron"),
+		par2Mode:   schema.CreateFolderMode,
+		par2Glob:   "**/*.txt",
+	}
+
+	files, err := prog.findElementsToProtect(t.Context(), job)
+
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, filepath.Join(workingDir, "realdir", "real.txt"), files[0].Path)
+	require.Equal(t, "realdir/real.txt", files[0].Name)
+
+	// Files inside the symlinked directory should never appear
+	for _, f := range files {
+		require.NotContains(t, f.Path, "hidden.txt")
+		require.NotContains(t, f.Path, "linkeddir")
+	}
 }
 
 // Expectation: The function should succeed in folder mode.

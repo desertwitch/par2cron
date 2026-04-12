@@ -105,3 +105,33 @@ func Test_CreationManifest_UnmarshalJSON_InvalidTime_Error(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to unmarshal")
 }
+
+// Expectation: A new manifest is created with the constants populated.
+func Test_NewCreationManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	mf := NewCreationManifest()
+
+	require.Equal(t, ProgramVersion, mf.ProgramVersion)
+	require.Equal(t, Par2Version, mf.Par2Version)
+}
+
+// Expectation: A new manifest is created with the constants populated.
+func Test_NewVerificationManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	mf := NewVerificationManifest()
+
+	require.Equal(t, ProgramVersion, mf.ProgramVersion)
+	require.Equal(t, Par2Version, mf.Par2Version)
+}
+
+// Expectation: A new manifest is created with the constants populated.
+func Test_NewRepairManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	mf := NewRepairManifest()
+
+	require.Equal(t, ProgramVersion, mf.ProgramVersion)
+	require.Equal(t, Par2Version, mf.Par2Version)
+}

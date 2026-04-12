@@ -259,7 +259,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.verificationLogger(ctx, nil, manifestPath)
 
-	if _, err := prog.fsys.Stat(manifestPath); err != nil {
+	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
 		if !opts.IncludeExternal {
 			logger.Debug("No manifest found (skipping)")
 
@@ -353,7 +353,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	if job.manifest.Verification == nil {
-		job.manifest.Verification = &schema.VerificationManifest{}
+		job.manifest.Verification = schema.NewVerificationManifest()
 	}
 
 	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)

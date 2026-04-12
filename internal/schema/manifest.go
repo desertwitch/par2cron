@@ -40,10 +40,19 @@ type Par2DataManifest struct {
 }
 
 type CreationManifest struct {
-	Time     time.Time     `json:"time"`
-	Args     []string      `json:"args"`
-	Duration time.Duration `json:"duration_ns"`
-	Elements []FsElement   `json:"elements"`
+	ProgramVersion string        `json:"program_version"`
+	Par2Version    string        `json:"par2_version"`
+	Time           time.Time     `json:"time"`
+	Args           []string      `json:"args"`
+	Duration       time.Duration `json:"duration_ns"`
+	Elements       []FsElement   `json:"elements"`
+}
+
+func NewCreationManifest() *CreationManifest {
+	return &CreationManifest{
+		ProgramVersion: ProgramVersion,
+		Par2Version:    Par2Version,
+	}
 }
 
 func (c *CreationManifest) UnmarshalJSON(data []byte) error {
@@ -69,6 +78,8 @@ func (c *CreationManifest) UnmarshalJSON(data []byte) error {
 }
 
 type VerificationManifest struct {
+	ProgramVersion string        `json:"program_version"`
+	Par2Version    string        `json:"par2_version"`
 	Count          int           `json:"count"`
 	CountCorrupted int           `json:"count_corrupted"`
 	Time           time.Time     `json:"time"`
@@ -79,12 +90,28 @@ type VerificationManifest struct {
 	Duration       time.Duration `json:"duration_ns"`
 }
 
+func NewVerificationManifest() *VerificationManifest {
+	return &VerificationManifest{
+		ProgramVersion: ProgramVersion,
+		Par2Version:    Par2Version,
+	}
+}
+
 type RepairManifest struct {
-	Count    int           `json:"count"`
-	Time     time.Time     `json:"time"`
-	Args     []string      `json:"args"`
-	ExitCode int           `json:"exit_code"`
-	Duration time.Duration `json:"duration_ns"`
+	ProgramVersion string        `json:"program_version"`
+	Par2Version    string        `json:"par2_version"`
+	Count          int           `json:"count"`
+	Time           time.Time     `json:"time"`
+	Args           []string      `json:"args"`
+	ExitCode       int           `json:"exit_code"`
+	Duration       time.Duration `json:"duration_ns"`
+}
+
+func NewRepairManifest() *RepairManifest {
+	return &RepairManifest{
+		ProgramVersion: ProgramVersion,
+		Par2Version:    Par2Version,
+	}
 }
 
 type FsElement struct {

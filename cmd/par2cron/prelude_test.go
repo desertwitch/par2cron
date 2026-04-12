@@ -387,6 +387,28 @@ func Test_runPrelude_PathNotExist_Error(t *testing.T) {
 	require.Nil(t, result)
 }
 
+// Expectation: An error should be returned when a path is not a directory.
+func Test_runPrelude_PathNotDirectory_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/notadir", []byte("content"), 0o644))
+
+	result, err := runPrelude(&preludeInput[*create.Options, *configFileCreate]{
+		FSys:           fs,
+		Args:           []string{"/notadir"},
+		DashAt:         -1,
+		CommandOptions: newTestCreateOptions(),
+		LogSettings:    newTestLogging(),
+		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
+		VisitFlags:     noVisitFlags,
+	})
+
+	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.ErrorContains(t, err, "not a directory")
+	require.Nil(t, result)
+}
+
 // Expectation: An error on the second path should still fail the whole prelude.
 func Test_runPrelude_SecondPathNotExist_Error(t *testing.T) {
 	t.Parallel()

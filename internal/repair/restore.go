@@ -150,7 +150,7 @@ func (r *backupRestorer) getNumberedFilesWithInodes() (map[uint64]fileRecord, er
 }
 
 func (r *backupRestorer) getInode(path string) (uint64, error) {
-	info, err := r.fsys.Stat(path)
+	info, err := r.fsys.Stat(path) // We care about the real file, so stat().
 	if err != nil {
 		return 0, fmt.Errorf("failed to stat: %w", err)
 	}

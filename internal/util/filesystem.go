@@ -12,9 +12,32 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
+
+func LstatIfPossible(fsys afero.Fs, name string) (fs.FileInfo, error) {
+	if lstatter, ok := fsys.(afero.Lstater); ok {
+		fi, lstat, err := lstatter.LstatIfPossible(name)
+
+		if err != nil && lstat {
+			return fi, fmt.Errorf("lstat: %w", err)
+		}
+		if err != nil && !lstat {
+			return fi, fmt.Errorf("stat: %w", err)
+		}
+
+		return fi, nil
+	}
+
+	fi, err := fsys.Stat(name)
+	if err != nil {
+		return fi, fmt.Errorf("stat: %w", err)
+	}
+
+	return fi, nil
+}
 
 func AcquireLock(fsys afero.Fs, lockPath string, block bool) (func(), error) {
 	if _, ok := fsys.(*afero.OsFs); !ok {
@@ -135,13 +158,13 @@ func ShouldIgnorePath(fsys afero.Fs, path string, rootDir string) bool {
 	dir := filepath.Dir(path)
 
 	ignorePath := filepath.Join(dir, schema.IgnoreFile)
-	if _, err := fsys.Stat(ignorePath); err == nil {
+	if _, err := LstatIfPossible(fsys, ignorePath); err == nil {
 		return true
 	}
 
 	for {
 		ignoreAllPath := filepath.Join(dir, schema.IgnoreAllFile)
-		if _, err := fsys.Stat(ignoreAllPath); err == nil {
+		if _, err := LstatIfPossible(fsys, ignoreAllPath); err == nil {
 			return true
 		}
 		if dir == rootDir || dir == filepath.Dir(dir) {
@@ -174,9 +197,9 @@ func (c *IgnoreChecker) ShouldSkip(path string, isDir bool) (bool, error) {
 		ignorePath := filepath.Join(currentDir, schema.IgnoreFile)
 		ignoreAllPath := filepath.Join(currentDir, schema.IgnoreAllFile)
 
-		_, err := c.fsys.Stat(ignorePath)
+		_, err := LstatIfPossible(c.fsys, ignorePath)
 		c.hasIgnore = (err == nil)
-		_, err = c.fsys.Stat(ignoreAllPath)
+		_, err = LstatIfPossible(c.fsys, ignoreAllPath)
 		c.hasIgnoreAll = (err == nil)
 
 		c.lastVisited = currentDir
@@ -189,4 +212,28 @@ func (c *IgnoreChecker) ShouldSkip(path string, isDir bool) (bool, error) {
 	}
 
 	return false, nil
+}
+
+func HasGlobSymlinks(fsys afero.Fs, workingDir string, pattern string) (string, bool) {
+	patternPrefix, _ := doublestar.SplitPattern(pattern)
+
+	patternPrefix = filepath.Clean(patternPrefix)
+	workingDir = filepath.Clean(workingDir)
+
+	dir := patternPrefix
+	for dir != workingDir {
+		fi, err := LstatIfPossible(fsys, dir)
+		if err == nil {
+			if fi.Mode()&fs.ModeSymlink != 0 {
+				return dir, true
+			}
+		}
+
+		if dir == filepath.Dir(dir) {
+			break
+		}
+		dir = filepath.Dir(dir)
+	}
+
+	return "", false
 }
