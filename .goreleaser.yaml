@@ -46,11 +46,6 @@ signs:
 
 release:
   footer: |
-    Files without an extension are all static binaries for the most common architectures.  
-    Most users will want the `linux_amd64` package (see installation instructions in `README`).  
-
-    `.txz`, `.asc` and `.md5` files are part of the Slackware distribution package.  
-    These specific packages are offered as a service for fellow Unraid OS enthusiasts.  
-
+    Most users will want the `linux_amd64` package (see installation instructions in `QUICKGUIDE`).  
     Do note that any release files are unattended builds and served without any warranties.
 
