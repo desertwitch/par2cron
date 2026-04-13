@@ -440,11 +440,12 @@ and so on - without needing individual marker files in each subfolder. Every
 folder that contains at least one matching file gets its own independent PAR2
 set, including deeply nested folders.
 
-Combined with the `persist` marker directive, nested mode allows handling
+Combined with the `persist` marker directive, nested mode allows handling of
 growing collections. New folders are picked up automatically on the next run,
-and existing folders with a PAR2 set are skipped. To update a folder's PAR2 set
-(after adding or changing files), delete the old PAR2 set and the next run will
-recreate it without requiring re-creation of a marker file.
+and existing folders with a PAR2 set are skipped (such existing PAR2 sets will
+**not** be updated). To update a folder's PAR2 set (after adding or changing
+files), delete the old PAR2 set and the next run will recreate it (with your
+changes) without requiring re-creation of a marker file.
 
 ### `file` mode
 
@@ -539,7 +540,7 @@ PAR2 set is already present in the directory, the marker file is skipped and a
 warning presented to the user (not resulting in a non-zero exit code).
 
 Above does not apply when a marker file is set to `persist` (see below), which
-allows re-use of marker files for growing folders. New content then picked up
+allows re-use of marker files for growing folders. New folders then picked up
 automatically on the next run, and existing PAR2 sets skipped without warning.
 This is interesting for nested mode, but **does not** update existing PAR2 sets.
 
