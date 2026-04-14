@@ -30,3 +30,9 @@ jobs:
 
       - name: Run all Go tests
         run: make test
+
+      - name: Build the application (for end-to-end tests)
+        run: make par2cron
+
+      - name: Run all end-to-end tests
+        run: bash e2e_test.sh
