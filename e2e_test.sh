@@ -30,6 +30,7 @@ pass() {
 fail() {
     FAIL=$((FAIL + 1))
     echo "  FAIL: $1"
+    echo "::error file=e2e_test.sh::FAIL: $1"
 }
 
 assert_file_exists() {
@@ -140,6 +141,9 @@ echo "hello world" > "$DIR/testfile.txt"
 "$BIN" create "$DIR" -- -vv
 echo "yello world" > "$DIR/testfile.txt"
 
+TESTNAME="verify detects corruption before repair"
+assert_exit_nonzero "$BIN" verify "$DIR" -- -vv
+
 TESTNAME="repair succeeds"
 assert_exit_zero "$BIN" repair "$DIR" -- -vv
 assert_file_content "$DIR/testfile.txt" "hello world" "repair restores original content"
@@ -151,6 +155,9 @@ touch "$DIR/_par2cron"
 echo "hello world" > "$DIR/testfile.txt"
 "$BIN" create "$DIR" -- -vv
 echo "yello world" > "$DIR/testfile.txt"
+
+TESTNAME="verify detects corruption before repair (custom args)"
+assert_exit_zero "$BIN" verify "$DIR" -- -vv
 
 TESTNAME="repair with custom args succeeds"
 assert_exit_zero "$BIN" repair "$DIR" -- -vv
