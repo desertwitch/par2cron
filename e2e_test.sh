@@ -37,7 +37,7 @@ assert_file_exists() {
     if [ -f "$1" ]; then
         pass "$2"
     else
-        fail "$2 (file not found: $1)"
+        fail "$2 (assert_file_exists: file not found: $1)"
     fi
 }
 
@@ -46,7 +46,7 @@ assert_glob_not_empty() {
     if ls $1; then
         pass "$2"
     else
-        fail "$2 (no files matching: $1)"
+        fail "$2 (assert_glob_not_empty: no files matching: $1)"
     fi
 }
 
@@ -56,7 +56,7 @@ assert_file_content() {
     if [ "$content" = "$2" ]; then
         pass "$3"
     else
-        fail "$3 (expected: '$2', got: '$content')"
+        fail "$3 (assert_file_content: expected: '$2', got: '$content')"
     fi
 }
 
@@ -64,13 +64,13 @@ assert_exit_zero() {
     if "$@"; then
         pass "${TESTNAME:-command succeeded}"
     else
-        fail "${TESTNAME:-command should have succeeded}: $*"
+        fail "${TESTNAME:-command should have succeeded} (assert_exit_zero: $*)"
     fi
 }
 
 assert_exit_nonzero() {
     if "$@"; then
-        fail "${TESTNAME:-command should have failed}: $*"
+        fail "${TESTNAME:-command should have failed} (assert_exit_nonzero: $*)"
     else
         pass "${TESTNAME:-command failed as expected}"
     fi
@@ -157,7 +157,7 @@ echo "hello world" > "$DIR/testfile.txt"
 echo "yello world" > "$DIR/testfile.txt"
 
 TESTNAME="verify detects corruption before repair (custom args)"
-assert_exit_zero "$BIN" verify "$DIR" -- -vv
+assert_exit_nonzero "$BIN" verify "$DIR" -- -vv
 
 TESTNAME="repair with custom args succeeds"
 assert_exit_zero "$BIN" repair "$DIR" -- -vv
