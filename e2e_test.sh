@@ -170,8 +170,11 @@ touch "$DIR/_par2cron"
 echo "hello world" > "$DIR/testfile.txt"
 "$BIN" create "$DIR" -- -vv
 
+TESTNAME="verify directory before info"
+assert_exit_zero "$BIN" verify "$DIR" -- -vv
+
 TESTNAME="info succeeds"
-assert_exit_zero "$BIN" info "$DIR"
+assert_exit_zero "$BIN" info "$DIR" --age 7d --duration 1h
 
 # ---------------------------------------------------------------------------
 echo "==> Test: pprof"
