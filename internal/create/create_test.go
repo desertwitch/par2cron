@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -3504,8 +3505,10 @@ func Test_Service_runCreate_CorrectArgs_RecursiveMode_Success(t *testing.T) {
 	}, capturedArgs)
 }
 
-// Expectation: The manifest should contain relative file names, not full paths.
-func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) {
+// Expectation: The manifest should unmarshal correctly and contain the expected
+// creation metadata, including mode, glob, args, timing, and elements with
+// relative file names rather than full paths.
+func Test_Service_runCreate_ManifestUnmarshal_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -3538,7 +3541,7 @@ func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) 
 		par2Name:     "test" + schema.Par2Extension,
 		par2Path:     "/data/folder/test" + schema.Par2Extension,
 		par2Args:     []string{"-r10"},
-		par2Glob:     "*",
+		par2Glob:     "*.txt",
 		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
 		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
@@ -3554,9 +3557,90 @@ func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) 
 	manifestData, err := afero.ReadFile(fs, job.manifestPath)
 	require.NoError(t, err)
 
+	var mf schema.Manifest
+	require.NoError(t, json.Unmarshal(manifestData, &mf))
+
+	require.Equal(t, schema.ProgramVersion, mf.ProgramVersion)
+	require.Equal(t, schema.ManifestVersion, mf.ManifestVersion)
+	require.Equal(t, job.par2Name, mf.Name)
+	require.NotEmpty(t, mf.SHA256)
+
+	require.NotNil(t, mf.Creation)
+	require.Equal(t, schema.ProgramVersion, mf.Creation.ProgramVersion)
+	require.Equal(t, schema.Par2Version, mf.Creation.Par2Version)
+	require.Equal(t, schema.CreateFolderMode, mf.Creation.Mode)
+	require.Equal(t, "*.txt", mf.Creation.Glob)
+	require.Equal(t, []string{"-r10"}, mf.Creation.Args)
+	require.False(t, mf.Creation.Time.IsZero())
+	require.Greater(t, mf.Creation.Duration, time.Duration(0))
+
+	require.Len(t, mf.Creation.Elements, 2)
+	for _, elem := range mf.Creation.Elements {
+		require.NotContains(t, elem.Name, "/data/folder")
+		require.NotContains(t, elem.Path, string(os.PathSeparator)+"data"+string(os.PathSeparator))
+	}
+
+	expectedNames := []string{files[0].Name, files[1].Name}
+	actualNames := make([]string, len(mf.Creation.Elements))
+	for i, elem := range mf.Creation.Elements {
+		actualNames[i] = elem.Name
+	}
+	require.ElementsMatch(t, expectedNames, actualNames)
+}
+
+// Expectation: The manifest should contain relative file names, not full paths.
+func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder2/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder2/file2.txt", []byte("content2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			require.NoError(t, afero.WriteFile(fs, "/data/folder2/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	job := &Job{
+		workingDir:   "/data/folder2",
+		markerPath:   "/data/folder2/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder2/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder2/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder2/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder2/file.txt", Name: "file.txt"},
+		{Path: "/data/folder2/file2.txt", Name: "file2.txt"},
+	}
+
+	require.NoError(t, prog.runCreate(t.Context(), job, files))
+
+	manifestData, err := afero.ReadFile(fs, job.manifestPath)
+	require.NoError(t, err)
+
 	manifestStr := string(manifestData)
 	require.NotContains(t, manifestStr, "data")
-	require.NotContains(t, manifestStr, "folder")
+	require.NotContains(t, manifestStr, "folder2")
 }
 
 // Expectation: The function should cleanup on failure and return error.

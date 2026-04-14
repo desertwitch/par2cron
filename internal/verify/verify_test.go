@@ -1086,6 +1086,70 @@ func Test_Service_RunVerify_CorrectArgs_Success(t *testing.T) {
 	}, runArgs)
 }
 
+// Expectation: The verification should update verification-specific fields
+// (time, duration, count, args, versions) rather than keeping stale values.
+func Test_Service_RunVerify_UpdatesVerificationFields_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	oldTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v", "-q"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	job.manifest.Creation = &schema.CreationManifest{Time: time.Now()}
+	job.manifest.Verification = &schema.VerificationManifest{
+		Time:           oldTime,
+		Duration:       999 * time.Second,
+		Count:          5,
+		Args:           []string{"--old-arg"},
+		ProgramVersion: "old-program",
+		Par2Version:    "old-par2",
+		ExitCode:       42,
+	}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	manifestData, err := afero.ReadFile(fs, job.manifestPath)
+	require.NoError(t, err)
+
+	mf := &schema.Manifest{}
+	require.NoError(t, json.Unmarshal(manifestData, mf))
+
+	require.NotNil(t, mf.Verification)
+	require.True(t, mf.Verification.Time.After(oldTime))
+	require.NotEqual(t, 999*time.Second, mf.Verification.Duration)
+	require.Equal(t, 6, mf.Verification.Count)
+	require.Equal(t, []string{"-v", "-q"}, mf.Verification.Args)
+	require.Equal(t, schema.ProgramVersion, mf.Verification.ProgramVersion)
+	require.Equal(t, schema.Par2Version, mf.Verification.Par2Version)
+	require.Equal(t, 0, mf.Verification.ExitCode)
+}
+
 // Expectation: The verification should not overwrite the creation manifest values.
 func Test_Service_RunVerify_KeepCreateManifest_Success(t *testing.T) {
 	t.Parallel()
