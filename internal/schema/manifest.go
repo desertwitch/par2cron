@@ -43,6 +43,8 @@ type CreationManifest struct {
 	ProgramVersion string        `json:"program_version"`
 	Par2Version    string        `json:"par2_version"`
 	Time           time.Time     `json:"time"`
+	Mode           string        `json:"mode"`
+	Glob           string        `json:"glob"`
 	Args           []string      `json:"args"`
 	Duration       time.Duration `json:"duration_ns"`
 	Elements       []FsElement   `json:"elements"`

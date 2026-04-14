@@ -30,3 +30,15 @@ jobs:
 
       - name: Run all Go tests
         run: make test
+
+      - name: Clean the environment (for end-to-end tests)
+        run: make clean
+
+      - name: Vendor the application (for end-to-end tests)
+        run: make vendor
+
+      - name: Build the application (for end-to-end tests)
+        run: make par2cron
+
+      - name: Run all end-to-end tests
+        run: bash e2e_test.sh

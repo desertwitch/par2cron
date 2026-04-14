@@ -1828,6 +1828,80 @@ func Test_Service_runRepair_ArgsCloned_Success(t *testing.T) {
 	require.Equal(t, []string{"-v", "-q"}, job.manifest.Repair.Args)
 }
 
+// Expectation: The repair should update repair-specific fields
+// (time, duration, count, args, versions, exit code) rather than keeping stale values.
+func Test_Service_runRepair_UpdatesRepairFields_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner)
+
+	oldTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mf.Repair = &schema.RepairManifest{
+		Time:           oldTime,
+		Duration:       999 * time.Second,
+		Count:          3,
+		Args:           []string{"--old-arg"},
+		ProgramVersion: "old-program",
+		Par2Version:    "old-par2",
+		ExitCode:       42,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v", "-q"},
+		par2Verify:   false,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+	require.NoError(t, prog.runRepair(t.Context(), job))
+
+	manifestData, err := afero.ReadFile(fs, job.manifestPath)
+	require.NoError(t, err)
+
+	var written schema.Manifest
+	require.NoError(t, json.Unmarshal(manifestData, &written))
+
+	require.NotNil(t, written.Repair)
+	require.True(t, written.Repair.Time.After(oldTime))
+	require.NotEqual(t, 999*time.Second, written.Repair.Duration)
+	require.Equal(t, 4, written.Repair.Count)
+	require.Equal(t, []string{"-v", "-q"}, written.Repair.Args)
+	require.Equal(t, schema.ProgramVersion, written.Repair.ProgramVersion)
+	require.Equal(t, schema.Par2Version, written.Repair.Par2Version)
+	require.Equal(t, schema.Par2ExitCodeSuccess, written.Repair.ExitCode)
+}
+
 // Expectation: A hash mismatch should not write an empty manifest.
 func Test_Service_runRepair_HashMismatch_NoManifestWrite_Success(t *testing.T) {
 	t.Parallel()
