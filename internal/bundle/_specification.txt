@@ -1,0 +1,65 @@
+Note: Everything is 4-byte aligned.
+╔══════════════════════════════════════════════════════════╗
+║ COMMON PACKET HEADER (all packets start with this)       ║
+║                                                          ║
+║  magic            [8]byte    "P2CB\0PKT"                 ║
+║                                                          ║
+║  packet_type      u64        0x01/0x02/0x03              ║
+║  packet_length    u64        total packet size in bytes  ║
+║  header_length    u64        header size in bytes        ║
+║  header_md5       [16]byte   md5 of bytes 8..hdr_length  ║
+║                              (exclude header_md5 itself) ║
+║                                                          ║
+║  (type-specific fields start at offset 48)               ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ MAIN PACKET (type 0x01)                                  ║
+║                                                          ║
+║   [common header, 48 bytes]                              ║
+║   version                  u64                           ║
+║                                                          ║
+║   manifest_packet_offset   u64                           ║
+║   manifest_data_offset     u64                           ║
+║   manifest_data_length     u64                           ║
+║   manifest_data_b3         [32]byte                      ║
+║   manifest_name_len        u64                           ║
+║   manifest_name            [name_len]byte padded to 4    ║
+║                                                          ║
+║   entry_count              u64                           ║
+║   entries[]:                                             ║
+║     packet_offset          u64                           ║
+║     data_offset            u64                           ║
+║     data_length            u64                           ║
+║     data_b3                [32]byte                      ║
+║     name_len               u64                           ║
+║     name                   [name_len]byte padded to 4    ║
+║                                                          ║
+║   ── header_length boundary ──                           ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ FILE PACKET (type 0x02)                                  ║
+║                                                          ║
+║   [common header, 48 bytes]                              ║
+║   data_length              u64                           ║
+║   data_b3                  [32]byte                      ║
+║   name_len                 u64                           ║
+║   name                     [name_len]byte padded to 4    ║
+║                                                          ║
+║   ── header_length boundary ──                           ║
+║                                                          ║
+║   file_data                [data_length]byte padded to 4 ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ MANIFEST PACKET (type 0x03)                              ║
+║                                                          ║
+║   [common header, 48 bytes]                              ║
+║   data_length              u64                           ║
+║   data_b3                  [32]byte                      ║
+║   name_len                 u64                           ║
+║   name                     [name_len]byte padded to 4    ║
+║                                                          ║
+║   ── header_length boundary ──                           ║
+║                                                          ║
+║   json_data                [data_length]byte padded to 4 ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
