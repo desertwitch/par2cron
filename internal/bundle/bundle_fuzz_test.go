@@ -143,12 +143,20 @@ func Fuzz_Bundle_Pack(f *testing.F) {
 			[]byte("fuzz-pack-rsid-01"),
 			a.Name, a.Data,
 			b.Name, b.Data,
+			uint8(3), // both files
 		)
 	}
-	f.Add("manifest.json", []byte("{}"), []byte{}, "a.par2", []byte{}, "b.par2", []byte{})
+	f.Add("manifest.json", []byte("{}"), []byte{}, "a.par2", []byte{}, "b.par2", []byte{}, uint8(0))
 
-	// We fuzz the manifest name + data, recovery set ID and to-pack file names + data.
-	f.Fuzz(func(t *testing.T, manifestName string, manifestData []byte, recoverySetID []byte, file1Name string, file1Data []byte, file2Name string, file2Data []byte) {
+	// Fuzz manifest name/data, recovery set ID, file names/data, and file-count/layout.
+	f.Fuzz(func(t *testing.T,
+		manifestName string,
+		manifestData []byte,
+		recoverySetID []byte,
+		file1Name string, file1Data []byte,
+		file2Name string, file2Data []byte,
+		layout uint8,
+	) {
 		fsys := afero.NewMemMapFs()
 
 		if err := fsys.MkdirAll("/in", 0o755); err != nil {
@@ -161,16 +169,28 @@ func Fuzz_Bundle_Pack(f *testing.F) {
 			return
 		}
 
+		if manifestName == "" {
+			manifestName = "manifest.json"
+		}
+
 		var rsid [16]byte
 		copy(rsid[:], recoverySetID)
+
+		inputs := make([]FileInput, 0, 2)
+		if layout&1 != 0 {
+			inputs = append(inputs, FileInput{Name: file1Name, Path: "/in/file1.par2"})
+		}
+		if layout&2 != 0 {
+			inputs = append(inputs, FileInput{Name: file2Name, Path: "/in/file2.par2"})
+		}
+		if len(inputs) == 0 {
+			inputs = append(inputs, FileInput{Name: file1Name, Path: "/in/file1.par2"})
+		}
 
 		_ = Pack(fsys, "/bundle.out", rsid, ManifestInput{
 			Name:  manifestName,
 			Bytes: manifestData,
-		}, []FileInput{
-			{Name: file1Name, Path: "/in/file1.par2"},
-			{Name: file2Name, Path: "/in/file2.par2"},
-		})
+		}, inputs)
 	})
 }
 
