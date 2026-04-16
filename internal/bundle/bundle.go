@@ -1,12 +1,11 @@
+//nolint:funcorder
 package bundle
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/afero"
 )
@@ -64,6 +63,27 @@ func Open(fsys afero.Fs, path string) (*Bundle, error) {
 	return b, nil
 }
 
+// readIndexPacket reads and validates the index packet at offset 0.
+func (b *Bundle) readIndexPacket() error {
+	ch, body, err := readAndValidatePacket(b.f, 0, b.size)
+	if err != nil {
+		return fmt.Errorf("failed to read packet: %w", err)
+	}
+
+	if ch.PacketType != PacketTypeIndex {
+		return fmt.Errorf("expected index packet at offset 0, got %q", ch.PacketType)
+	}
+
+	mp, err := parseIndexPacket(bytes.NewReader(body), ch)
+	if err != nil {
+		return fmt.Errorf("failed to parse packet: %w", err)
+	}
+
+	b.Index = mp
+
+	return nil
+}
+
 // Manifest reads, verifies and returns the manifest bytes.
 func (b *Bundle) Manifest() ([]byte, error) {
 	var buf bytes.Buffer
@@ -73,59 +93,6 @@ func (b *Bundle) Manifest() ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
-}
-
-// ExtractEntry extracts a single entry from the bundle to a destination writer.
-func (b *Bundle) ExtractEntry(e IndexEntry, w io.Writer) error {
-	sr := io.NewSectionReader(b.f, int64(e.DataOffset), int64(e.DataLength)) //nolint:gosec
-	expectedHash := e.DataB3
-
-	hash, err := dataHashReader(io.TeeReader(sr, w))
-	if err != nil {
-		return fmt.Errorf("failed to io: %w", err)
-	}
-
-	if hash != expectedHash {
-		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
-	}
-
-	return nil
-}
-
-// ExtractManifest extracts the manifest from the bundle to a destination writer.
-func (b *Bundle) ExtractManifest(w io.Writer) error {
-	sr := io.NewSectionReader(b.f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
-	expectedHash := b.Index.ManifestDataB3
-
-	hash, err := dataHashReader(io.TeeReader(sr, w))
-	if err != nil {
-		return fmt.Errorf("failed to io: %w", err)
-	}
-
-	if hash != expectedHash {
-		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
-	}
-
-	return nil
-}
-
-// Unpack extracts all files and the manifest to destDir on destFs.
-func (b *Bundle) Unpack(destFs afero.Fs, destDir string) error {
-	// Extract the file entries.
-	for _, e := range b.Index.Entries {
-		if err := writeToFile(destFs, filepath.Join(destDir, e.Name), func(w io.Writer) error {
-			return b.ExtractEntry(e, w)
-		}); err != nil {
-			return fmt.Errorf("failed to extract %q: %w", e.Name, err)
-		}
-	}
-
-	// Extract the manifest.
-	if err := writeToFile(destFs, filepath.Join(destDir, b.Index.ManifestName), b.ExtractManifest); err != nil {
-		return fmt.Errorf("failed to extract manifest: %w", err)
-	}
-
-	return nil
 }
 
 // Close closes the bundle file.
