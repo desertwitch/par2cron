@@ -135,9 +135,17 @@ func Fuzz_Bundle_Scan(f *testing.F) {
 
 func Fuzz_Bundle_Pack(f *testing.F) {
 	_, par2Entries := mustFuzzSeed(f)
-	for _, e := range par2Entries {
-		f.Add("manifest.json", []byte(`{"seed":true}`), []byte("fuzz-pack-rsid-01"), e.Name, e.Data, e.Name, e.Data)
+	for i, a := range par2Entries {
+		b := par2Entries[(i+1)%len(par2Entries)]
+		f.Add(
+			"manifest.json",
+			[]byte(`{"seed":true}`),
+			[]byte("fuzz-pack-rsid-01"),
+			a.Name, a.Data,
+			b.Name, b.Data,
+		)
 	}
+	f.Add("manifest.json", []byte("{}"), []byte{}, "a.par2", []byte{}, "b.par2", []byte{})
 
 	// We fuzz the manifest name + data, recovery set ID and to-pack file names + data.
 	f.Fuzz(func(t *testing.T, manifestName string, manifestData []byte, recoverySetID []byte, file1Name string, file1Data []byte, file2Name string, file2Data []byte) {
