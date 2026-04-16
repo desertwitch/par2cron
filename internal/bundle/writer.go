@@ -69,7 +69,10 @@ func Pack(fsys afero.Fs, outputPath string, recoverySetID [16]byte, manifest Man
 	if err != nil {
 		return fmt.Errorf("failed to get manifest packet position: %w", err)
 	}
-	manifestEntry, err := writeManifestPacket(f, recoverySetID, manifest, uint64(manifestPacketOffset)) //nolint:gosec
+	if manifestPacketOffset < 0 {
+		return fmt.Errorf("failed to get valid manifest packet offset: %d", manifestPacketOffset)
+	}
+	manifestEntry, err := writeManifestPacket(f, recoverySetID, manifest, uint64(manifestPacketOffset))
 	if err != nil {
 		return fmt.Errorf("failed to write manifest packet: %w", err)
 	}
@@ -97,7 +100,7 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 	manifestPacketOffset := b.Index.ManifestPacketOffset
 
 	// Check first if there's really a manifest packet at that offset.
-	ch, _, err := readAndValidatePacket(b.f, int64(manifestPacketOffset)) //nolint:gosec
+	ch, _, err := readAndValidatePacket(b.f, int64(manifestPacketOffset), b.size) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to validate manifest packet: %w", err)
 	}
@@ -110,7 +113,7 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 		return fmt.Errorf("failed to truncate manifest packet: %w", err)
 	}
 
-	// Seek back to the manifest offset to place the new manifest packet.
+	// Seek to the manifest offset to place the new manifest packet.
 	if _, err := b.f.Seek(int64(manifestPacketOffset), io.SeekStart); err != nil { //nolint:gosec
 		return fmt.Errorf("failed to seek to manifest offset: %w", err)
 	}
@@ -148,6 +151,16 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 		return fmt.Errorf("failed to sync: %w", err)
 	}
 
+	// Update the file size.
+	fi, err := b.f.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat: %w", err)
+	}
+	if fi.Size() < 0 {
+		return fmt.Errorf("file size < 0 after update: %d", fi.Size())
+	}
+	b.size = fi.Size()
+
 	return nil
 }
 
@@ -161,16 +174,42 @@ type manifestWriteEntry struct {
 	name         string
 }
 
+// writeCommonPacket writes a full packet: header + body.
+func writeCommonPacket(w io.Writer, recoverySetID [16]byte, packetType [16]byte, body []byte) error {
+	packetLength := uint64(commonHeaderSize) + uint64(len(body))
+	packetChecksum := packetMD5(recoverySetID, packetType, body)
+
+	if err := writeAll(w, Magic[:]); err != nil {
+		return fmt.Errorf("failed to write magic bytes: %w", err)
+	}
+	if err := writeUint64LE(w, packetLength); err != nil {
+		return fmt.Errorf("failed to write packet length: %w", err)
+	}
+	if err := writeAll(w, packetChecksum[:]); err != nil {
+		return fmt.Errorf("failed to write packet checksum: %w", err)
+	}
+	if err := writeAll(w, recoverySetID[:]); err != nil {
+		return fmt.Errorf("failed to write recovery set ID: %w", err)
+	}
+	if err := writeAll(w, packetType[:]); err != nil {
+		return fmt.Errorf("failed to write packet type: %w", err)
+	}
+	if err := writeAll(w, body); err != nil {
+		return fmt.Errorf("failed to write packet body: %w", err)
+	}
+
+	return nil
+}
+
 // writeIndexPacket writes the bundle's index packet (header + manifest ref + entry table).
-//
-//nolint:cyclop
 func writeIndexPacket(w io.Writer, recoverySetID [16]byte, entries []IndexEntry, mf manifestWriteEntry) error {
 	var body bytes.Buffer
 
-	// Write body prefix.
 	if err := writeUint64LE(&body, Version); err != nil {
 		return fmt.Errorf("failed to write version: %w", err)
 	}
+
+	// Write manifest information.
 	if err := writeUint64LE(&body, mf.packetOffset); err != nil {
 		return fmt.Errorf("failed to write manifest packet offset: %w", err)
 	}
@@ -199,6 +238,7 @@ func writeIndexPacket(w io.Writer, recoverySetID [16]byte, entries []IndexEntry,
 		return fmt.Errorf("failed to write entry count: %w", err)
 	}
 	for _, e := range entries {
+		// Write file entry information.
 		if err := writeUint64LE(&body, e.PacketOffset); err != nil {
 			return fmt.Errorf("failed to write entry packet offset: %w", err)
 		}
@@ -215,6 +255,7 @@ func writeIndexPacket(w io.Writer, recoverySetID [16]byte, entries []IndexEntry,
 			return fmt.Errorf("failed to write entry name length: %w", err)
 		}
 
+		// Write file entry name.
 		nameBytes := make([]byte, padTo4(e.NameLen))
 		copy(nameBytes, e.Name)
 		if err := writeAll(&body, nameBytes); err != nil {
@@ -222,34 +263,7 @@ func writeIndexPacket(w io.Writer, recoverySetID [16]byte, entries []IndexEntry,
 		}
 	}
 
-	// Calculate offsets and checksum.
-	bodyBytes := body.Bytes()
-	packetLength := uint64(commonHeaderSize + len(bodyBytes))
-	packetChecksum := packetMD5(recoverySetID, PacketTypeIndex, bodyBytes)
-
-	// Write common header.
-	if err := writeAll(w, Magic[:]); err != nil {
-		return fmt.Errorf("failed to write magic bytes: %w", err)
-	}
-	if err := writeUint64LE(w, packetLength); err != nil {
-		return fmt.Errorf("failed to write packet length: %w", err)
-	}
-	if err := writeAll(w, packetChecksum[:]); err != nil {
-		return fmt.Errorf("failed to write packet checksum: %w", err)
-	}
-	if err := writeAll(w, recoverySetID[:]); err != nil {
-		return fmt.Errorf("failed to write recovery set ID: %w", err)
-	}
-	if err := writeAll(w, PacketTypeIndex[:]); err != nil {
-		return fmt.Errorf("failed to write packet type: %w", err)
-	}
-
-	// Write pre-constructed body.
-	if err := writeAll(w, bodyBytes); err != nil {
-		return fmt.Errorf("failed to write packet body: %w", err)
-	}
-
-	return nil
+	return writeCommonPacket(w, recoverySetID, PacketTypeIndex, body.Bytes())
 }
 
 // writeFileSegment writes a file packet plus the file's data and padding (usually none).
@@ -264,22 +278,21 @@ func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, f
 	if err != nil {
 		return IndexEntry{}, fmt.Errorf("failed to stat: %w", err)
 	}
-
-	// Calculate offsets.
-	size := info.Size()
-	if size < 0 {
+	if info.Size() < 0 {
 		return IndexEntry{}, fmt.Errorf("failed to get valid file size: %d", info.Size())
 	}
-	dataLen := uint64(size)
+
+	// Calculate offsets.
+	dataLen := uint64(info.Size()) //nolint:gosec
 	nameLen := uint64(len(fi.Name))
-	packetOffsetI64, err := w.Seek(0, io.SeekCurrent)
+
+	filePacketOffset, err := w.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return IndexEntry{}, fmt.Errorf("failed to get file packet position: %w", err)
 	}
-	if packetOffsetI64 < 0 {
-		return IndexEntry{}, fmt.Errorf("failed to get valid packet offset: %d", packetOffsetI64)
+	if filePacketOffset < 0 {
+		return IndexEntry{}, fmt.Errorf("failed to get valid file packet offset: %d", filePacketOffset)
 	}
-	packetOffset := uint64(packetOffsetI64)
 
 	// Hash data stream to calculate checksum.
 	dataB3, err := dataHashReader(src)
@@ -291,7 +304,7 @@ func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, f
 	}
 
 	filePacketLength := uint64(commonHeaderSize) + fileBodyPrefixSize + padTo4(nameLen)
-	dataOffset := packetOffset + filePacketLength
+	dataOffset := uint64(filePacketOffset) + filePacketLength
 
 	// Write the file packet first.
 	if err := writeFilePacket(w, recoverySetID, fi.Name, dataLen, dataB3); err != nil {
@@ -311,7 +324,7 @@ func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, f
 	}
 
 	return IndexEntry{
-		PacketOffset: packetOffset,
+		PacketOffset: uint64(filePacketOffset),
 		DataOffset:   dataOffset,
 		DataLength:   dataLen,
 		DataB3:       dataB3,
@@ -322,10 +335,11 @@ func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, f
 
 // writeFilePacket writes a file packet (header + body prefix + padded name).
 func writeFilePacket(w io.Writer, recoverySetID [16]byte, name string, dataLen uint64, dataB3 [32]byte) error {
+	var body bytes.Buffer
+
 	nameLen := uint64(len(name))
 	paddedNameLen := padTo4(nameLen)
 
-	var body bytes.Buffer
 	if err := writeUint64LE(&body, dataLen); err != nil {
 		return fmt.Errorf("failed to write data length: %w", err)
 	}
@@ -342,38 +356,13 @@ func writeFilePacket(w io.Writer, recoverySetID [16]byte, name string, dataLen u
 		return fmt.Errorf("failed to write name: %w", err)
 	}
 
-	// Calculate offsets and checksum.
-	bodyBytes := body.Bytes()
-	packetLength := uint64(commonHeaderSize) + uint64(len(bodyBytes))
-	packetChecksum := packetMD5(recoverySetID, PacketTypeFile, bodyBytes)
-
-	// Write common header.
-	if err := writeAll(w, Magic[:]); err != nil {
-		return fmt.Errorf("failed to write magic bytes: %w", err)
-	}
-	if err := writeUint64LE(w, packetLength); err != nil {
-		return fmt.Errorf("failed to write packet length: %w", err)
-	}
-	if err := writeAll(w, packetChecksum[:]); err != nil {
-		return fmt.Errorf("failed to write packet checksum: %w", err)
-	}
-	if err := writeAll(w, recoverySetID[:]); err != nil {
-		return fmt.Errorf("failed to write recovery set ID: %w", err)
-	}
-	if err := writeAll(w, PacketTypeFile[:]); err != nil {
-		return fmt.Errorf("failed to write packet type: %w", err)
-	}
-
-	// Write pre-constructed body.
-	if err := writeAll(w, bodyBytes); err != nil {
-		return fmt.Errorf("failed to write packet body: %w", err)
-	}
-
-	return nil
+	return writeCommonPacket(w, recoverySetID, PacketTypeFile, body.Bytes())
 }
 
 // writeManifestPacket writes the manifest packet.
 func writeManifestPacket(w io.Writer, recoverySetID [16]byte, manifest ManifestInput, packetOffset uint64) (manifestWriteEntry, error) {
+	var body bytes.Buffer
+
 	dataLen := uint64(len(manifest.Bytes))
 	dataB3 := dataHash(manifest.Bytes)
 	nameLen := uint64(len(manifest.Name))
@@ -381,7 +370,6 @@ func writeManifestPacket(w io.Writer, recoverySetID [16]byte, manifest ManifestI
 
 	dataOffset := packetOffset + commonHeaderSize + manifestBodyPrefixSize + paddedNameLen
 
-	var body bytes.Buffer
 	if err := writeUint64LE(&body, dataLen); err != nil {
 		return manifestWriteEntry{}, fmt.Errorf("failed to write data length: %w", err)
 	}
@@ -405,30 +393,8 @@ func writeManifestPacket(w io.Writer, recoverySetID [16]byte, manifest ManifestI
 		return manifestWriteEntry{}, fmt.Errorf("failed to write manifest length: %w", err)
 	}
 
-	bodyBytes := body.Bytes()
-	packetLength := uint64(commonHeaderSize) + uint64(len(bodyBytes))
-	packetChecksum := packetMD5(recoverySetID, PacketTypeManifest, bodyBytes)
-
-	// Write common header.
-	if err := writeAll(w, Magic[:]); err != nil {
-		return manifestWriteEntry{}, fmt.Errorf("failed to write magic bytes: %w", err)
-	}
-	if err := writeUint64LE(w, packetLength); err != nil {
-		return manifestWriteEntry{}, fmt.Errorf("failed to write packet length: %w", err)
-	}
-	if err := writeAll(w, packetChecksum[:]); err != nil {
-		return manifestWriteEntry{}, fmt.Errorf("failed to write packet checksum: %w", err)
-	}
-	if err := writeAll(w, recoverySetID[:]); err != nil {
-		return manifestWriteEntry{}, fmt.Errorf("failed to write recovery set ID: %w", err)
-	}
-	if err := writeAll(w, PacketTypeManifest[:]); err != nil {
-		return manifestWriteEntry{}, fmt.Errorf("failed to write packet type: %w", err)
-	}
-
-	// Write pre-constructed body.
-	if err := writeAll(w, bodyBytes); err != nil {
-		return manifestWriteEntry{}, fmt.Errorf("failed to write packet body: %w", err)
+	if err := writeCommonPacket(w, recoverySetID, PacketTypeManifest, body.Bytes()); err != nil {
+		return manifestWriteEntry{}, fmt.Errorf("failed to write packet: %w", err)
 	}
 
 	return manifestWriteEntry{

@@ -114,25 +114,25 @@ func Fuzz_Bundle_Open(f *testing.F) {
 	})
 }
 
-// func Fuzz_Bundle_Scan(f *testing.F) {
-// 	referenceBundle, par2Inputs := mustFuzzSeed(f)
-// 	f.Add(referenceBundle)
-// 	for _, in := range par2Inputs {
-// 		f.Add(in.Data)
-// 	}
+func Fuzz_Bundle_Scan(f *testing.F) {
+	referenceBundle, par2Inputs := mustFuzzSeed(f)
+	f.Add(referenceBundle)
+	for _, in := range par2Inputs {
+		f.Add(in.Data)
+	}
 
-// 	// We fuzz the content of the reference bundle.
-// 	f.Fuzz(func(t *testing.T, data []byte) {
-// 		fs := afero.NewMemMapFs()
-// 		const bundlePath = "/fuzz.bundle"
+	// We fuzz the content of the reference bundle.
+	f.Fuzz(func(t *testing.T, data []byte) {
+		fs := afero.NewMemMapFs()
+		const bundlePath = "/fuzz.bundle"
 
-// 		if err := afero.WriteFile(fs, bundlePath, data, 0o600); err != nil {
-// 			return
-// 		}
+		if err := afero.WriteFile(fs, bundlePath, data, 0o600); err != nil {
+			return
+		}
 
-// 		_, _, _ = Scan(fs, bundlePath)
-// 	})
-// }
+		_, _, _ = Scan(fs, bundlePath)
+	})
+}
 
 func Fuzz_Bundle_Pack(f *testing.F) {
 	_, par2Entries := mustFuzzSeed(f)
@@ -240,7 +240,7 @@ func Fuzz_Bundle_Unpack(f *testing.F) {
 		}
 		defer func() { _ = b.Close() }()
 
-		_ = b.Unpack(destDir)
+		_ = b.Unpack(fs, destDir)
 	})
 }
 

@@ -1,10 +1,16 @@
 package bundle
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/spf13/afero"
 )
 
-// Magic identifies PAR2 packets.
 var Magic = [8]byte{'P', 'A', 'R', '2', 0, 'P', 'K', 'T'}
 
 var (
@@ -16,27 +22,6 @@ var (
 const (
 	// Version is the current format version.
 	Version uint64 = 1
-
-	// commonHeaderSize is the fixed size of every packet header prefix.
-	// magic(8) + packet_length(8) + packet_md5(16) + recovery_set_id(16) + packet_type(16) = 64.
-	commonHeaderSize = 64
-
-	// indexFixedSize is the fixed size of every index packet prefix.
-	// version(8) + manifestPacketOffset(8) + manifestDataOffset(8) +
-	// manifestDataLength(8) + manifestDataB3(32) + manifestNameLen(8) + entryCount(8) = 80.
-	indexFixedSize = 80
-
-	// IndexEntryFixedSize is the fixed size of every index packet entry prefix.
-	// packetOffset(8) + dataOffset(8) + dataLength(8) + dataB3(32) + nameLen(8) = 64.
-	indexEntryFixedSize = 64
-
-	// FileBodyPrefixSize is the fixed size of every file packet body prefix.
-	// dataLength(8) + dataB3(32) + nameLen(8) = 48.
-	fileBodyPrefixSize = 48
-
-	// ManifestBodyPrefixSize is the fixed size of every manifest packet body prefix.
-	// dataLength(8) + dataB3(32) + nameLen(8) = 48.
-	manifestBodyPrefixSize = 48
 )
 
 var (
@@ -47,64 +32,103 @@ var (
 	ErrUnknownPacketType = errors.New("unknown packet type")
 )
 
-// CommonHeader is the 64-byte PAR2 packet header.
-type CommonHeader struct {
-	Magic         [8]byte
-	PacketLength  uint64
-	PacketMD5     [16]byte // md5(recovery_set_id || packet_type || body)
-	RecoverySetID [16]byte
-	PacketType    [16]byte
+// Bundle is an opened bundle file with a parsed index packet.
+type Bundle struct {
+	f     afero.File // os.O_RDWR
+	size  int64      // guaranteed > 0
+	Index IndexPacket
 }
 
-// IndexEntry is one entry in the index packet's file table.
-type IndexEntry struct {
-	PacketOffset uint64
-	DataOffset   uint64
-	DataLength   uint64
-	DataB3       [32]byte
-	NameLen      uint64
-	Name         string
+// Open opens a bundle file and reads the index packet.
+func Open(fsys afero.Fs, path string) (*Bundle, error) {
+	f, err := fsys.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open: %w", err)
+	}
+
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat: %w", err)
+	}
+	if fi.Size() < 0 {
+		return nil, fmt.Errorf("file size < 0: %d", fi.Size())
+	}
+
+	b := &Bundle{f: f, size: fi.Size()}
+	if err := b.readIndexPacket(); err != nil {
+		_ = f.Close()
+
+		return nil, fmt.Errorf("failed to read index packet: %w", err)
+	}
+
+	return b, nil
 }
 
-// IndexPacket is the index at the start of the bundle.
-type IndexPacket struct {
-	CommonHeader
+// Manifest reads, verifies and returns the manifest bytes.
+func (b *Bundle) Manifest() ([]byte, error) {
+	var buf bytes.Buffer
 
-	Version uint64
+	if err := b.ExtractManifest(&buf); err != nil {
+		return nil, fmt.Errorf("failed to extract: %w", err)
+	}
 
-	ManifestPacketOffset uint64
-	ManifestDataOffset   uint64
-	ManifestDataLength   uint64
-	ManifestDataB3       [32]byte
-	ManifestNameLen      uint64
-	ManifestName         string
-
-	EntryCount uint64
-	Entries    []IndexEntry
+	return buf.Bytes(), nil
 }
 
-// FilePacket wraps a single par2 file.
-type FilePacket struct {
-	CommonHeader
+// ExtractEntry extracts a single entry from the bundle to a destination writer.
+func (b *Bundle) ExtractEntry(e IndexEntry, w io.Writer) error {
+	sr := io.NewSectionReader(b.f, int64(e.DataOffset), int64(e.DataLength)) //nolint:gosec
+	expectedHash := e.DataB3
 
-	DataLength uint64
-	DataB3     [32]byte
-	NameLen    uint64
-	Name       string
+	hash, err := dataHashReader(io.TeeReader(sr, w))
+	if err != nil {
+		return fmt.Errorf("failed to io: %w", err)
+	}
 
-	packetOffset uint64 // derived from packet position (not index)
-	dataOffset   uint64 // derived from packet position (not index)
+	if hash != expectedHash {
+		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
+	}
+
+	return nil
 }
 
-// ManifestPacket holds the JSON manifest.
-type ManifestPacket struct {
-	CommonHeader
+// ExtractManifest extracts the manifest from the bundle to a destination writer.
+func (b *Bundle) ExtractManifest(w io.Writer) error {
+	sr := io.NewSectionReader(b.f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
+	expectedHash := b.Index.ManifestDataB3
 
-	DataLength uint64
-	DataB3     [32]byte
-	NameLen    uint64
-	Name       string
+	hash, err := dataHashReader(io.TeeReader(sr, w))
+	if err != nil {
+		return fmt.Errorf("failed to io: %w", err)
+	}
 
-	packetOffset uint64 // derived from packet position (not index)
-	dataOffset   uint64 // derived from packet position (not index)
+	if hash != expectedHash {
+		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
+	}
+
+	return nil
+}
+
+// Unpack extracts all files and the manifest to destDir on destFs.
+func (b *Bundle) Unpack(destFs afero.Fs, destDir string) error {
+	// Extract the file entries.
+	for _, e := range b.Index.Entries {
+		if err := writeToFile(destFs, filepath.Join(destDir, e.Name), func(w io.Writer) error {
+			return b.ExtractEntry(e, w)
+		}); err != nil {
+			return fmt.Errorf("failed to extract %q: %w", e.Name, err)
+		}
+	}
+
+	// Extract the manifest.
+	if err := writeToFile(destFs, filepath.Join(destDir, b.Index.ManifestName), b.ExtractManifest); err != nil {
+		return fmt.Errorf("failed to extract manifest: %w", err)
+	}
+
+	return nil
+}
+
+// Close closes the bundle file.
+func (b *Bundle) Close() error {
+	return b.f.Close() //nolint:wrapcheck
 }

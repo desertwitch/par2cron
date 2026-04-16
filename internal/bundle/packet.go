@@ -8,6 +8,65 @@ import (
 	"io"
 )
 
+const (
+	// commonHeaderSize is the fixed size of every packet header prefix.
+	// magic(8) + packet_length(8) + packet_md5(16) + recovery_set_id(16) + packet_type(16) = 64.
+	commonHeaderSize = 64
+
+	// indexFixedSize is the fixed size of every index packet prefix.
+	// version(8) + manifestPacketOffset(8) + manifestDataOffset(8) +
+	// manifestDataLength(8) + manifestDataB3(32) + manifestNameLen(8) + entryCount(8) = 80.
+	indexFixedSize = 80
+
+	// IndexEntryFixedSize is the fixed size of every index packet entry prefix.
+	// packetOffset(8) + dataOffset(8) + dataLength(8) + dataB3(32) + nameLen(8) = 64.
+	indexEntryFixedSize = 64
+
+	// FileBodyPrefixSize is the fixed size of every file packet body prefix.
+	// dataLength(8) + dataB3(32) + nameLen(8) = 48.
+	fileBodyPrefixSize = 48
+
+	// ManifestBodyPrefixSize is the fixed size of every manifest packet body prefix.
+	// dataLength(8) + dataB3(32) + nameLen(8) = 48.
+	manifestBodyPrefixSize = 48
+)
+
+// CommonHeader is the 64-byte PAR2 packet header.
+type CommonHeader struct {
+	Magic         [8]byte
+	PacketLength  uint64
+	PacketMD5     [16]byte // md5(recovery_set_id || packet_type || body)
+	RecoverySetID [16]byte
+	PacketType    [16]byte
+}
+
+// IndexPacket is the index at the start of the bundle.
+type IndexPacket struct {
+	CommonHeader
+
+	Version uint64
+
+	ManifestPacketOffset uint64
+	ManifestDataOffset   uint64
+	ManifestDataLength   uint64
+	ManifestDataB3       [32]byte
+	ManifestNameLen      uint64
+	ManifestName         string
+
+	EntryCount uint64
+	Entries    []IndexEntry
+}
+
+// IndexEntry is one entry in the index packet's file table.
+type IndexEntry struct {
+	PacketOffset uint64
+	DataOffset   uint64
+	DataLength   uint64
+	DataB3       [32]byte
+	NameLen      uint64
+	Name         string
+}
+
 // parseIndexPacket parses the type-specific header bytes of an index packet.
 func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 	var mp IndexPacket
@@ -73,6 +132,19 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 	return mp, nil
 }
 
+// FilePacket wraps a single par2 file.
+type FilePacket struct {
+	CommonHeader
+
+	DataLength uint64
+	DataB3     [32]byte
+	NameLen    uint64
+	Name       string
+
+	packetOffset uint64 // derived from packet position (not index)
+	dataOffset   uint64 // derived from packet position (not index)
+}
+
 // parseFilePacket parses the type-specific header bytes of a file packet.
 func parseFilePacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (FilePacket, error) {
 	var fp FilePacket
@@ -107,11 +179,25 @@ func parseFilePacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (File
 	return fp, nil
 }
 
+// ManifestPacket holds the JSON manifest.
+type ManifestPacket struct {
+	CommonHeader
+
+	DataLength uint64
+	DataB3     [32]byte
+	NameLen    uint64
+	Name       string
+
+	packetOffset uint64 // derived from packet position (not index)
+	dataOffset   uint64 // derived from packet position (not index)
+}
+
 // parseManifestPacket parses the type-specific header bytes of a manifest packet.
 func parseManifestPacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (ManifestPacket, error) {
 	var mp ManifestPacket
 	mp.CommonHeader = ch
-	startLen := r.Len()
+
+	startRemaining := r.Len()
 
 	if err := binary.Read(r, binary.LittleEndian, &mp.DataLength); err != nil {
 		return ManifestPacket{}, fmt.Errorf("failed to read data length: %w", err)
@@ -130,14 +216,15 @@ func parseManifestPacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (
 	}
 	mp.Name = string(nameBuf[:mp.NameLen])
 
+	endRemaining := r.Len()
+
 	// Just in case...
-	endLen := r.Len()
-	if startLen < 0 || endLen < 0 || startLen < endLen {
+	if startRemaining < 0 || endRemaining < 0 || startRemaining < endRemaining {
 		return ManifestPacket{}, errors.New("invalid buffer state")
 	}
 
 	// Record offsets.
-	headerBytesInBody := uint64(startLen - endLen)                              //nolint:gosec
+	headerBytesInBody := uint64(startRemaining - endRemaining)                  //nolint:gosec
 	mp.dataOffset = uint64(packetOffset) + commonHeaderSize + headerBytesInBody //nolint:gosec
 	mp.packetOffset = uint64(packetOffset)                                      //nolint:gosec
 
