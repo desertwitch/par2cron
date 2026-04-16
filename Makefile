@@ -8,7 +8,7 @@ VERSION := $(shell \
   if [ -n "$$tag" ]; then echo $$tag | sed 's/^v//'; \
   else git rev-parse --short=7 HEAD; fi)
 
-.PHONY: all $(BINARY) benchmark check clean debug help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
+.PHONY: all $(BINARY) benchmark check clean debug generate help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
@@ -30,6 +30,9 @@ clean: ## Returns the application build stage to its original state (deleting fi
 debug: ## Builds the application in debug mode (with symbols, race checks, ...)
 	CGO_ENABLED=1 GOFLAGS="-mod=vendor" go build -ldflags="-X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)-DBG" -trimpath -race -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
+
+generate: ## Re-generate the static files that are used in tests
+	@go generate ./...
 
 help: ## Shows all build related commands of the Makefile
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'

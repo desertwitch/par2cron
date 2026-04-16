@@ -1,3 +1,4 @@
+//go:generate go run ../../tool/generate-bundle
 //nolint:funcorder
 package bundle
 
