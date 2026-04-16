@@ -2,10 +2,8 @@ package bundle
 
 import (
 	"crypto/md5"
-	"encoding/binary"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/zeebo/blake3"
@@ -13,17 +11,17 @@ import (
 
 // Manifest reads, verifies and returns the manifest bytes.
 func (b *Bundle) Manifest() ([]byte, error) {
-	sr, expectedHash, err := b.readManifest()
-	if err != nil {
-		return nil, err
-	}
+	sr, expectedHash := b.readManifest()
 
 	data, err := io.ReadAll(sr)
 	if err != nil {
-		return nil, err
+		return nil,
+			fmt.Errorf("failed to read: %w", err)
 	}
+
 	if dataHash(data) != expectedHash {
-		return nil, fmt.Errorf("%w: manifest", ErrDataCorrupt)
+		return nil,
+			fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
 	}
 
 	return data, nil
@@ -38,7 +36,8 @@ func dataHash(data []byte) [32]byte {
 func dataHashReader(r io.Reader) ([32]byte, error) {
 	h := blake3.New()
 	if _, err := io.Copy(h, r); err != nil {
-		return [32]byte{}, err
+		return [32]byte{},
+			fmt.Errorf("failed to io: %w", err)
 	}
 
 	var sum [32]byte
@@ -47,27 +46,29 @@ func dataHashReader(r io.Reader) ([32]byte, error) {
 	return sum, nil
 }
 
-// headerMD5 computes md5(packet_type || packet_length || header_length || type-specific bytes),
-// i.e. bytes 8..header_length with header_md5 omitted entirely.
-func headerMD5(packetType uint64, packetLength uint64, headerLength uint64, typeSpecific []byte) [16]byte {
-	input := make([]byte, 0, 8+8+8+len(typeSpecific))
-
-	var scratch [8]byte
-	binary.LittleEndian.PutUint64(scratch[:], packetType)
-	input = append(input, scratch[:]...)
-
-	binary.LittleEndian.PutUint64(scratch[:], packetLength)
-	input = append(input, scratch[:]...)
-
-	binary.LittleEndian.PutUint64(scratch[:], headerLength)
-	input = append(input, scratch[:]...)
-
-	input = append(input, typeSpecific...)
+// packetMD5 computes md5(recovery_set_id || packet_type || body).
+func packetMD5(recoverySetID [16]byte, packetType [16]byte, body []byte) [16]byte {
+	input := make([]byte, 0, len(recoverySetID)+len(packetType)+len(body))
+	input = append(input, recoverySetID[:]...)
+	input = append(input, packetType[:]...)
+	input = append(input, body...)
 
 	return md5.Sum(input)
 }
 
+// isKnownPacketType returns if the packet is of a par2cron-specific type.
+func isKnownPacketType(t [16]byte) bool {
+	switch t {
+	case PacketTypeIndex, PacketTypeFile, PacketTypeManifest:
+		return true
+	default:
+		return false
+	}
+}
+
 // padTo4 returns n rounded up to the next multiple of 4.
+//
+//nolint:mnd
 func padTo4(n uint64) uint64 {
 	return (n + 3) &^ 3
 }
@@ -82,60 +83,57 @@ func isAligned4(n uint64) bool {
 func (b *Bundle) extractFile(name string, destDir string) error {
 	sr, expectedHash, err := b.readFile(name)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read: %w", err)
 	}
 
 	destPath := filepath.Join(destDir, name)
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
-		return err
-	}
-
-	out, err := os.Create(destPath)
+	out, err := b.fsys.Create(destPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create: %w", err)
 	}
 	defer out.Close()
 
-	// Stream and hash simultaneously.
 	hash, err := dataHashReader(io.TeeReader(sr, out))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to io: %w", err)
 	}
 
 	if hash != expectedHash {
-		// Warn here
+		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
 	}
 
-	return out.Sync()
+	if err := out.Sync(); err != nil {
+		return fmt.Errorf("failed to sync: %w", err)
+	}
+
+	return nil
 }
 
 // extractManifest extracts the manifest JSON to destDir/<manifest name>,
 // streaming from the bundle and verifying the hash after writing.
 func (b *Bundle) extractManifest(destDir string) error {
-	sr, expectedHash, err := b.readManifest()
-	if err != nil {
-		return err
-	}
+	sr, expectedHash := b.readManifest()
 
-	destPath := filepath.Join(destDir, b.Main.ManifestName)
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return err
-	}
+	destPath := filepath.Join(destDir, b.Index.ManifestName)
 
-	out, err := os.Create(destPath)
+	out, err := b.fsys.Create(destPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create: %w", err)
 	}
 	defer out.Close()
 
 	hash, err := dataHashReader(io.TeeReader(sr, out))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to io: %w", err)
 	}
 
 	if hash != expectedHash {
-		// Warn here
+		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
 	}
 
-	return out.Sync()
+	if err := out.Sync(); err != nil {
+		return fmt.Errorf("failed to sync: %w", err)
+	}
+
+	return nil
 }

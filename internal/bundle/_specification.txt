@@ -1,21 +1,39 @@
 Note: Everything is 4-byte aligned.
 ╔══════════════════════════════════════════════════════════╗
-║ COMMON PACKET HEADER (all packets start with this)       ║
+║ COMMON PACKET HEADER (according to PAR2 specification)   ║
 ║                                                          ║
-║  magic            [8]byte    "P2CB\0PKT"                 ║
+║  magic             [8]byte   "PAR2\0PKT"                 ║
+║  packet_length     u64       total packet size in bytes  ║
+║  packet_md5        [16]byte  md5 of bytes from           ║
+║                              recovery_set_id to end      ║
+║                              of packet body              ║
+║  recovery_set_id   [16]byte  copied from source PAR2     ║
+║  packet_type       [16]byte  type id (see table below)   ║
 ║                                                          ║
-║  packet_type      u64        0x01/0x02/0x03              ║
-║  packet_length    u64        total packet size in bytes  ║
-║  header_length    u64        header size in bytes        ║
-║  header_md5       [16]byte   md5 of bytes 8..hdr_length  ║
-║                              (exclude header_md5 itself) ║
-║                                                          ║
-║  (type-specific fields start at offset 48)               ║
+║  (app-specific fields start at offset 64)                ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
-║ MAIN PACKET (type 0x01)                                  ║
+║ APP PACKET TYPES                                         ║
 ║                                                          ║
-║   [common header, 48 bytes]                              ║
+║  Index     [16]byte  "P2CR BundleIndx" (+ NUL pad)       ║
+║  File      [16]byte  "P2CR BundleFile" (+ NUL pad)       ║
+║  Manifest  [16]byte  "P2CR BundleMfst" (+ NUL pad)       ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ CONTAINER ORDER                                          ║
+║                                                          ║
+║  [INDEX PACKET]                                          ║
+║  repeat for each file stream:                            ║
+║    [FILE PACKET]                                         ║
+║    [raw PAR2 packet stream bytes]                        ║
+║    [0..3 zero bytes padding, normally none*]             ║
+║  [MANIFEST PACKET]                                       ║
+║                                                          ║
+║  *: PAR2 packet streams are themselves 4-byte aligned    ║
+╠══════════════════════════════════════════════════════════╣
+║ INDEX PACKET (app-specific metadata only)                ║
+║                                                          ║
+║   [common header, 64 bytes]                              ║
 ║   version                  u64                           ║
 ║                                                          ║
 ║   manifest_packet_offset   u64                           ║
@@ -27,39 +45,40 @@ Note: Everything is 4-byte aligned.
 ║                                                          ║
 ║   entry_count              u64                           ║
 ║   entries[]:                                             ║
-║     packet_offset          u64                           ║
-║     data_offset            u64                           ║
-║     data_length            u64                           ║
+║     packet_offset          u64   (file packet offset)    ║
+║     data_offset            u64   (raw stream offset)     ║
+║     data_length            u64   (raw stream length)     ║
 ║     data_b3                [32]byte                      ║
 ║     name_len               u64                           ║
 ║     name                   [name_len]byte padded to 4    ║
 ║                                                          ║
-║   ── header_length boundary ──                           ║
+╠══════════════════════════════════════════════════════════╣
+║ FILE PACKET (app-specific metadata only)                 ║
+║                                                          ║
+║   [common header, 64 bytes]                              ║
+║   data_length              u64   (raw stream length)     ║
+║   data_b3                  [32]byte                      ║
+║   name_len                 u64                           ║
+║   name                     [name_len]byte padded to 4    ║
+║                                                          ║
+║   ── packet boundary ──  (below follows a file packet)   ║
+║                                                          ║
+║   (raw stream offset       = file packet offset +        ║
+║                                  file packet length)     ║
+║                                                          ║
+║   raw_stream               [data_length]byte             ║
+║   raw_pad                  [0..3]byte zero pad to 4      ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
-║ FILE PACKET (type 0x02)                                  ║
+║ MANIFEST PACKET (app-specific metadata + data)           ║
 ║                                                          ║
-║   [common header, 48 bytes]                              ║
+║   [common header, 64 bytes]                              ║
 ║   data_length              u64                           ║
 ║   data_b3                  [32]byte                      ║
 ║   name_len                 u64                           ║
 ║   name                     [name_len]byte padded to 4    ║
 ║                                                          ║
-║   ── header_length boundary ──                           ║
-║                                                          ║
-║   file_data                [data_length]byte padded to 4 ║
-║                                                          ║
-╠══════════════════════════════════════════════════════════╣
-║ MANIFEST PACKET (type 0x03)                              ║
-║                                                          ║
-║   [common header, 48 bytes]                              ║
-║   data_length              u64                           ║
-║   data_b3                  [32]byte                      ║
-║   name_len                 u64                           ║
-║   name                     [name_len]byte padded to 4    ║
-║                                                          ║
-║   ── header_length boundary ──                           ║
-║                                                          ║
-║   json_data                [data_length]byte padded to 4 ║
+║   json_data                [data_length]byte             ║
+║   json_pad                 [0..3]byte zero pad to 4      ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝

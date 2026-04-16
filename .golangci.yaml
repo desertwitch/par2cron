@@ -4,6 +4,7 @@ linters:
   disable:
     - depguard
     - dupl
+    - err113
     - exhaustruct
     - gochecknoglobals
     - noinlineerr
