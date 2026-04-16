@@ -27,10 +27,10 @@ var (
 	}
 
 	goldenFiles = []string{
-		"test.par.par2",
-		"test.par.vol000+34.par2",
-		"test.par.vol034+33.par2",
-		"test.par.vol067+33.par2",
+		"test.par2",
+		"test.vol000+34.par2",
+		"test.vol034+33.par2",
+		"test.vol067+33.par2",
 	}
 
 	goldenSourceFiles = []string{
@@ -39,8 +39,18 @@ var (
 	}
 )
 
-// Expectation: par2 verify must pass on the testdata reference.
-func Test_WireFormat_VerifyReference_Success(t *testing.T) {
+// Expectation: Verification must pass on the testdata originals.
+func Test_WireFormat_ExistingOriginals_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", "test.par2")
+	cmd.Dir = "testdata"
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "par2 verify failed: %s", out)
+}
+
+// Expectation: Verification must pass on the testdata reference.
+func Test_WireFormat_ExistingReference_Success(t *testing.T) {
 	t.Parallel()
 
 	cmd := exec.CommandContext(t.Context(), "par2", "verify", "reference.bundle.par2")
@@ -49,18 +59,35 @@ func Test_WireFormat_VerifyReference_Success(t *testing.T) {
 	require.NoError(t, err, "par2 verify failed: %s", out)
 }
 
-// Expectation: par2 verify must pass on the testdata fixtures.
-func Test_WireFormat_VerifyFixtures_Success(t *testing.T) {
+// Expectation: Files are byte-equal to the testdata originals after unpack.
+func Test_WireFormat_ExistingReference_Unpack_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := exec.CommandContext(t.Context(), "par2", "verify", "test.par.par2")
-	cmd.Dir = "testdata"
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "par2 verify failed: %s", out)
+	fs := afero.NewOsFs()
+	unpackDir := filepath.Join(t.TempDir(), "unpacked")
+	require.NoError(t, fs.MkdirAll(unpackDir, 0o755))
+
+	bundlePath := filepath.Join("testdata", "reference.bundle.par2")
+
+	b, err := Open(fs, bundlePath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = b.Close() })
+
+	require.NoError(t, b.Unpack(fs, unpackDir))
+
+	for _, name := range goldenFiles {
+		want, err := os.ReadFile(filepath.Join("testdata", name))
+		require.NoError(t, err)
+
+		got, err := os.ReadFile(filepath.Join(unpackDir, name))
+		require.NoError(t, err)
+
+		require.Equal(t, want, got, "unpacked %q differs from source", name)
+	}
 }
 
-// Expectation: Wire format must have remained the same and pass comparison.
-func Test_WireFormat_ReferenceFile_Success(t *testing.T) {
+// Expectation: A freshly packed bundle must be byte-equal to the reference.
+func Test_WireFormat_ReferenceFile_Pack_Success(t *testing.T) {
 	t.Parallel()
 
 	goldenBytes, err := os.ReadFile(filepath.Join("testdata", "reference.bundle.par2"))
@@ -88,48 +115,8 @@ func Test_WireFormat_ReferenceFile_Success(t *testing.T) {
 	require.Equal(t, goldenBytes, packedBytes)
 }
 
-// Expectation: Files must be byte-equal after unpack and pass verification.
-func Test_WireFormat_RenferenceFile_Unpack_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewOsFs()
-	unpackDir := filepath.Join(t.TempDir(), "unpacked")
-	require.NoError(t, fs.MkdirAll(unpackDir, 0o755))
-
-	bundlePath := filepath.Join("testdata", "reference.bundle.par2")
-
-	b, err := Open(fs, bundlePath)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = b.Close() })
-
-	require.NoError(t, b.Unpack(fs, unpackDir))
-
-	for _, name := range goldenSourceFiles {
-		data, err := os.ReadFile(filepath.Join("testdata", name))
-		require.NoError(t, err)
-
-		//nolint:gosec
-		require.NoError(t, os.WriteFile(filepath.Join(unpackDir, name), data, 0o600))
-	}
-
-	cmd := exec.CommandContext(t.Context(), "par2", "verify", "test.par.par2")
-	cmd.Dir = unpackDir
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "par2 verify failed: %s", out)
-
-	for _, name := range goldenFiles {
-		want, err := os.ReadFile(filepath.Join("testdata", name))
-		require.NoError(t, err)
-
-		got, err := os.ReadFile(filepath.Join(unpackDir, name))
-		require.NoError(t, err)
-
-		require.Equal(t, want, got, "unpacked %q differs from source", name)
-	}
-}
-
-// Expectation: Must pass verification after unpacking a freshly packed bundle.
-func Test_WireFormat_RoundTrip_Success(t *testing.T) {
+// Expectation: A freshly packed and unpacked bundle must both pass verification.
+func Test_WireFormat_ReferenceFile_PackUnpack_Success(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -146,6 +133,20 @@ func Test_WireFormat_RoundTrip_Success(t *testing.T) {
 	unpackDir := filepath.Join(tmpDir, "unpacked")
 	require.NoError(t, fs.MkdirAll(unpackDir, 0o750))
 
+	for _, name := range goldenSourceFiles {
+		data, err := os.ReadFile(filepath.Join("testdata", name))
+		require.NoError(t, err)
+
+		//nolint:gosec
+		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), data, 0o600))
+	}
+
+	// The freshly packed bundle must pass verification.
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", "bundle.par2")
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "par2 verify failed: %s", out)
+
 	b, err := Open(fs, bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = b.Close() })
@@ -160,11 +161,13 @@ func Test_WireFormat_RoundTrip_Success(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(unpackDir, name), data, 0o600))
 	}
 
-	cmd := exec.CommandContext(t.Context(), "par2", "verify", "test.par.par2")
+	// The extracted .par2 files must pass verification.
+	cmd = exec.CommandContext(t.Context(), "par2", "verify", "test.par2")
 	cmd.Dir = unpackDir
-	out, err := cmd.CombinedOutput()
+	out, err = cmd.CombinedOutput()
 	require.NoError(t, err, "par2 verify failed: %s", out)
 
+	// The extracted .par2 files must be byte-equal to the testdata originals.
 	for _, name := range goldenFiles {
 		want, err := os.ReadFile(filepath.Join("testdata", name))
 		require.NoError(t, err)

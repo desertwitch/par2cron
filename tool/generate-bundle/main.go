@@ -28,10 +28,10 @@ var manifest = bundle.ManifestInput{
 }
 
 var files = []string{
-	"test.par.par2",
-	"test.par.vol000+34.par2",
-	"test.par.vol034+33.par2",
-	"test.par.vol067+33.par2",
+	"test.par2",
+	"test.vol000+34.par2",
+	"test.vol034+33.par2",
+	"test.vol067+33.par2",
 }
 
 func main() {
