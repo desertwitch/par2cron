@@ -55,6 +55,25 @@ import (
 
 var profFile *os.File
 
+func checkForPar2(ctx context.Context) error {
+	par2cmd := exec.CommandContext(ctx, "par2", "-V")
+	par2cmd.WaitDelay = util.ProcessKillTimeout
+
+	b, err := par2cmd.Output()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "This command requires a \"par2\" (par2cmdline) installation in your $PATH")
+
+		return fmt.Errorf("exec: %w", err)
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(b))
+	if scanner.Scan() {
+		schema.Par2Version = strings.TrimSpace(scanner.Text())
+	}
+
+	return nil
+}
+
 func stopProfile() {
 	if profFile != nil {
 		pprof.StopCPUProfile()
@@ -95,21 +114,6 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 					return fmt.Errorf("%w: failed to start --pprof: %w",
 						schema.ErrExitBadInvocation, err)
 				}
-			}
-
-			par2cmd := exec.CommandContext(ctx, "par2", "-V")
-			par2cmd.WaitDelay = util.ProcessKillTimeout
-
-			b, err := par2cmd.Output()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "This program requires a \"par2\" (par2cmdline) installation in your $PATH")
-
-				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
-			}
-
-			scanner := bufio.NewScanner(bytes.NewReader(b))
-			if scanner.Scan() {
-				schema.Par2Version = strings.TrimSpace(scanner.Text())
 			}
 
 			return nil
@@ -177,6 +181,10 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 		Example: createHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkForPar2(ctx); err != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
 			result, err := runPrelude(&preludeInput[*create.Options, *configFileCreate]{
 				FSys:           fsys,
 				Args:           args,
@@ -243,6 +251,10 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 		Example: verifyHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkForPar2(ctx); err != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
 			result, err := runPrelude(&preludeInput[*verify.Options, *configFileVerify]{
 				FSys:           fsys,
 				Args:           args,
@@ -307,6 +319,10 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 		Example: repairHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := checkForPar2(ctx); err != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
 			result, err := runPrelude(&preludeInput[*repair.Options, *configFileRepair]{
 				FSys:           fsys,
 				Args:           args,

@@ -4,7 +4,7 @@
 /output*
 /par2cron
 /slack-desc
-/TODO
+TODO
 /vendor
 /update-devel.sh
 # Added by goreleaser init:
