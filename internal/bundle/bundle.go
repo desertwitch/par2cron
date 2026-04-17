@@ -1,8 +1,8 @@
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/multipar.bun.par2 -parse testdata/multipar/files.par2 testdata/multipar/files.par2 testdata/multipar/files.vol00+7.par2 testdata/multipar/files.vol07+6.par2 testdata/multipar/files.vol13+6.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/par2cmdline.bun.par2 -parse testdata/par2cmdline/files.par2 testdata/par2cmdline/files.par2 testdata/par2cmdline/files.vol0+1.par2 testdata/par2cmdline/files.vol1+1.par2 testdata/par2cmdline/files.vol2+1.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/par2cmdline-turbo.bun.par2 -parse testdata/par2cmdline-turbo/files.par2 testdata/par2cmdline-turbo/files.par2 testdata/par2cmdline-turbo/files.vol0+1.par2 testdata/par2cmdline-turbo/files.vol1+1.par2 testdata/par2cmdline-turbo/files.vol2+1.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/parpar.bun.par2 -parse testdata/parpar/files.par2 testdata/parpar/files.par2 testdata/parpar/files.vol00+05.par2 testdata/parpar/files.vol05+05.par2 testdata/parpar/files.vol10+03.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/quickpar.bun.par2 -parse testdata/quickpar/files.par2 testdata/quickpar/files.par2 testdata/quickpar/files.vol0+1.PAR2 testdata/quickpar/files.vol1+1.PAR2 testdata/quickpar/files.vol2+2.PAR2
+//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/multipar.p2c.par2 -parse testdata/multipar/files.par2 testdata/multipar/files.par2 testdata/multipar/files.vol00+7.par2 testdata/multipar/files.vol07+6.par2 testdata/multipar/files.vol13+6.par2
+//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/par2cmdline.p2c.par2 -parse testdata/par2cmdline/files.par2 testdata/par2cmdline/files.par2 testdata/par2cmdline/files.vol0+1.par2 testdata/par2cmdline/files.vol1+1.par2 testdata/par2cmdline/files.vol2+1.par2
+//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/par2cmdline-turbo.p2c.par2 -parse testdata/par2cmdline-turbo/files.par2 testdata/par2cmdline-turbo/files.par2 testdata/par2cmdline-turbo/files.vol0+1.par2 testdata/par2cmdline-turbo/files.vol1+1.par2 testdata/par2cmdline-turbo/files.vol2+1.par2
+//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/parpar.p2c.par2 -parse testdata/parpar/files.par2 testdata/parpar/files.par2 testdata/parpar/files.vol00+05.par2 testdata/parpar/files.vol05+05.par2 testdata/parpar/files.vol10+03.par2
+//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/quickpar.p2c.par2 -parse testdata/quickpar/files.par2 testdata/quickpar/files.par2 testdata/quickpar/files.vol0+1.PAR2 testdata/quickpar/files.vol1+1.PAR2 testdata/quickpar/files.vol2+2.PAR2
 //nolint:dupword
 package bundle
 
@@ -18,14 +18,18 @@ import (
 var Magic = [8]byte{'P', 'A', 'R', '2', 0, 'P', 'K', 'T'}
 
 var (
-	PacketTypeIndex    = [16]byte{'P', '2', 'C', 'R', ' ', 'B', 'u', 'n', 'd', 'l', 'e', 'I', 'n', 'd', 'x'}
-	PacketTypeFile     = [16]byte{'P', '2', 'C', 'R', ' ', 'B', 'u', 'n', 'd', 'l', 'e', 'F', 'i', 'l', 'e'}
-	PacketTypeManifest = [16]byte{'P', '2', 'C', 'R', ' ', 'B', 'u', 'n', 'd', 'l', 'e', 'M', 'f', 's', 't'}
+	PacketTypeIndex    = [16]byte{'P', '2', 'C', ' ', 'B', 'u', 'n', 'd', 'l', 'e', 'I', 'n', 'd', 'x', 0, 0}
+	PacketTypeFile     = [16]byte{'P', '2', 'C', ' ', 'B', 'u', 'n', 'd', 'l', 'e', 'F', 'i', 'l', 'e', 0, 0}
+	PacketTypeManifest = [16]byte{'P', '2', 'C', ' ', 'B', 'u', 'n', 'd', 'l', 'e', 'M', 'f', 's', 't', 0, 0}
 )
 
 const (
 	// Version is the current format version.
 	Version uint64 = 1
+
+	// FlagIndexRebuilt signals that an index packet was re-built (corrupted).
+	// At this point file packet entries may have been dropped from the index.
+	FlagIndexRebuilt uint64 = 1 << 0
 )
 
 var ErrDataCorrupt = errors.New("data corrupt")
@@ -78,6 +82,7 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 		}
 
 		b.Index = reconstructIndex(manifest, files)
+		b.Index.Flags |= FlagIndexRebuilt
 		b.IndexDamaged = fmt.Errorf("index reconstructed: %w", err)
 	}
 

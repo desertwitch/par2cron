@@ -15,9 +15,9 @@ Note: Everything is 4-byte aligned.
 ╠══════════════════════════════════════════════════════════╣
 ║ APP PACKET TYPES                                         ║
 ║                                                          ║
-║  Index     [16]byte  "P2CR BundleIndx" (+ NUL pad)       ║
-║  File      [16]byte  "P2CR BundleFile" (+ NUL pad)       ║
-║  Manifest  [16]byte  "P2CR BundleMfst" (+ NUL pad)       ║
+║  Index     [16]byte  "P2C BundleIndx\0\0"                ║
+║  File      [16]byte  "P2C BundleFile\0\0"                ║
+║  Manifest  [16]byte  "P2C BundleMfst\0\0"                ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
 ║ CONTAINER ORDER                                          ║
@@ -35,6 +35,9 @@ Note: Everything is 4-byte aligned.
 ║                                                          ║
 ║   [common header, 64 bytes]                              ║
 ║   version                  u64                           ║
+║   flags                    u64                           ║
+║     bit0 = index rebuilt                                 ║
+║     (readers ignore unknown flags)                       ║
 ║                                                          ║
 ║   manifest_packet_offset   u64                           ║
 ║   manifest_data_offset     u64                           ║

@@ -91,7 +91,7 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 
 		return fmt.Errorf("failed to seek to start: %w", err)
 	}
-	if err := writeIndexPacket(f, recoverySetID, entries, manifestEntry); err != nil {
+	if err := writeIndexPacket(f, recoverySetID, 0, entries, manifestEntry); err != nil {
 		failed = true
 
 		return fmt.Errorf("failed to write index packet: %w", err)
@@ -155,7 +155,7 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 	}
 
 	// Write the new index packet at offset 0.
-	if err := writeIndexPacket(b.f, b.Index.RecoverySetID, b.Index.Entries, mf); err != nil {
+	if err := writeIndexPacket(b.f, b.Index.RecoverySetID, b.Index.Flags, b.Index.Entries, mf); err != nil {
 		return fmt.Errorf("failed to write index packet: %w", err)
 	}
 
@@ -218,11 +218,14 @@ func writeCommonPacket(w io.Writer, recoverySetID [16]byte, packetType [16]byte,
 }
 
 // writeIndexPacket writes the bundle's index packet (header + manifest ref + entry table).
-func writeIndexPacket(w io.Writer, recoverySetID [16]byte, entries []IndexEntry, mf manifestWriteEntry) error {
+func writeIndexPacket(w io.Writer, recoverySetID [16]byte, flags uint64, entries []IndexEntry, mf manifestWriteEntry) error {
 	var body bytes.Buffer
 
 	if err := writeUint64LE(&body, Version); err != nil {
 		return fmt.Errorf("failed to write version: %w", err)
+	}
+	if err := writeUint64LE(&body, flags); err != nil {
+		return fmt.Errorf("failed to write flags: %w", err)
 	}
 
 	// Write manifest information.

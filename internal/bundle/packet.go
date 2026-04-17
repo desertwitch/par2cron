@@ -15,9 +15,9 @@ const (
 	commonHeaderSize = 64
 
 	// indexFixedSize is the fixed size of every index packet prefix.
-	// version(8) + manifestPacketOffset(8) + manifestDataOffset(8) +
-	// manifestDataLength(8) + manifestDataB3(32) + manifestNameLen(8) + entryCount(8) = 80.
-	indexFixedSize = 80
+	// version(8) + flags(8) + manifestPacketOffset(8) + manifestDataOffset(8) +
+	// manifestDataLength(8) + manifestDataB3(32) + manifestNameLen(8) + entryCount(8) = 88.
+	indexFixedSize = 88
 
 	// IndexEntryFixedSize is the fixed size of every index packet entry prefix.
 	// packetOffset(8) + dataOffset(8) + dataLength(8) + dataB3(32) + nameLen(8) = 64.
@@ -30,6 +30,10 @@ const (
 	// ManifestBodyPrefixSize is the fixed size of every manifest packet body prefix.
 	// dataLength(8) + dataB3(32) + nameLen(8) = 48.
 	manifestBodyPrefixSize = 48
+
+	// maxPacketBodyBytes is the maximum allowed body length for any of our packets.
+	// This would have to be a serious bug though, as we only store metadata/manifests.
+	maxPacketBodyBytes uint64 = 128 * 1024 * 1024 // 128 MiB
 )
 
 // CommonHeader is the 64-byte PAR2 packet header.
@@ -46,6 +50,7 @@ type IndexPacket struct {
 	CommonHeader
 
 	Version uint64
+	Flags   uint64
 
 	ManifestPacketOffset uint64
 	ManifestDataOffset   uint64
@@ -129,6 +134,11 @@ func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64) (CommonHeader,
 		return CommonHeader{}, nil, fmt.Errorf("packet length %d exceeds stream size", ch.PacketLength)
 	}
 
+	// Memory allocation check: is it a sane packet length?
+	if bodyLen > maxPacketBodyBytes {
+		return CommonHeader{}, nil, fmt.Errorf("packet body too large: %d > %d", bodyLen, maxPacketBodyBytes)
+	}
+
 	// Read the body at its offset.
 	body := make([]byte, bodyLen)
 	if _, err := r.ReadAt(body, bodyOffset); err != nil {
@@ -150,6 +160,9 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 
 	if err := binary.Read(r, binary.LittleEndian, &mp.Version); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read version: %w", err)
+	}
+	if err := binary.Read(r, binary.LittleEndian, &mp.Flags); err != nil {
+		return IndexPacket{}, fmt.Errorf("failed to read flags: %w", err)
 	}
 	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestPacketOffset); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read manifest packet offset: %w", err)

@@ -43,11 +43,11 @@ func TestMain(m *testing.M) {
 	fs := afero.NewOsFs()
 
 	for _, base := range []struct{ name, dir, bundle string }{
-		{"multipar", "multipar", "generated/multipar.bun.par2"},
-		{"par2cmdline", "par2cmdline", "generated/par2cmdline.bun.par2"},
-		{"par2cmdline-turbo", "par2cmdline-turbo", "generated/par2cmdline-turbo.bun.par2"},
-		{"parpar", "parpar", "generated/parpar.bun.par2"},
-		{"quickpar", "quickpar", "generated/quickpar.bun.par2"},
+		{"multipar", "multipar", "generated/multipar.p2c.par2"},
+		{"par2cmdline", "par2cmdline", "generated/par2cmdline.p2c.par2"},
+		{"par2cmdline-turbo", "par2cmdline-turbo", "generated/par2cmdline-turbo.p2c.par2"},
+		{"parpar", "parpar", "generated/parpar.p2c.par2"},
+		{"quickpar", "quickpar", "generated/quickpar.p2c.par2"},
 	} {
 		par2Files := findPar2Files(base.dir)
 		indexFile := findIndexPar2(par2Files)
