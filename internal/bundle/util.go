@@ -4,28 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/spf13/afero"
 	"github.com/zeebo/blake3"
 )
-
-// writeToFile creates path on fsys, runs extract to populate it, and syncs.
-func writeToFile(fsys afero.Fs, path string, extract func(io.Writer) error) error {
-	out, err := fsys.Create(path)
-	if err != nil {
-		return fmt.Errorf("failed to create: %w", err)
-	}
-	defer out.Close()
-
-	if err := extract(out); err != nil {
-		return fmt.Errorf("failed to extract: %w", err)
-	}
-
-	if err := out.Sync(); err != nil {
-		return fmt.Errorf("failed to sync: %w", err)
-	}
-
-	return nil
-}
 
 // dataHash computes the data integrity hash from a byte slice.
 func dataHash(data []byte) [32]byte {

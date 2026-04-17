@@ -10,8 +10,8 @@ import (
 
 // Scan scans the bundle for app-specific packets by PAR2 magic, ignoring the
 // index packet index. Use this as a fallback if the index packet is corrupt.
-func Scan(fsys afero.Fs, path string) ([]FilePacket, *ManifestPacket, error) {
-	f, err := fsys.Open(path)
+func Scan(fsys afero.Fs, bundlePath string) ([]FilePacket, *ManifestPacket, error) {
+	f, err := fsys.Open(bundlePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open: %w", err)
 	}

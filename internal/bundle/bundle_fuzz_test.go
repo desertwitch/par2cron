@@ -265,3 +265,25 @@ func Fuzz_Bundle_UpdateManifest(f *testing.F) {
 		_ = b.UpdateManifest(updatedManifest)
 	})
 }
+
+func Fuzz_Bundle_Validate(f *testing.F) {
+	referenceBundle, _ := mustFuzzSeed(f)
+	f.Add(referenceBundle)
+
+	f.Fuzz(func(t *testing.T, bundleData []byte) {
+		fs := afero.NewMemMapFs()
+		const bundlePath = "/bundle.validate"
+		if err := afero.WriteFile(fs, bundlePath, bundleData, 0o600); err != nil {
+			return
+		}
+
+		b, err := Open(fs, bundlePath)
+		if err != nil {
+			return
+		}
+		defer func() { _ = b.Close() }()
+
+		_ = b.Validate(false)
+		_ = b.Validate(true)
+	})
+}

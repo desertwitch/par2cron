@@ -110,10 +110,10 @@ func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64) (CommonHeader,
 
 	// Validate the packet.
 	if !isKnownPacketType(ch.PacketType) {
-		return CommonHeader{}, nil, fmt.Errorf("%w: %x", ErrUnknownPacketType, ch.PacketType)
+		return CommonHeader{}, nil, errors.New("unknown packet type")
 	}
 	if ch.Magic != Magic {
-		return CommonHeader{}, nil, fmt.Errorf("invalid magic bytes: %w", ErrInvalidMagic)
+		return CommonHeader{}, nil, errors.New("invalid magic bytes")
 	}
 	if ch.PacketLength < commonHeaderSize {
 		return CommonHeader{}, nil, fmt.Errorf("invalid packet length %d", ch.PacketLength)
@@ -137,7 +137,7 @@ func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64) (CommonHeader,
 
 	// Verify the packet checksum.
 	if packetMD5(ch.RecoverySetID, ch.PacketType, body) != ch.PacketMD5 {
-		return CommonHeader{}, nil, fmt.Errorf("failed to validate body: %w", ErrInvalidChecksum)
+		return CommonHeader{}, nil, errors.New("invalid packet checksum")
 	}
 
 	return ch, body, nil

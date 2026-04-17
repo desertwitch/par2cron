@@ -21,12 +21,14 @@ var (
 		0xf3, 0x04, 0x62, 0x4b,
 	}
 
+	goldenBundle = "reference.bundle.par2"
+
 	goldenManifest = ManifestInput{
 		Name:  "manifest.json",
 		Bytes: []byte(`{"version":1,"description":"reference bundle"}`),
 	}
 
-	goldenFiles = []string{
+	goldenPar2Files = []string{
 		"test.par2",
 		"test.vol000+34.par2",
 		"test.vol034+33.par2",
@@ -39,142 +41,277 @@ var (
 	}
 )
 
-// Expectation: Verification must pass on the testdata originals.
-func Test_WireFormat_ExistingOriginals_Success(t *testing.T) {
-	t.Parallel()
+func goldenInputs() []FileInput {
+	inputs := make([]FileInput, len(goldenPar2Files))
 
-	cmd := exec.CommandContext(t.Context(), "par2", "verify", "test.par2")
-	cmd.Dir = "testdata"
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "par2 verify failed: %s", out)
+	for i, name := range goldenPar2Files {
+		inputs[i] = FileInput{Name: name, Path: filepath.Join("testdata", name)}
+	}
+
+	return inputs
 }
 
-// Expectation: Verification must pass on the testdata reference.
-func Test_WireFormat_ExistingReference_Success(t *testing.T) {
-	t.Parallel()
+func ensureTestdataBundle(t *testing.T, dir string, corrupt bool) {
+	t.Helper()
 
-	cmd := exec.CommandContext(t.Context(), "par2", "verify", "reference.bundle.par2")
-	cmd.Dir = "testdata"
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "par2 verify failed: %s", out)
-}
-
-// Expectation: Files are byte-equal to the testdata originals after unpack.
-func Test_WireFormat_ExistingReference_Unpack_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewOsFs()
-	unpackDir := filepath.Join(t.TempDir(), "unpacked")
-	require.NoError(t, fs.MkdirAll(unpackDir, 0o755))
-
-	bundlePath := filepath.Join("testdata", "reference.bundle.par2")
-
-	b, err := Open(fs, bundlePath)
+	data, err := os.ReadFile(filepath.Join("testdata", goldenBundle))
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = b.Close() })
 
-	require.NoError(t, b.Unpack(fs, unpackDir))
-
-	for _, name := range goldenFiles {
-		want, err := os.ReadFile(filepath.Join("testdata", name))
-		require.NoError(t, err)
-
-		got, err := os.ReadFile(filepath.Join(unpackDir, name))
-		require.NoError(t, err)
-
-		require.Equal(t, want, got, "unpacked %q differs from source", name)
+	if !corrupt {
+		//nolint:gosec
+		require.NoError(t, os.WriteFile(filepath.Join(dir, goldenBundle), data, 0o600))
+		requireBundleMatchesTestdata(t, dir)
+	} else {
+		//nolint:gosec
+		require.NoError(t, os.WriteFile(filepath.Join(dir, goldenBundle), data[:len(data)-1], 0o600))
 	}
 }
 
-// Expectation: A freshly packed bundle must be byte-equal to the reference.
-func Test_WireFormat_ReferenceFile_Pack_Success(t *testing.T) {
-	t.Parallel()
+func ensureTestdataSourceFiles(t *testing.T, dir string, corrupt bool) {
+	t.Helper()
 
-	goldenBytes, err := os.ReadFile(filepath.Join("testdata", "reference.bundle.par2"))
-	require.NoError(t, err)
-
-	fs := afero.NewMemMapFs()
-
-	inputs := make([]FileInput, len(goldenFiles))
-	for i, name := range goldenFiles {
-		// Read .par2 set files to pack into bundle.
+	for _, name := range goldenSourceFiles {
 		data, err := os.ReadFile(filepath.Join("testdata", name))
 		require.NoError(t, err)
 
-		// Write .par2 set files to memory filesystem.
-		require.NoError(t, afero.WriteFile(fs, name, data, 0o600))
-
-		inputs[i] = FileInput{Name: name, Path: name}
+		if !corrupt {
+			//nolint:gosec
+			require.NoError(t, os.WriteFile(filepath.Join(dir, name), data, 0o600))
+		} else {
+			//nolint:gosec
+			require.NoError(t, os.WriteFile(filepath.Join(dir, name), data[:len(data)-1], 0o600))
+		}
 	}
 
-	require.NoError(t,
-		Pack(fs, "out.bundle.par2", goldenRecoverySetID, goldenManifest, inputs))
-
-	packedBytes, err := afero.ReadFile(fs, "out.bundle.par2")
-	require.NoError(t, err)
-	require.Equal(t, goldenBytes, packedBytes)
+	if !corrupt {
+		requireSourcesMatchTestdata(t, dir)
+	}
 }
 
-// Expectation: A freshly packed and unpacked bundle must both pass verification.
-func Test_WireFormat_ReferenceFile_PackUnpack_Success(t *testing.T) {
+func ensureTestdataPar2Files(t *testing.T, dir string, corrupt bool) {
+	t.Helper()
+
+	for _, name := range goldenPar2Files {
+		data, err := os.ReadFile(filepath.Join("testdata", name))
+		require.NoError(t, err)
+
+		if !corrupt {
+			//nolint:gosec
+			require.NoError(t, os.WriteFile(filepath.Join(dir, name), data, 0o600))
+		} else {
+			//nolint:gosec
+			require.NoError(t, os.WriteFile(filepath.Join(dir, name), data[:len(data)-1], 0o600))
+		}
+	}
+
+	if !corrupt {
+		requirePar2MatchTestdata(t, dir)
+	}
+}
+
+func requireBundleMatchesTestdata(t *testing.T, dir string) {
+	t.Helper()
+
+	want, err := os.ReadFile(filepath.Join("testdata", goldenBundle))
+	require.NoError(t, err)
+
+	got, err := os.ReadFile(filepath.Join(dir, goldenBundle))
+	require.NoError(t, err)
+
+	require.Equal(t, want, got)
+}
+
+func requireSourcesMatchTestdata(t *testing.T, dir string) {
+	t.Helper()
+
+	for _, name := range goldenSourceFiles {
+		want, err := os.ReadFile(filepath.Join("testdata", name))
+		require.NoError(t, err)
+
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+
+		require.Equal(t, want, got, "%q differs from testdata", name)
+	}
+}
+
+func requirePar2MatchTestdata(t *testing.T, dir string) {
+	t.Helper()
+
+	for _, name := range goldenPar2Files {
+		want, err := os.ReadFile(filepath.Join("testdata", name))
+		require.NoError(t, err)
+
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		require.NoError(t, err)
+
+		require.Equal(t, want, got, "%q differs from testdata", name)
+	}
+}
+
+// Expectation: Verification must pass on the testdata par2s using par2cmdline.
+func Test_WireFormat_TestdataPar2s_Success(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	ensureTestdataSourceFiles(t, tmpDir, false)
+	ensureTestdataPar2Files(t, tmpDir, false)
+
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", goldenPar2Files[0])
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "par2 verify failed: %s", out)
+}
+
+// Expectation: Verification must pass on the testdata bundle using par2cmdline.
+func Test_WireFormat_TestdataBundle_Success(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	ensureTestdataSourceFiles(t, tmpDir, false)
+	ensureTestdataBundle(t, tmpDir, false)
+
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", goldenBundle)
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "par2 verify failed: %s", out)
+}
+
+// Expectation: Extracted par2s must be byte-equal to the testdata par2s after unpack.
+func Test_WireFormat_TestdataBundle_Unpack_Success(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	fs := afero.NewOsFs()
+	ensureTestdataBundle(t, tmpDir, false)
+
+	b, err := Open(fs, filepath.Join(tmpDir, goldenBundle))
+	require.NoError(t, err)
+	require.NoError(t, b.Validate(true))
+	t.Cleanup(func() { _ = b.Close() })
+
+	require.NoError(t, b.Unpack(fs, tmpDir))
+	requirePar2MatchTestdata(t, tmpDir)
+}
+
+// Expectation: A freshly packed reference bundle must be byte-equal to the testdata bundle.
+func Test_WireFormat_ReferenceBundle_Pack_EqualsTestdata_Success(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
 	fs := afero.NewOsFs()
 
-	inputs := make([]FileInput, len(goldenFiles))
-	for i, name := range goldenFiles {
-		inputs[i] = FileInput{Name: name, Path: filepath.Join("testdata", name)}
-	}
+	bundlePath := filepath.Join(tmpDir, goldenBundle)
+	require.NoError(t, Pack(fs, bundlePath, goldenRecoverySetID, goldenManifest, goldenInputs()))
 
-	bundlePath := filepath.Join(tmpDir, "bundle.par2")
-	require.NoError(t, Pack(fs, bundlePath, goldenRecoverySetID, goldenManifest, inputs))
-
-	unpackDir := filepath.Join(tmpDir, "unpacked")
-	require.NoError(t, fs.MkdirAll(unpackDir, 0o750))
-
-	for _, name := range goldenSourceFiles {
-		data, err := os.ReadFile(filepath.Join("testdata", name))
-		require.NoError(t, err)
-
-		//nolint:gosec
-		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, name), data, 0o600))
-	}
-
-	// The freshly packed bundle must pass verification.
-	cmd := exec.CommandContext(t.Context(), "par2", "verify", "bundle.par2")
-	cmd.Dir = tmpDir
-	out, err := cmd.CombinedOutput()
-	require.NoError(t, err, "par2 verify failed: %s", out)
+	requireBundleMatchesTestdata(t, tmpDir)
 
 	b, err := Open(fs, bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = b.Close() })
 
-	require.NoError(t, b.Unpack(fs, unpackDir))
+	require.NoError(t, b.Validate(true))
+}
 
-	for _, name := range goldenSourceFiles {
-		data, err := os.ReadFile(filepath.Join("testdata", name))
-		require.NoError(t, err)
+// Expectation: A freshly packed reference bundle must pass verification using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Pack_Verify(t *testing.T) {
+	t.Parallel()
 
-		//nolint:gosec
-		require.NoError(t, os.WriteFile(filepath.Join(unpackDir, name), data, 0o600))
-	}
+	tmpDir := t.TempDir()
+	fs := afero.NewOsFs()
+	ensureTestdataSourceFiles(t, tmpDir, false)
 
-	// The extracted .par2 files must pass verification.
-	cmd = exec.CommandContext(t.Context(), "par2", "verify", "test.par2")
-	cmd.Dir = unpackDir
-	out, err = cmd.CombinedOutput()
+	bundlePath := filepath.Join(tmpDir, goldenBundle)
+	require.NoError(t, Pack(fs, bundlePath, goldenRecoverySetID, goldenManifest, goldenInputs()))
+
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", goldenBundle)
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "par2 verify failed: %s", out)
+}
 
-	// The extracted .par2 files must be byte-equal to the testdata originals.
-	for _, name := range goldenFiles {
-		want, err := os.ReadFile(filepath.Join("testdata", name))
-		require.NoError(t, err)
+// Expectation: A freshly packed reference must be able to repair using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Pack_Repair(t *testing.T) {
+	t.Parallel()
 
-		got, err := os.ReadFile(filepath.Join(unpackDir, name))
-		require.NoError(t, err)
+	tmpDir := t.TempDir()
+	fs := afero.NewOsFs()
+	ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
 
-		require.Equal(t, want, got, "unpacked %q differs from source", name)
-	}
+	bundlePath := filepath.Join(tmpDir, goldenBundle)
+	require.NoError(t, Pack(fs, bundlePath, goldenRecoverySetID, goldenManifest, goldenInputs()))
+
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", goldenBundle)
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err)
+	require.Contains(t, string(out), "Repair is possible")
+
+	cmd = exec.CommandContext(t.Context(), "par2", "repair", goldenBundle)
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	require.NoError(t, err, "par2 repair failed: %s", out)
+
+	requireSourcesMatchTestdata(t, tmpDir)  // Sources identical after repair.
+	requireBundleMatchesTestdata(t, tmpDir) // Bundle unchanged after repair.
+}
+
+// Expectation: An unpacked reference must pass verification using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Unpack_Verify(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	fs := afero.NewOsFs()
+	ensureTestdataSourceFiles(t, tmpDir, false)
+
+	bundlePath := filepath.Join(tmpDir, goldenBundle)
+	require.NoError(t, Pack(fs, bundlePath, goldenRecoverySetID, goldenManifest, goldenInputs()))
+
+	b, err := Open(fs, bundlePath)
+	require.NoError(t, err)
+	require.NoError(t, b.Validate(true))
+	require.NoError(t, b.Unpack(fs, tmpDir))
+	require.NoError(t, b.Close())
+
+	requirePar2MatchTestdata(t, tmpDir)
+	require.NoError(t, os.Remove(filepath.Join(tmpDir, goldenBundle)))
+
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", goldenPar2Files[0])
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "par2 verify failed: %s", out)
+}
+
+// Expectation: An unpacked reference must be able to repair using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Unpack_Repair(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	fs := afero.NewOsFs()
+	ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
+
+	bundlePath := filepath.Join(tmpDir, goldenBundle)
+	require.NoError(t, Pack(fs, bundlePath, goldenRecoverySetID, goldenManifest, goldenInputs()))
+
+	b, err := Open(fs, bundlePath)
+	require.NoError(t, err)
+	require.NoError(t, b.Validate(true))
+	require.NoError(t, b.Unpack(fs, tmpDir))
+	require.NoError(t, b.Close())
+
+	requirePar2MatchTestdata(t, tmpDir)
+	require.NoError(t, os.Remove(filepath.Join(tmpDir, goldenBundle)))
+
+	cmd := exec.CommandContext(t.Context(), "par2", "verify", goldenPar2Files[0])
+	cmd.Dir = tmpDir
+	out, err := cmd.CombinedOutput()
+	require.Error(t, err)
+	require.Contains(t, string(out), "Repair is possible")
+
+	cmd = exec.CommandContext(t.Context(), "par2", "repair", goldenPar2Files[0])
+	cmd.Dir = tmpDir
+	out, err = cmd.CombinedOutput()
+	require.NoError(t, err, "par2 repair failed: %s", out)
+
+	requireSourcesMatchTestdata(t, tmpDir)
 }

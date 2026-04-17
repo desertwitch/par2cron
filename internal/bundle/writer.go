@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 
 	"github.com/spf13/afero"
 )
@@ -34,16 +35,25 @@ func computeIndexSize(manifest ManifestInput, files []FileInput) uint64 {
 	return size
 }
 
-// Pack creates a bundle at outputPath from the given recovery set ID, files and manifest.
-func Pack(fsys afero.Fs, outputPath string, recoverySetID [16]byte, manifest ManifestInput, files []FileInput) error {
-	f, err := fsys.Create(outputPath)
+// Pack creates a bundle at bundlePath from the given recovery set ID, files and manifest.
+func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest ManifestInput, files []FileInput) error {
+	var failed bool
+	defer func() {
+		if failed {
+			_ = fsys.Remove(bundlePath)
+		}
+	}()
+
+	f, err := fsys.Create(bundlePath)
 	if err != nil {
 		return fmt.Errorf("failed to create: %w", err)
 	}
 	defer f.Close()
 
-	// Copy the slice, in case the caller didn't do it.
-	manifest.Bytes = slices.Clone(manifest.Bytes)
+	// Deterministic ordering.
+	slices.SortFunc(files, func(a, b FileInput) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	// Compute index packet size.
 	indexSize := computeIndexSize(manifest, files)
@@ -51,6 +61,8 @@ func Pack(fsys afero.Fs, outputPath string, recoverySetID [16]byte, manifest Man
 	// Write a placeholder since we don't know the offsets yet.
 	placeholder := make([]byte, indexSize)
 	if err := writeAll(f, placeholder); err != nil {
+		failed = true
+
 		return fmt.Errorf("failed to write index packet placeholder: %w", err)
 	}
 
@@ -59,6 +71,8 @@ func Pack(fsys afero.Fs, outputPath string, recoverySetID [16]byte, manifest Man
 	for i, fi := range files {
 		entry, err := writeFileSegment(fsys, f, recoverySetID, fi)
 		if err != nil {
+			failed = true
+
 			return fmt.Errorf("failed to write file segment: %w", err)
 		}
 		entries[i] = entry
@@ -67,26 +81,38 @@ func Pack(fsys afero.Fs, outputPath string, recoverySetID [16]byte, manifest Man
 	// Write the manifest at the end of the file.
 	manifestPacketOffset, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
+		failed = true
+
 		return fmt.Errorf("failed to get manifest packet position: %w", err)
 	}
 	if manifestPacketOffset < 0 {
+		failed = true
+
 		return fmt.Errorf("failed to get valid manifest packet offset: %d", manifestPacketOffset)
 	}
 	manifestEntry, err := writeManifestPacket(f, recoverySetID, manifest, uint64(manifestPacketOffset))
 	if err != nil {
+		failed = true
+
 		return fmt.Errorf("failed to write manifest packet: %w", err)
 	}
 
 	// Now seek back and write the actual index packet with the offsets.
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		failed = true
+
 		return fmt.Errorf("failed to seek to start: %w", err)
 	}
 	if err := writeIndexPacket(f, recoverySetID, entries, manifestEntry); err != nil {
+		failed = true
+
 		return fmt.Errorf("failed to write index packet: %w", err)
 	}
 
 	// Sync the changes.
 	if err := f.Sync(); err != nil {
+		failed = true
+
 		return fmt.Errorf("failed to sync: %w", err)
 	}
 
@@ -106,6 +132,10 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 	}
 	if ch.PacketType != PacketTypeManifest {
 		return fmt.Errorf("expected manifest packet at offset %d, got %q", manifestPacketOffset, ch.PacketType)
+	}
+	if manifestPacketOffset+ch.PacketLength != uint64(b.size) { //nolint:gosec
+		return fmt.Errorf("manifest packet does not end at EOF: ends at %d, file size %d",
+			manifestPacketOffset+ch.PacketLength, b.size)
 	}
 
 	// Truncate the file to drop the old manifest packet.

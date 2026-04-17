@@ -1,30 +1,63 @@
 package bundle
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/spf13/afero"
 )
 
-// Unpack extracts all files and the manifest to destDir on destFs.
-func (b *Bundle) Unpack(destFs afero.Fs, destDir string) error {
-	// Extract the file entries.
-	for _, e := range b.Index.Entries {
-		if err := writeToFile(destFs, filepath.Join(destDir, e.Name), func(w io.Writer) error {
-			return b.ExtractEntry(e, w)
-		}); err != nil {
-			return fmt.Errorf("failed to extract %q: %w", e.Name, err)
-		}
+func extractToFile(fsys afero.Fs, path string, extract func(io.Writer) error) error {
+	out, err := fsys.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o666) //nolint:mnd
+	if err != nil {
+		return fmt.Errorf("failed to create: %w", err)
 	}
 
-	// Extract the manifest.
-	if err := writeToFile(destFs, filepath.Join(destDir, b.Index.ManifestName), b.ExtractManifest); err != nil {
-		return fmt.Errorf("failed to extract manifest: %w", err)
+	if err := extract(out); err != nil {
+		_ = out.Close()
+		_ = fsys.Remove(path)
+
+		return fmt.Errorf("failed to extract: %w", err)
+	}
+
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		_ = fsys.Remove(path)
+
+		return fmt.Errorf("failed to sync: %w", err)
+	}
+
+	if err := out.Close(); err != nil {
+		_ = fsys.Remove(path)
+
+		return fmt.Errorf("failed to close: %w", err)
 	}
 
 	return nil
+}
+
+// Unpack extracts all file entries and the manifest to destDir. It attempts
+// to extract every entry rather than stopping at the first error; files that
+// fail extraction are removed and their errors are joined in the return value.
+func (b *Bundle) Unpack(fsys afero.Fs, destDir string) error {
+	var errs []error
+
+	for _, e := range b.Index.Entries {
+		if err := extractToFile(fsys, filepath.Join(destDir, e.Name), func(w io.Writer) error {
+			return b.ExtractEntry(e, w)
+		}); err != nil {
+			errs = append(errs, fmt.Errorf("%q: %w", e.Name, err))
+		}
+	}
+
+	if err := extractToFile(fsys, filepath.Join(destDir, b.Index.ManifestName), b.ExtractManifest); err != nil {
+		errs = append(errs, fmt.Errorf("manifest: %w", err))
+	}
+
+	return errors.Join(errs...)
 }
 
 // ExtractEntry extracts a single entry from the bundle to a destination writer.
