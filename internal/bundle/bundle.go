@@ -28,16 +28,27 @@ const (
 	Version uint64 = 1
 )
 
-var ErrDataCorrupt = errors.New("data hash mismatch")
+var ErrDataCorrupt = errors.New("data corrupt")
 
-// Bundle is an opened bundle file with a parsed index packet.
+// Bundle is an opened bundle file with a parsed index packet. If the index was
+// corrupt on open, it is reconstructed from intact packets and IndexDamaged
+// holds the original error. UpdateManifest restores the bundle metadata to the
+// cleanest possible state, replacing both the manifest and the index, repairing
+// any corruption in either. Corruption in file packets only reduces the chance
+// of extracting a bundled PAR2 data stream later, while corruption in bundled
+// PAR2 data streams is handled gracefully by downstream PAR2 parsing programs.
 type Bundle struct {
-	f     afero.File // os.O_RDWR
-	size  int64      // guaranteed > 0
-	Index IndexPacket
+	f    afero.File // os.O_RDWR
+	size int64      // guaranteed > 0
+
+	Index        IndexPacket
+	IndexDamaged error
 }
 
-// Open opens a bundle file and reads the index packet.
+// Open opens a bundle file and reads the index packet. If the index packet
+// is corrupt, Open attempts to reconstruct it by scanning for intact file
+// and manifest packets. Use Validate, ValidateIndex, or ValidateContents
+// to check the bundle's integrity after opening (if that should be required).
 func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 	f, err := fsys.OpenFile(bundlePath, os.O_RDWR, 0)
 	if err != nil {
@@ -46,17 +57,28 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 
 	fi, err := f.Stat()
 	if err != nil {
+		_ = f.Close()
+
 		return nil, fmt.Errorf("failed to stat: %w", err)
 	}
 	if fi.Size() < 0 {
+		_ = f.Close()
+
 		return nil, fmt.Errorf("file size < 0: %d", fi.Size())
 	}
 
 	b := &Bundle{f: f, size: fi.Size()}
 	if err := b.readIndexPacket(); err != nil {
-		_ = f.Close()
+		files, manifest := Scan(f, fi.Size())
 
-		return nil, fmt.Errorf("failed to read index packet: %w", err)
+		if manifest == nil {
+			_ = f.Close()
+
+			return nil, fmt.Errorf("%w: bundle too damaged", ErrDataCorrupt)
+		}
+
+		b.Index = reconstructIndex(manifest, files)
+		b.IndexDamaged = fmt.Errorf("index reconstructed: %w", err)
 	}
 
 	return b, nil
@@ -67,23 +89,49 @@ func (b *Bundle) Close() error {
 	return b.f.Close() //nolint:wrapcheck
 }
 
-// Manifest reads, verifies and returns the manifest bytes.
+// Manifest reads and returns the manifest bytes, verified against the BLAKE3
+// hash. On errors the bytes are still returned for inspection but should be
+// treated as suspect. ErrDataCorrupt is returned on hash mismatch.
 func (b *Bundle) Manifest() ([]byte, error) {
 	var buf bytes.Buffer
 
 	if err := b.ExtractManifest(&buf); err != nil {
-		return nil, fmt.Errorf("failed to extract: %w", err)
+		return buf.Bytes(), fmt.Errorf("failed to extract: %w", err)
 	}
 
 	return buf.Bytes(), nil
 }
 
-// Validate checks that every packet referenced by the index is present and
-// well-formed at the expected offset, and that the manifest data passes BLAKE3
-// integrity checks. If strict is true, it additionally verifies that each file
-// packet's data stream begins with a PAR2 magic byte sequence. This option
-// should be used carefully though, as there may be non-compliant PAR2 writers.
+// Validate checks the bundle's structural integrity. It verifies that the index
+// packet was read without error and that all packets referenced by the index
+// are present and well-formed at their expected offsets. If strict is true, it
+// additionally verifies that each file packet's data stream begins with a PAR2
+// magic byte sequence. Use strict with care, consider non-compliant writers.
 func (b *Bundle) Validate(strict bool) error {
+	if err := b.ValidateIndex(); err != nil {
+		return fmt.Errorf("index damaged: %w", err)
+	}
+
+	if err := b.ValidateContents(strict); err != nil {
+		return fmt.Errorf("contents damaged: %w", err)
+	}
+
+	return nil
+}
+
+// ValidateIndex reports whether the index packet was read cleanly from disk. It
+// returns nil if the index was parsed and validated normally, or an error
+// describing why reconstruction from a scan was necessary.
+func (b *Bundle) ValidateIndex() error {
+	return b.IndexDamaged
+}
+
+// ValidateContents checks that every packet referenced by the index is present
+// and well-formed at the expected offset, and that the manifest data passes
+// BLAKE3 integrity checks. If strict is true, it additionally verifies that
+// each file packet's data stream begins with a PAR2 magic byte sequence. That
+// should be used carefully though, as there may be non-compliant PAR2 writers.
+func (b *Bundle) ValidateContents(strict bool) error {
 	// Validate manifest packet.
 	ch, _, err := readAndValidatePacket(b.f, int64(b.Index.ManifestPacketOffset), b.size) //nolint:gosec
 	if err != nil {

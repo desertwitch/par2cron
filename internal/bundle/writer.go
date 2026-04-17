@@ -23,18 +23,6 @@ type ManifestInput struct {
 	Bytes []byte
 }
 
-// computeIndexSize returns the total size of the index packet.
-func computeIndexSize(manifest ManifestInput, files []FileInput) uint64 {
-	manifestNameLen := uint64(len(manifest.Name))
-	size := uint64(commonHeaderSize) + indexFixedSize + padTo4(manifestNameLen)
-
-	for _, fi := range files {
-		size += indexEntryFixedSize + padTo4(uint64(len(fi.Name)))
-	}
-
-	return size
-}
-
 // Pack creates a bundle at bundlePath from the given recovery set ID, files and manifest.
 func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest ManifestInput, files []FileInput) error {
 	var failed bool
@@ -119,24 +107,14 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 	return nil
 }
 
-// UpdateManifest replaces the manifest with a new one. It truncates the
-// file at the manifest packet offset, writes a new manifest packet, then
-// rewrites the index packet with the updated manifest fields.
+// UpdateManifest replaces the manifest and rewrites the index, restoring both
+// to a clean state. Any prior corruption in either the manifest or the index is
+// resolved after a successful call, with corrupt file packets (as opposed to
+// their raw data streams) being dropped from the index packet. The data streams
+// themselves will still be usable by downstream PAR2 parsing programs, just no
+// longer be extractable from the bundle due to their lost file packet metadata.
 func (b *Bundle) UpdateManifest(manifest []byte) error {
 	manifestPacketOffset := b.Index.ManifestPacketOffset
-
-	// Check first if there's really a manifest packet at that offset.
-	ch, _, err := readAndValidatePacket(b.f, int64(manifestPacketOffset), b.size) //nolint:gosec
-	if err != nil {
-		return fmt.Errorf("failed to validate manifest packet: %w", err)
-	}
-	if ch.PacketType != PacketTypeManifest {
-		return fmt.Errorf("expected manifest packet at offset %d, got %q", manifestPacketOffset, ch.PacketType)
-	}
-	if manifestPacketOffset+ch.PacketLength != uint64(b.size) { //nolint:gosec
-		return fmt.Errorf("manifest packet does not end at EOF: ends at %d, file size %d",
-			manifestPacketOffset+ch.PacketLength, b.size)
-	}
 
 	// Truncate the file to drop the old manifest packet.
 	if err := b.f.Truncate(int64(manifestPacketOffset)); err != nil { //nolint:gosec
@@ -156,6 +134,11 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 	mf, err := writeManifestPacket(b.f, b.Index.RecoverySetID, newManifest, manifestPacketOffset)
 	if err != nil {
 		return fmt.Errorf("failed to write manifest packet: %w", err)
+	}
+
+	// Sync the changes.
+	if err := b.f.Sync(); err != nil {
+		return fmt.Errorf("failed to sync: %w", err)
 	}
 
 	// Update the index packet with the new manifest's information.
@@ -180,6 +163,9 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 	if err := b.f.Sync(); err != nil {
 		return fmt.Errorf("failed to sync: %w", err)
 	}
+
+	// Reset index damaged once index packet is durable.
+	b.IndexDamaged = nil
 
 	// Update the file size.
 	fi, err := b.f.Stat()

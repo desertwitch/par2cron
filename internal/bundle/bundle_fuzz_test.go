@@ -1,6 +1,7 @@
 package bundle
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -169,14 +170,8 @@ func Fuzz_Bundle_Scan(f *testing.F) {
 
 	// We fuzz the content of the reference bundle.
 	f.Fuzz(func(t *testing.T, data []byte) {
-		fs := afero.NewMemMapFs()
-		const bundlePath = "/fuzz.bundle"
-
-		if err := afero.WriteFile(fs, bundlePath, data, 0o600); err != nil {
-			return
-		}
-
-		_, _, _ = Scan(fs, bundlePath)
+		r := bytes.NewReader(data)
+		_, _ = Scan(r, int64(len(data)))
 	})
 }
 
@@ -338,7 +333,7 @@ func Fuzz_Bundle_Validate(f *testing.F) {
 		}
 		defer func() { _ = b.Close() }()
 
-		_ = b.Validate(false)
-		_ = b.Validate(true)
+		_ = b.ValidateContents(false)
+		_ = b.ValidateContents(true)
 	})
 }

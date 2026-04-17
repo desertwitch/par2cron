@@ -26,6 +26,26 @@ func dataHashReader(r io.Reader) ([32]byte, error) {
 	return sum, nil
 }
 
+// computeIndexSize returns the total index packet size.
+func computeIndexSize(manifest ManifestInput, files []FileInput) uint64 {
+	entries := make([]IndexEntry, len(files))
+	for i, fi := range files {
+		entries[i] = IndexEntry{NameLen: uint64(len(fi.Name))}
+	}
+
+	return computeIndexSizeFromEntries(manifest.Name, entries)
+}
+
+// computeIndexSizeFromEntries returns the total index packet size.
+func computeIndexSizeFromEntries(manifestName string, entries []IndexEntry) uint64 {
+	size := uint64(commonHeaderSize) + indexFixedSize + padTo4(uint64(len(manifestName)))
+	for _, e := range entries {
+		size += indexEntryFixedSize + padTo4(e.NameLen)
+	}
+
+	return size
+}
+
 // padTo4 returns n rounded up to the next multiple of 4.
 //
 //nolint:mnd

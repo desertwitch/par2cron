@@ -4,33 +4,18 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-
-	"github.com/spf13/afero"
+	"slices"
+	"strings"
 )
 
 // Scan scans the bundle for app-specific packets by PAR2 magic, ignoring the
 // index packet index. Use this as a fallback if the index packet is corrupt.
-func Scan(fsys afero.Fs, bundlePath string) ([]FilePacket, *ManifestPacket, error) {
-	f, err := fsys.Open(bundlePath)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to open: %w", err)
-	}
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to stat: %w", err)
-	}
-	if fi.Size() < 0 {
-		return nil, nil, fmt.Errorf("file size < 0: %d", fi.Size())
-	}
-	fileSize := fi.Size()
-
+func Scan(r io.ReaderAt, size int64) ([]FilePacket, *ManifestPacket) {
 	var files []FilePacket
 	var manifest *ManifestPacket
 
-	for offset := int64(0); offset+commonHeaderSize <= fileSize; {
-		ch, body, err := readAndValidatePacket(f, offset, fileSize)
+	for offset := int64(0); offset+commonHeaderSize <= size; {
+		ch, body, err := readAndValidatePacket(r, offset, size)
 		if err == nil {
 			switch ch.PacketType {
 			case PacketTypeFile:
@@ -52,7 +37,7 @@ func Scan(fsys afero.Fs, bundlePath string) ([]FilePacket, *ManifestPacket, erro
 		}
 
 		// Invalid packet, scan forward for next magic sequence.
-		found, err := findNextMagic(f, offset+1, fileSize)
+		found, err := findNextMagic(r, offset+1, size)
 		if err != nil {
 			break // No more magic sequences found.
 		}
@@ -60,7 +45,7 @@ func Scan(fsys afero.Fs, bundlePath string) ([]FilePacket, *ManifestPacket, erro
 		offset = found
 	}
 
-	return files, manifest, nil
+	return files, manifest
 }
 
 // findNextMagic scans r for the next occurrence of Magic starting at from.
@@ -90,4 +75,40 @@ func findNextMagic(r io.ReaderAt, from, fileSize int64) (int64, error) {
 	}
 
 	return 0, io.EOF
+}
+
+// reconstructIndex builds an IndexPacket from scanned packets. The resulting
+// packet is always equal or smaller than the original, since it can only
+// contain fewer or equal entries (so is generally safe to put at offset 0).
+func reconstructIndex(manifest *ManifestPacket, files []FilePacket) IndexPacket {
+	slices.SortFunc(files, func(a, b FilePacket) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	entries := make([]IndexEntry, len(files))
+	for i, fp := range files {
+		entries[i] = IndexEntry{
+			PacketOffset: fp.packetOffset,
+			DataOffset:   fp.dataOffset,
+			DataLength:   fp.DataLength,
+			DataB3:       fp.DataB3,
+			NameLen:      fp.NameLen,
+			Name:         fp.Name,
+		}
+	}
+
+	return IndexPacket{
+		CommonHeader: CommonHeader{
+			RecoverySetID: manifest.RecoverySetID,
+		},
+		Version:              Version,
+		ManifestPacketOffset: manifest.packetOffset,
+		ManifestDataOffset:   manifest.dataOffset,
+		ManifestDataLength:   manifest.DataLength,
+		ManifestDataB3:       manifest.DataB3,
+		ManifestNameLen:      manifest.NameLen,
+		ManifestName:         manifest.Name,
+		EntryCount:           uint64(len(entries)),
+		Entries:              entries,
+	}
 }
