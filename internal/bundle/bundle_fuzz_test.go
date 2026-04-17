@@ -18,26 +18,21 @@ type fuzzSeedInput struct {
 	Data []byte
 }
 
-const (
-	referenceBundleName = "reference.bundle.par2"
-)
-
 var (
-	fuzzSeedOnce        sync.Once
-	fuzzSeedErr         error //nolint:errname
-	fuzzReferenceBundle []byte
-	fuzzPar2Inputs      []fuzzSeedInput
+	fuzzSeedOnce         sync.Once
+	fuzzSeedErr          error //nolint:errname
+	fuzzReferenceBundles []fuzzSeedInput
+	fuzzPar2Inputs       []fuzzSeedInput
 )
 
 func loadFuzzSeedCorpus() error {
-	entries, err := os.ReadDir("testdata")
+	// Collect generated bundles from testdata/generated/.
+	genEntries, err := os.ReadDir(filepath.Join("testdata", "generated"))
 	if err != nil {
-		return fmt.Errorf("failed to read testdata: %w", err)
+		return fmt.Errorf("failed to read testdata/generated: %w", err)
 	}
 
-	foundReference := false
-
-	for _, entry := range entries {
+	for _, entry := range genEntries {
 		if entry.IsDir() {
 			continue
 		}
@@ -47,31 +42,73 @@ func loadFuzzSeedCorpus() error {
 			continue
 		}
 
-		p := filepath.Join("testdata", entry.Name())
+		p := filepath.Join("testdata", "generated", entry.Name())
 		data, err := os.ReadFile(p)
 		if err != nil {
-			return fmt.Errorf("failed to read seed file %q: %w", p, err)
+			return fmt.Errorf("failed to read bundle %q: %w", p, err)
 		}
 
-		if name == referenceBundleName {
-			fuzzReferenceBundle = data
-			foundReference = true
-
-			continue
-		}
-
-		fuzzPar2Inputs = append(fuzzPar2Inputs, fuzzSeedInput{
+		fuzzReferenceBundles = append(fuzzReferenceBundles, fuzzSeedInput{
 			Name: entry.Name(),
 			Data: data,
 		})
 	}
 
-	if !foundReference {
-		return fmt.Errorf("missing testdata/%s", referenceBundleName)
+	if len(fuzzReferenceBundles) == 0 {
+		return errors.New("no generated bundles found in testdata/generated")
 	}
+
+	// Collect par2 files from each tool subdirectory.
+	topEntries, err := os.ReadDir("testdata")
+	if err != nil {
+		return fmt.Errorf("failed to read testdata: %w", err)
+	}
+
+	for _, entry := range topEntries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		dirName := entry.Name()
+		if dirName == "generated" || dirName == "sources" {
+			continue
+		}
+
+		subEntries, err := os.ReadDir(filepath.Join("testdata", dirName))
+		if err != nil {
+			return fmt.Errorf("failed to read testdata/%s: %w", dirName, err)
+		}
+
+		for _, sub := range subEntries {
+			if sub.IsDir() {
+				continue
+			}
+
+			name := strings.ToLower(sub.Name())
+			if !strings.HasSuffix(name, ".par2") {
+				continue
+			}
+
+			p := filepath.Join("testdata", dirName, sub.Name())
+			data, err := os.ReadFile(p)
+			if err != nil {
+				return fmt.Errorf("failed to read seed file %q: %w", p, err)
+			}
+
+			fuzzPar2Inputs = append(fuzzPar2Inputs, fuzzSeedInput{
+				Name: sub.Name(),
+				Data: data,
+			})
+		}
+	}
+
 	if len(fuzzPar2Inputs) == 0 {
-		return errors.New("no source .par2 files found in testdata")
+		return errors.New("no source .par2 files found in testdata subdirectories")
 	}
+
+	sort.Slice(fuzzReferenceBundles, func(i, j int) bool {
+		return fuzzReferenceBundles[i].Name < fuzzReferenceBundles[j].Name
+	})
 
 	sort.Slice(fuzzPar2Inputs, func(i, j int) bool {
 		return fuzzPar2Inputs[i].Name < fuzzPar2Inputs[j].Name
@@ -80,7 +117,7 @@ func loadFuzzSeedCorpus() error {
 	return nil
 }
 
-func mustFuzzSeed(tb testing.TB) ([]byte, []fuzzSeedInput) {
+func mustFuzzSeed(tb testing.TB) ([]fuzzSeedInput, []fuzzSeedInput) {
 	tb.Helper()
 
 	fuzzSeedOnce.Do(func() {
@@ -90,12 +127,19 @@ func mustFuzzSeed(tb testing.TB) ([]byte, []fuzzSeedInput) {
 		tb.Fatalf("failed to initialize fuzz seed corpus: %v", fuzzSeedErr)
 	}
 
-	return append([]byte(nil), fuzzReferenceBundle...), fuzzPar2Inputs
+	bundles := make([]fuzzSeedInput, len(fuzzReferenceBundles))
+	for i, b := range fuzzReferenceBundles {
+		bundles[i] = fuzzSeedInput{Name: b.Name, Data: append([]byte(nil), b.Data...)}
+	}
+
+	return bundles, fuzzPar2Inputs
 }
 
 func Fuzz_Bundle_Open(f *testing.F) {
-	referenceBundle, _ := mustFuzzSeed(f)
-	f.Add(referenceBundle)
+	bundles, _ := mustFuzzSeed(f)
+	for _, b := range bundles {
+		f.Add(b.Data)
+	}
 
 	// We fuzz the content of the reference bundle.
 	f.Fuzz(func(t *testing.T, data []byte) {
@@ -115,8 +159,10 @@ func Fuzz_Bundle_Open(f *testing.F) {
 }
 
 func Fuzz_Bundle_Scan(f *testing.F) {
-	referenceBundle, par2Inputs := mustFuzzSeed(f)
-	f.Add(referenceBundle)
+	bundles, par2Inputs := mustFuzzSeed(f)
+	for _, b := range bundles {
+		f.Add(b.Data)
+	}
 	for _, in := range par2Inputs {
 		f.Add(in.Data)
 	}
@@ -196,8 +242,10 @@ func Fuzz_Bundle_Pack(f *testing.F) {
 }
 
 func Fuzz_Bundle_Manifest(f *testing.F) {
-	referenceBundle, _ := mustFuzzSeed(f)
-	f.Add(referenceBundle)
+	bundles, _ := mustFuzzSeed(f)
+	for _, b := range bundles {
+		f.Add(b.Data)
+	}
 
 	// We fuzz the content of the reference bundle.
 	f.Fuzz(func(t *testing.T, bundleData []byte) {
@@ -218,8 +266,10 @@ func Fuzz_Bundle_Manifest(f *testing.F) {
 }
 
 func Fuzz_Bundle_Unpack(f *testing.F) {
-	referenceBundle, _ := mustFuzzSeed(f)
-	f.Add(referenceBundle)
+	bundles, _ := mustFuzzSeed(f)
+	for _, b := range bundles {
+		f.Add(b.Data)
+	}
 
 	// We fuzz the content of the reference bundle.
 	f.Fuzz(func(t *testing.T, bundleData []byte) {
@@ -245,10 +295,12 @@ func Fuzz_Bundle_Unpack(f *testing.F) {
 }
 
 func Fuzz_Bundle_UpdateManifest(f *testing.F) {
-	referenceBundle, _ := mustFuzzSeed(f)
-	f.Add(referenceBundle, []byte(`{"updated":true}`))
+	bundles, _ := mustFuzzSeed(f)
+	for _, b := range bundles {
+		f.Add(b.Data, []byte(`{"updated":true}`))
+	}
 
-	// We fuzz the content of the reference bundle and the manifest bytes.
+	// We fuzz the content of the reference bundle and manifest bytes.
 	f.Fuzz(func(t *testing.T, bundleData []byte, updatedManifest []byte) {
 		fs := afero.NewMemMapFs()
 		const bundlePath = "/bundle.update"
@@ -267,9 +319,12 @@ func Fuzz_Bundle_UpdateManifest(f *testing.F) {
 }
 
 func Fuzz_Bundle_Validate(f *testing.F) {
-	referenceBundle, _ := mustFuzzSeed(f)
-	f.Add(referenceBundle)
+	bundles, _ := mustFuzzSeed(f)
+	for _, b := range bundles {
+		f.Add(b.Data)
+	}
 
+	// We fuzz the content of the reference bundle.
 	f.Fuzz(func(t *testing.T, bundleData []byte) {
 		fs := afero.NewMemMapFs()
 		const bundlePath = "/bundle.validate"

@@ -1,3 +1,4 @@
+//nolint:gosec
 package main
 
 import (
@@ -7,49 +8,73 @@ import (
 	"path/filepath"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/spf13/afero"
 )
 
 var (
-	dir = flag.String("dir", "testdata", "testdata directory")
-	out = flag.String("out", "reference.bundle.par2", "output filename within -dir")
+	dir   = flag.String("dir", "testdata", "testdata directory")
+	out   = flag.String("out", "output.bun.par2", "output filename within -dir")
+	parse = flag.String("parse", "", "path to the index .par2 file")
 )
-
-var recoverySetID = [16]byte{
-	0xf3, 0x5c, 0x82, 0x41,
-	0xc2, 0xfa, 0x13, 0x01,
-	0x83, 0xc9, 0xdf, 0x6e,
-	0xf3, 0x04, 0x62, 0x4b,
-}
 
 var manifest = bundle.ManifestInput{
 	Name:  "manifest.json",
 	Bytes: []byte(`{"version":1,"description":"reference bundle"}`),
 }
 
-var files = []string{
-	"test.par2",
-	"test.vol000+34.par2",
-	"test.vol034+33.par2",
-	"test.vol067+33.par2",
-}
-
 func main() {
 	flag.Parse()
+
+	if *parse == "" {
+		log.Fatalf("%s: args error: -parse flag is required", os.Args[0])
+	}
+
+	files := flag.Args()
+	if len(files) == 0 {
+		log.Fatalf("%s: args error: at least one input file must be given", os.Args[0])
+	}
+
+	fs := afero.NewOsFs()
+
+	pf, err := par2.ParseFile(fs, *parse, true)
+	if err != nil {
+		log.Fatalf("%s: parse error: %v", os.Args[0], err)
+	}
+	if len(pf.Sets) < 1 || pf.Sets[0].MainPacket == nil {
+		log.Fatalf("%s: parsed file has no sets or main packet", os.Args[0])
+	}
+
+	recoverySetID := pf.Sets[0].MainPacket.SetID
 
 	inputs := make([]bundle.FileInput, len(files))
 	for i, name := range files {
 		inputs[i] = bundle.FileInput{
-			Name: name,
-			Path: filepath.Join(*dir, name),
+			Name: filepath.Base(name),
+			Path: name,
 		}
 	}
 
 	outPath := filepath.Join(*dir, *out)
 
-	if err := bundle.Pack(afero.NewOsFs(), outPath, recoverySetID, manifest, inputs); err != nil {
-		log.Fatalf("%s: error: %v", os.Args[0], err) //nolint:gosec
+	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil { //nolint:mnd
+		log.Fatalf("%s: fs error: %v", os.Args[0], err)
 	}
 
-	log.Printf("%s: success: %s\n", os.Args[0], outPath) //nolint:gosec
+	if err := bundle.Pack(fs, outPath, recoverySetID, manifest, inputs); err != nil {
+		log.Fatalf("%s: pack error: %v", os.Args[0], err)
+	}
+
+	bun, err := bundle.Open(fs, outPath)
+	if err != nil {
+		log.Fatalf("%s: bundle open error: %v", os.Args[0], err)
+	}
+
+	if err := bun.Validate(true); err != nil {
+		bun.Close()
+		log.Fatalf("%s: bundle validate error: %v", os.Args[0], err)
+	}
+
+	bun.Close()
+	log.Printf("%s: success: %s\n", os.Args[0], outPath)
 }
