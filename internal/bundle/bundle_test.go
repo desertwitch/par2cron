@@ -190,7 +190,7 @@ func Test_WireFormat_TestdataBundle_Unpack_Success(t *testing.T) {
 	require.NoError(t, b.Validate(true))
 	t.Cleanup(func() { _ = b.Close() })
 
-	require.NoError(t, b.Unpack(fs, tmpDir))
+	require.NoError(t, b.Unpack(fs, tmpDir, true))
 	requirePar2MatchTestdata(t, tmpDir)
 }
 
@@ -270,7 +270,7 @@ func Test_WireFormat_ReferenceBundle_Unpack_Verify(t *testing.T) {
 	b, err := Open(fs, bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Validate(true))
-	require.NoError(t, b.Unpack(fs, tmpDir))
+	require.NoError(t, b.Unpack(fs, tmpDir, true))
 	require.NoError(t, b.Close())
 
 	requirePar2MatchTestdata(t, tmpDir)
@@ -296,7 +296,7 @@ func Test_WireFormat_ReferenceBundle_Unpack_Repair(t *testing.T) {
 	b, err := Open(fs, bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Validate(true))
-	require.NoError(t, b.Unpack(fs, tmpDir))
+	require.NoError(t, b.Unpack(fs, tmpDir, true))
 	require.NoError(t, b.Close())
 
 	requirePar2MatchTestdata(t, tmpDir)

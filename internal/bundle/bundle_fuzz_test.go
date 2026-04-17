@@ -240,7 +240,7 @@ func Fuzz_Bundle_Unpack(f *testing.F) {
 		}
 		defer func() { _ = b.Close() }()
 
-		_ = b.Unpack(fs, destDir)
+		_ = b.Unpack(fs, destDir, false)
 	})
 }
 
