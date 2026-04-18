@@ -210,6 +210,15 @@ func requirePar2MatchTestdata(t *testing.T, gs goldenSet, dir string) {
 	}
 }
 
+func requireManifestMatchesTestdata(t *testing.T, dir string) {
+	t.Helper()
+
+	got, err := os.ReadFile(filepath.Join(dir, goldenManifest.Name))
+	require.NoError(t, err)
+
+	require.Equal(t, goldenManifest.Bytes, got)
+}
+
 // Expectation: Verification must pass on the testdata par2s using par2cmdline.
 func Test_WireFormat_TestdataPar2s_Success(t *testing.T) {
 	t.Parallel()
@@ -270,6 +279,7 @@ func Test_WireFormat_TestdataBundle_Unpack_Success(t *testing.T) {
 
 			require.NoError(t, b.Unpack(fs, tmpDir, true))
 			requirePar2MatchTestdata(t, gs, tmpDir)
+			requireManifestMatchesTestdata(t, tmpDir)
 		})
 	}
 }
@@ -314,6 +324,38 @@ func Test_WireFormat_ReferenceBundle_Pack_Verify(t *testing.T) {
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
 			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
+			requireBundleMatchesTestdata(t, gs, tmpDir)
+
+			cmd := exec.CommandContext(t.Context(), "par2", "verify", filepath.Base(gs.Bundle))
+			cmd.Dir = tmpDir
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, "par2 verify failed: %s", out)
+		})
+	}
+}
+
+// Expectation: A freshly packed then updated reference bundle must pass verification using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Pack_UpdatedManifest_Verify(t *testing.T) {
+	t.Parallel()
+
+	for _, gs := range goldenSets {
+		t.Run(gs.Name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			fs := afero.NewOsFs()
+			ensureTestdataSourceFiles(t, tmpDir, false)
+
+			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
+			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+
+			requireBundleMatchesTestdata(t, gs, tmpDir)
+
+			b, err := Open(fs, bundlePath)
+			require.NoError(t, err)
+			require.NoError(t, b.UpdateManifest([]byte("test")))
+			require.NoError(t, b.Close())
+
 			cmd := exec.CommandContext(t.Context(), "par2", "verify", filepath.Base(gs.Bundle))
 			cmd.Dir = tmpDir
 			out, err := cmd.CombinedOutput()
@@ -354,6 +396,44 @@ func Test_WireFormat_ReferenceBundle_Pack_Repair(t *testing.T) {
 	}
 }
 
+// Expectation: A freshly packed then updated reference must be able to repair using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Pack_UpdatedManifest_Repair(t *testing.T) {
+	t.Parallel()
+
+	for _, gs := range goldenSets {
+		t.Run(gs.Name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			fs := afero.NewOsFs()
+			ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
+
+			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
+			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+
+			requireBundleMatchesTestdata(t, gs, tmpDir)
+
+			b, err := Open(fs, bundlePath)
+			require.NoError(t, err)
+			require.NoError(t, b.UpdateManifest([]byte("test")))
+			require.NoError(t, b.Close())
+
+			cmd := exec.CommandContext(t.Context(), "par2", "verify", filepath.Base(gs.Bundle))
+			cmd.Dir = tmpDir
+			out, err := cmd.CombinedOutput()
+			require.Error(t, err)
+			require.Contains(t, string(out), "Repair is possible")
+
+			cmd = exec.CommandContext(t.Context(), "par2", "repair", filepath.Base(gs.Bundle))
+			cmd.Dir = tmpDir
+			out, err = cmd.CombinedOutput()
+			require.NoError(t, err, "par2 repair failed: %s", out)
+
+			requireSourcesMatchTestdata(t, tmpDir)
+		})
+	}
+}
+
 // Expectation: An unpacked reference must pass verification using par2cmdline.
 func Test_WireFormat_ReferenceBundle_Unpack_Verify(t *testing.T) {
 	t.Parallel()
@@ -372,6 +452,43 @@ func Test_WireFormat_ReferenceBundle_Unpack_Verify(t *testing.T) {
 			b, err := Open(fs, bundlePath)
 			require.NoError(t, err)
 			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.Unpack(fs, tmpDir, true))
+			require.NoError(t, b.Close())
+
+			requirePar2MatchTestdata(t, gs, tmpDir)
+			requireManifestMatchesTestdata(t, tmpDir)
+			require.NoError(t, os.Remove(bundlePath))
+
+			indexFile := filepath.Base(gs.IndexFile)
+			cmd := exec.CommandContext(t.Context(), "par2", "verify", indexFile)
+			cmd.Dir = tmpDir
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, "par2 verify failed: %s", out)
+		})
+	}
+}
+
+// Expectation: An updated then unpacked reference must pass verification using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Unpack_UpdatedManifest_Verify(t *testing.T) {
+	t.Parallel()
+
+	for _, gs := range goldenSets {
+		t.Run(gs.Name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			fs := afero.NewOsFs()
+			ensureTestdataSourceFiles(t, tmpDir, false)
+
+			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
+			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+
+			requireBundleMatchesTestdata(t, gs, tmpDir)
+
+			b, err := Open(fs, bundlePath)
+			require.NoError(t, err)
+			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.UpdateManifest([]byte("test")))
 			require.NoError(t, b.Unpack(fs, tmpDir, true))
 			require.NoError(t, b.Close())
 
@@ -405,6 +522,51 @@ func Test_WireFormat_ReferenceBundle_Unpack_Repair(t *testing.T) {
 			b, err := Open(fs, bundlePath)
 			require.NoError(t, err)
 			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.Unpack(fs, tmpDir, true))
+			require.NoError(t, b.Close())
+
+			requirePar2MatchTestdata(t, gs, tmpDir)
+			requireManifestMatchesTestdata(t, tmpDir)
+			require.NoError(t, os.Remove(bundlePath))
+
+			indexFile := filepath.Base(gs.IndexFile)
+			cmd := exec.CommandContext(t.Context(), "par2", "verify", indexFile)
+			cmd.Dir = tmpDir
+			out, err := cmd.CombinedOutput()
+			require.Error(t, err)
+			require.Contains(t, string(out), "Repair is possible")
+
+			cmd = exec.CommandContext(t.Context(), "par2", "repair", indexFile)
+			cmd.Dir = tmpDir
+			out, err = cmd.CombinedOutput()
+			require.NoError(t, err, "par2 repair failed: %s", out)
+
+			requireSourcesMatchTestdata(t, tmpDir)
+		})
+	}
+}
+
+// Expectation: An updated then unpacked reference must be able to repair using par2cmdline.
+func Test_WireFormat_ReferenceBundle_Unpack_UpdatedManifest_Repair(t *testing.T) {
+	t.Parallel()
+
+	for _, gs := range goldenSets {
+		t.Run(gs.Name, func(t *testing.T) {
+			t.Parallel()
+
+			tmpDir := t.TempDir()
+			fs := afero.NewOsFs()
+			ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
+
+			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
+			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+
+			requireBundleMatchesTestdata(t, gs, tmpDir)
+
+			b, err := Open(fs, bundlePath)
+			require.NoError(t, err)
+			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.UpdateManifest([]byte("test")))
 			require.NoError(t, b.Unpack(fs, tmpDir, true))
 			require.NoError(t, b.Close())
 
