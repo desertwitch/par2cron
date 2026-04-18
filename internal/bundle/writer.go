@@ -164,9 +164,6 @@ func (b *Bundle) UpdateManifest(manifest []byte) error {
 		return fmt.Errorf("failed to sync: %w", err)
 	}
 
-	// Reset index damaged once index packet is durable.
-	b.IndexDamaged = nil
-
 	// Update the file size.
 	fi, err := b.f.Stat()
 	if err != nil {

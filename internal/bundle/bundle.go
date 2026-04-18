@@ -35,7 +35,7 @@ const (
 var ErrDataCorrupt = errors.New("data corrupt")
 
 // Bundle is an opened bundle file with a parsed index packet. If the index was
-// corrupt on open, it is reconstructed from intact packets and IndexDamaged
+// corrupt on open, it is reconstructed from intact packets and OpenError
 // holds the original error. UpdateManifest restores the bundle metadata to the
 // cleanest possible state, replacing both the manifest and the index, repairing
 // any corruption in either. Corruption in file packets only reduces the chance
@@ -45,8 +45,8 @@ type Bundle struct {
 	f    afero.File // os.O_RDWR
 	size int64      // guaranteed > 0
 
-	Index        IndexPacket
-	IndexDamaged error
+	Index     IndexPacket
+	OpenError error
 }
 
 // Open opens a bundle file and reads the index packet. If the index packet
@@ -83,7 +83,7 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 
 		b.Index = reconstructIndex(manifest, files)
 		b.Index.Flags |= FlagIndexRebuilt
-		b.IndexDamaged = fmt.Errorf("index reconstructed: %w", err)
+		b.OpenError = fmt.Errorf("index reconstructed: %w", err)
 	}
 
 	return b, nil
@@ -128,7 +128,7 @@ func (b *Bundle) Validate(strict bool) error {
 // returns nil if the index was parsed and validated normally, or an error
 // describing why reconstruction from a scan was necessary.
 func (b *Bundle) ValidateIndex() error {
-	return b.IndexDamaged
+	return b.OpenError
 }
 
 // ValidateContents checks that every packet referenced by the index is present
