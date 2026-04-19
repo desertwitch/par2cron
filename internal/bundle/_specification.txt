@@ -1,4 +1,51 @@
-Note: Everything is 4-byte aligned.
+PAR2CRON APPLICATION BUNDLE SPECIFICATION
+
+extending on Parity Volume Set Specification 2.0
+making use of the "Application-Specific Packet Type"
+
+Specification version: 1.0
+Last updated: 18.04.2026 (desertwitch)
+
+This specification may not be modified while advertised under the same or an
+ambiguous similar name without agreement of the par2cron project maintainers
+
+PURPOSE AND TARGET:
+
+A "bundle" should provide the par2cron application with a means to pack
+one or multiple PAR2 files plus its own application-specific data as one
+single "bundle" file, fully compatible both to any PAR2 software and the
+par2cron application. The par2cron-specific data is effectively embedded
+into existing PAR2 files, with the option to unpack any bundle back into
+one manifest JSON file for par2cron and each of them original PAR2 files
+
+GENERAL RULES AND CONVENTIONS:
+
+- Bundle files must end with ".p2c.par2" as suffix
+- Everything must be little endian, 4-byte aligned
+- Unknown flags should be ignored by reading programs
+- Readers should parse all spec versions (warn if not)
+- If version is unreadable, expect latest spec version
+- Strings are expected as UTF-8 (except in raw_stream)
+- raw_stream must be unmodified PAR2 packet stream bytes
+- raw_stream data_b3 is strictly for informing users when unpacking
+- raw_stream corruption is responsibility of downstream PAR2 reader
+- raw_stream is never dropped due to detected hash mismatch/corruption
+- Index packet entries must be lexicographically sorted by the filename
+- Unpacking programs should still unpack any bundled but corrupted file
+- A corrupted index packet can be derived (appropriate flag must be set)
+- A corrupted manifest packet can be overwritten (with a fresh manifest)
+- A corrupted file packet can remain unhandled (but may hinder unpacking)
+- Unpack programs must inform bundle may be incomplete on index rebuilt flag
+- No data should ever follow the manifest packet, writers will truncate file
+- Ensure index packet is appropriately updated when updating manifest packet
+- If in doubt the PAR 2.0 specification is the ultimate last deciding factor
+
+B3 refers to 32-byte BLAKE3 hashes, which are superior to MD5 hashing
+These are used where not otherwise mandated by the PAR2 specification
+
+String length fields should reflect actual len(str) without any padding
+A filename "par2cron.file" would therefore have a value 13 length field
+
 ╔══════════════════════════════════════════════════════════╗
 ║ COMMON PACKET HEADER (according to PAR2 specification)   ║
 ║                                                          ║
@@ -85,3 +132,5 @@ Note: Everything is 4-byte aligned.
 ║   json_pad                 [0..3]byte zero pad to 4      ║
 ║                                                          ║
 ╚══════════════════════════════════════════════════════════╝
+
+END OF SPECIFICATION
