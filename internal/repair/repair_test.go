@@ -29,7 +29,7 @@ func Test_NewRepairJob_Success(t *testing.T) {
 	}
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
-	job := NewRepairJob("/data/test"+schema.Par2Extension, args, mf)
+	job := NewRepairJob("/data/test"+schema.Par2Extension, args, mf, false)
 
 	require.Equal(t, "/data", job.workingDir)
 	require.Equal(t, "test"+schema.Par2Extension, job.par2Name)
@@ -56,7 +56,7 @@ func Test_NewRepairJob_ArgsCloned_Success(t *testing.T) {
 	}
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
-	job := NewRepairJob("/data/test"+schema.Par2Extension, args, mf)
+	job := NewRepairJob("/data/test"+schema.Par2Extension, args, mf, false)
 
 	// Modify original args
 	originalArgs[0] = "modified"

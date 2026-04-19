@@ -8,8 +8,10 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -71,10 +73,11 @@ type Job struct {
 	purgeBackups   bool
 	restoreBackups bool
 
+	isBundle bool
 	manifest *schema.Manifest
 }
 
-func NewRepairJob(par2Path string, opts Options, mf *schema.Manifest) *Job {
+func NewRepairJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *Job {
 	rj := &Job{}
 
 	rj.workingDir = filepath.Dir(par2Path)
@@ -82,12 +85,21 @@ func NewRepairJob(par2Path string, opts Options, mf *schema.Manifest) *Job {
 	rj.par2Path = par2Path
 	rj.par2Args = slices.Clone(opts.Par2Args)
 	rj.par2Verify = opts.Par2Verify
-	rj.manifestName = rj.par2Name + schema.ManifestExtension
-	rj.manifestPath = rj.par2Path + schema.ManifestExtension
-	rj.lockPath = rj.par2Path + schema.LockExtension
+
+	if !isBundle {
+		rj.manifestName = rj.par2Name + schema.ManifestExtension
+		rj.manifestPath = rj.par2Path + schema.ManifestExtension
+		rj.lockPath = rj.par2Path + schema.LockExtension
+	} else {
+		rj.manifestName = rj.par2Name
+		rj.manifestPath = rj.par2Path
+		rj.lockPath = rj.par2Path
+	}
+
 	rj.purgeBackups = opts.PurgeBackups
 	rj.restoreBackups = opts.RestoreBackups
 
+	rj.isBundle = isBundle
 	rj.manifest = mf
 
 	return rj
@@ -225,6 +237,10 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 }
 
 func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) {
+	if strings.Contains(par2path, schema.BundleExtension) {
+		return prog.processBundleManifest(ctx, par2path, opts)
+	}
+
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.repairLogger(ctx, nil, manifestPath)
 
@@ -274,7 +290,73 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 
 	if mf.Verification.RepairNeeded && (mf.Verification.CountCorrupted >= opts.MinTestedCount) {
 		if opts.AttemptUnrepairables || mf.Verification.RepairPossible {
-			return NewRepairJob(par2path, opts, mf), nil
+			return NewRepairJob(par2path, opts, mf, false), nil
+		}
+	}
+
+	logger.Debug("Not a candidate for repair",
+		"minTested", opts.MinTestedCount,
+		"actualTested", mf.Verification.CountCorrupted,
+		"repairNeeded", mf.Verification.RepairNeeded,
+		"repairPossible", mf.Verification.RepairPossible,
+	)
+
+	return nil, schema.ErrSilentSkip
+}
+
+func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*Job, error) {
+	logger := prog.repairLogger(ctx, nil, bundlePath)
+
+	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
+	if err != nil {
+		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger.Debug("Bundle is locked by another instance (will retry next run)")
+
+			return nil, schema.ErrSilentSkip
+		}
+
+		return nil, fmt.Errorf("failed to lock: %w", err)
+	}
+	b, err := bundle.Open(prog.fsys, bundlePath)
+	if err != nil {
+		unlock()
+		logger.Error("Failed to open bundle (will retry next run)", "error", err)
+
+		return nil, schema.ErrNonFatal
+	}
+	by, err := b.Manifest()
+	if err != nil {
+		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
+		_ = b.Close()
+		unlock()
+
+		return nil, schema.ErrNonFatal
+	}
+	_ = b.Close()
+	unlock()
+
+	mf := &schema.Manifest{}
+	if err := json.Unmarshal(by, mf); err != nil {
+		logger.Warn("Failed to unmarshal par2cron manifest (will retry next run)", "error", err)
+
+		return nil, schema.ErrSilentSkip
+	}
+
+	if opts.SkipNotCreated && mf.Creation == nil {
+		logger.Debug("No creation manifest (skipping; --skip-not-created)")
+
+		return nil, schema.ErrSilentSkip
+	}
+
+	if mf.Verification == nil {
+		logger.Debug("No verification manifest (skipping; not a repair candidate)")
+
+		return nil, schema.ErrSilentSkip
+	}
+
+	if mf.Verification.RepairNeeded && (mf.Verification.CountCorrupted >= opts.MinTestedCount) {
+		if opts.AttemptUnrepairables || mf.Verification.RepairPossible {
+			return NewRepairJob(bundlePath, opts, mf, true), nil
 		}
 	}
 
@@ -298,20 +380,22 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
-	par2Hash, err := util.HashFile(prog.fsys, job.par2Path)
-	if err != nil {
-		logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
+	if !job.isBundle {
+		par2Hash, err := util.HashFile(prog.fsys, job.par2Path)
+		if err != nil {
+			logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
 
-		return fmt.Errorf("failed to hash par2: %w", err)
-	}
+			return fmt.Errorf("failed to hash par2: %w", err)
+		}
 
-	if par2Hash != job.manifest.SHA256 {
-		logger.Warn("PAR2 has changed (needs re-verification; skipping repair)",
-			"currentHash", par2Hash,
-			"manifestHash", job.manifest.SHA256,
-		)
+		if par2Hash != job.manifest.SHA256 {
+			logger.Warn("PAR2 has changed (needs re-verification; skipping repair)",
+				"currentHash", par2Hash,
+				"manifestHash", job.manifest.SHA256,
+			)
 
-		return fmt.Errorf("%w: par2 hash mismatch", schema.ErrManifestMismatch)
+			return fmt.Errorf("%w: par2 hash mismatch", schema.ErrManifestMismatch)
+		}
 	}
 
 	cmdArgs := make([]string, 0, 1+len(job.par2Args)+1+1)
@@ -380,14 +464,14 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	// 	}, prog.repairLogger(ctx, job, nil))
 	// }
 
-	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
+	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest, job.isBundle); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)
 		logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
 	}
 
 	if job.par2Verify {
 		vs := verify.NewService(prog.fsys, prog.log, prog.runner)
-		vj := verify.NewJob(job.par2Path, verify.Options{}, job.manifest)
+		vj := verify.NewJob(job.par2Path, verify.Options{}, job.manifest, job.isBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {
 			return fmt.Errorf("failed to verify par2: %w", err)

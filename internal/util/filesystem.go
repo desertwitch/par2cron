@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
@@ -85,7 +86,7 @@ func HashFile(fsys afero.Fs, filePath string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
+func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest, isBundle bool) error {
 	// Update versions here, as we un- and re-marshalled to a possibly
 	// new manifest format (adding new fields and dropping old fields).
 	m.ProgramVersion = schema.ProgramVersion
@@ -96,9 +97,21 @@ func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
 		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
-	err = afero.WriteFile(fsys, path, data, UmaskFilePerm)
-	if err != nil {
-		return fmt.Errorf("failed to write: %w", err)
+	if !isBundle {
+		err = afero.WriteFile(fsys, path, data, UmaskFilePerm)
+		if err != nil {
+			return fmt.Errorf("failed to write: %w", err)
+		}
+	} else {
+		b, err := bundle.Open(fsys, path)
+		if err != nil {
+			return fmt.Errorf("failed to open bundle: %w", err)
+		}
+		defer b.Close()
+
+		if err := b.UpdateManifest(data); err != nil {
+			return fmt.Errorf("failed to update bundle: %w", err)
+		}
 	}
 
 	return nil

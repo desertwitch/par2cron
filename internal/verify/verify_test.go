@@ -52,7 +52,7 @@ func Test_NewJob_Success(t *testing.T) {
 	}
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
-	job := NewJob("/data/test"+schema.Par2Extension, args, mf)
+	job := NewJob("/data/test"+schema.Par2Extension, args, mf, false)
 
 	require.Equal(t, "/data", job.workingDir)
 	require.Equal(t, "test"+schema.Par2Extension, job.par2Name)

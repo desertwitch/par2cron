@@ -751,7 +751,7 @@ func Test_Service_printDurationInfo_LargeJobWarning_Success(t *testing.T) {
 	js := verify.Stats{
 		TotalDuration:   2 * time.Hour,
 		LargestDuration: 2 * time.Hour,
-		LargestJob:      verify.NewJob("/data/large.par2", verify.Options{}, nil),
+		LargestJob:      verify.NewJob("/data/large.par2", verify.Options{}, nil, false),
 		KnownCount:      1,
 	}
 
@@ -956,7 +956,7 @@ func Test_Service_printCycleInfo_Success(t *testing.T) {
 	}
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest),
+		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
 	}
 
 	js := verify.Stats{
@@ -1000,8 +1000,8 @@ func Test_Service_printCycleInfo_UnknownDurations_Success(t *testing.T) {
 	}
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, nil),
+		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, nil, false),
 	}
 
 	js := verify.Stats{

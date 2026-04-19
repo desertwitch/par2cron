@@ -888,7 +888,7 @@ func Test_Service_buildDurationInfo_LargeJobWarning_Success(t *testing.T) {
 	js := verify.Stats{
 		TotalDuration:   2 * time.Hour,
 		LargestDuration: 2 * time.Hour,
-		LargestJob:      verify.NewJob("/data/large.par2", verify.Options{}, nil),
+		LargestJob:      verify.NewJob("/data/large.par2", verify.Options{}, nil, false),
 		KnownCount:      1,
 	}
 
@@ -1095,7 +1095,7 @@ func Test_Service_buildCycleInfo_Success(t *testing.T) {
 	}
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest),
+		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
 	}
 
 	js := verify.Stats{
@@ -1144,7 +1144,7 @@ func Test_Service_buildCycleInfo_OutsideWindow_Success(t *testing.T) {
 	}
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest),
+		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
 	}
 
 	js := verify.Stats{
@@ -1190,8 +1190,8 @@ func Test_Service_buildCycleInfo_UnknownJobs_Success(t *testing.T) {
 	}
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, nil),
+		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, nil, false),
 	}
 
 	js := verify.Stats{
@@ -1231,7 +1231,7 @@ func Test_Service_buildCycleInfo_NoVerification_Success(t *testing.T) {
 	manifest := schema.NewManifest("test" + schema.Par2Extension)
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest),
+		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
 	}
 
 	js := verify.Stats{
@@ -1269,7 +1269,7 @@ func Test_Service_buildCycleInfo_NilManifest_Success(t *testing.T) {
 	now := time.Now()
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, nil),
+		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, nil, false),
 	}
 
 	js := verify.Stats{
@@ -1321,10 +1321,10 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 	manifest3 := schema.NewManifest("test3" + schema.Par2Extension)
 
 	jobs := []*verify.Job{
-		verify.NewJob("/data/test1"+schema.Par2Extension, verify.Options{}, manifest1),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, manifest2),
-		verify.NewJob("/data/test3"+schema.Par2Extension, verify.Options{}, manifest3),
-		verify.NewJob("/data/test4"+schema.Par2Extension, verify.Options{}, nil),
+		verify.NewJob("/data/test1"+schema.Par2Extension, verify.Options{}, manifest1, false),
+		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, manifest2, false),
+		verify.NewJob("/data/test3"+schema.Par2Extension, verify.Options{}, manifest3, false),
+		verify.NewJob("/data/test4"+schema.Par2Extension, verify.Options{}, nil, false),
 	}
 
 	js := verify.Stats{
