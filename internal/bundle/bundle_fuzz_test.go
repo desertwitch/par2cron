@@ -289,7 +289,7 @@ func Fuzz_Bundle_Unpack(f *testing.F) {
 	})
 }
 
-func Fuzz_Bundle_UpdateManifest(f *testing.F) {
+func Fuzz_Bundle_Update(f *testing.F) {
 	bundles, _ := mustFuzzSeed(f)
 	for _, b := range bundles {
 		f.Add(b.Data, []byte(`{"updated":true}`))
@@ -309,7 +309,7 @@ func Fuzz_Bundle_UpdateManifest(f *testing.F) {
 		}
 		defer func() { _ = b.Close() }()
 
-		_ = b.UpdateManifest(updatedManifest)
+		_ = b.Update(updatedManifest)
 	})
 }
 
@@ -333,7 +333,7 @@ func Fuzz_Bundle_Validate(f *testing.F) {
 		}
 		defer func() { _ = b.Close() }()
 
-		_ = b.ValidateContents(false)
-		_ = b.ValidateContents(true)
+		_ = b.Validate(false)
+		_ = b.Validate(true)
 	})
 }

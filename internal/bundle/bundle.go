@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/afero"
@@ -28,15 +29,15 @@ const (
 	Version uint64 = 1
 
 	// FlagIndexRebuilt signals that an index packet was re-built (corrupted).
-	// At this point file packet entries may have been dropped from the index.
+	// At this point file entry table in index packet is no longer guaranteed.
 	FlagIndexRebuilt uint64 = 1 << 0
 )
 
 var ErrDataCorrupt = errors.New("data corrupt")
 
 // Bundle is an opened bundle file with a parsed index packet. If the index was
-// corrupt on open, it is reconstructed from intact packets and OpenError
-// holds the original error. UpdateManifest restores the bundle metadata to the
+// corrupt on open, it is reconstructed from intact found packets and OpenError
+// holds the original error. Calling the Update function restores bundle to its
 // cleanest possible state, replacing both the manifest and the index, repairing
 // any corruption in either. Corruption in file packets only reduces the chance
 // of extracting a bundled PAR2 data stream later, while corruption in bundled
@@ -49,10 +50,10 @@ type Bundle struct {
 	OpenError error
 }
 
-// Open opens a bundle file and reads the index packet. If the index packet
-// is corrupt, Open attempts to reconstruct it by scanning for intact file
-// and manifest packets. Use Validate, ValidateIndex, or ValidateContents
-// to check the bundle's integrity after opening (if that should be required).
+// Open opens a bundle file and reads the index packet. If the index packet is
+// corrupt, Open attempts to reconstruct it by scanning for intact file and
+// manifest packets. Use Validate.. functions to check the bundle's integrity
+// after opening (if that should be required). Update() restores working state.
 func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 	f, err := fsys.OpenFile(bundlePath, os.O_RDWR, 0)
 	if err != nil {
@@ -96,7 +97,7 @@ func (b *Bundle) Close() error {
 
 // Manifest reads and returns the manifest bytes, verified against the BLAKE3
 // hash. On errors the bytes are still returned for inspection but should be
-// treated as suspect. ErrDataCorrupt is returned on hash mismatch.
+// treated as suspect. ErrDataCorrupt is returned on hash mismatch (corruption).
 func (b *Bundle) Manifest() ([]byte, error) {
 	var buf bytes.Buffer
 
@@ -107,18 +108,21 @@ func (b *Bundle) Manifest() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// Validate checks the bundle's structural integrity. It verifies that the index
-// packet was read without error and that all packets referenced by the index
-// are present and well-formed at their expected offsets. If strict is true, it
-// additionally verifies that each file packet's data stream begins with a PAR2
-// magic byte sequence. Use strict with care, consider non-compliant writers.
+// Validate checks the bundle's integrity by validating the index, all file
+// packets, and the manifest in sequence. If strict is true, manifest and file
+// data is additionally verified against their BLAKE3 hashes, which requires
+// reading the full data streams and may be slower for large bundles.
 func (b *Bundle) Validate(strict bool) error {
 	if err := b.ValidateIndex(); err != nil {
-		return fmt.Errorf("index damaged: %w", err)
+		return fmt.Errorf("index: %w", err)
 	}
 
-	if err := b.ValidateContents(strict); err != nil {
-		return fmt.Errorf("contents damaged: %w", err)
+	if err := b.ValidateFiles(strict); err != nil {
+		return fmt.Errorf("files: %w", err)
+	}
+
+	if err := b.ValidateManifest(strict); err != nil {
+		return fmt.Errorf("manifest: %w", err)
 	}
 
 	return nil
@@ -126,37 +130,18 @@ func (b *Bundle) Validate(strict bool) error {
 
 // ValidateIndex reports whether the index packet was read cleanly from disk. It
 // returns nil if the index was parsed and validated normally, or an error
-// describing why reconstruction from a scan was necessary.
+// describing why reconstruction from a scan was necessary. Beware it only
+// returns this as long as Update() has not written that reconstructed index
+// back to the bundle file, restoring it to one functionally correct state.
 func (b *Bundle) ValidateIndex() error {
 	return b.OpenError
 }
 
-// ValidateContents checks that every packet referenced by the index is present
-// and well-formed at the expected offset, and that the manifest data passes
-// BLAKE3 integrity checks. If strict is true, it additionally verifies that
-// each file packet's data stream begins with a PAR2 magic byte sequence. That
-// should be used carefully though, as there may be non-compliant PAR2 writers.
-func (b *Bundle) ValidateContents(strict bool) error {
-	// Validate manifest packet.
-	ch, _, err := readAndValidatePacket(b.f, int64(b.Index.ManifestPacketOffset), b.size) //nolint:gosec
-	if err != nil {
-		return fmt.Errorf("manifest packet at offset %d: %w", b.Index.ManifestPacketOffset, err)
-	}
-	if ch.PacketType != PacketTypeManifest {
-		return fmt.Errorf("manifest packet at offset %d: expected manifest type, got %q", b.Index.ManifestPacketOffset, ch.PacketType)
-	}
-	if b.Index.ManifestPacketOffset+ch.PacketLength != uint64(b.size) { //nolint:gosec
-		return fmt.Errorf("manifest packet does not end at EOF: ends at %d, file size %d",
-			b.Index.ManifestPacketOffset+ch.PacketLength, b.size)
-	}
-
-	// Validate manifest integrity (it's part of our packet).
-	_, err = b.Manifest()
-	if err != nil {
-		return fmt.Errorf("manifest data: %w", err)
-	}
-
-	// Validate file packets.
+// ValidateFiles verifies that every file entry in the index points to a valid
+// file packet at the expected offset. If strict is true, it additionally checks
+// each file stream's data against its BLAKE3 hash to detect corruption, which
+// requires reading the full data stream and may be slower for large bundles.
+func (b *Bundle) ValidateFiles(strict bool) error {
 	for i, entry := range b.Index.Entries {
 		ch, _, err := readAndValidatePacket(b.f, int64(entry.PacketOffset), b.size) //nolint:gosec
 		if err != nil {
@@ -166,15 +151,44 @@ func (b *Bundle) ValidateContents(strict bool) error {
 			return fmt.Errorf("file packet %d (%q) at offset %d: expected file type, got %q", i, entry.Name, entry.PacketOffset, ch.PacketType)
 		}
 
-		// Validate file stream starts on magic byte (it's not part of our packet).
 		if strict {
-			var magic [8]byte
-			if _, err := b.f.ReadAt(magic[:], int64(entry.DataOffset)); err != nil { //nolint:gosec
-				return fmt.Errorf("file packet %d (%q): failed to read data magic at offset %d: %w", i, entry.Name, entry.DataOffset, err)
+			sr := io.NewSectionReader(b.f, int64(entry.DataOffset), int64(entry.DataLength)) //nolint:gosec
+
+			hash, err := dataHashReader(sr)
+			if err != nil {
+				return fmt.Errorf("file data %d (%q) at offset %d: hash error: %w", i, entry.Name, entry.DataOffset, err)
 			}
-			if magic != Magic {
-				return fmt.Errorf("file packet %d (%q): data at offset %d does not start with PAR2 magic", i, entry.Name, entry.DataOffset)
+			if hash != entry.DataB3 {
+				return fmt.Errorf("file data %d (%q) at offset %d: %w: hash mismatch", i, entry.Name, entry.DataOffset, ErrDataCorrupt)
 			}
+		}
+	}
+
+	return nil
+}
+
+// ValidateManifest verifies that the manifest packet is present and well-formed
+// at the expected offset. If strict is true, it additionally checks the
+// manifest data against its BLAKE3 hash to detect corruption, which requires
+// reading the full data stream and may be slower for large bundles.
+func (b *Bundle) ValidateManifest(strict bool) error {
+	ch, _, err := readAndValidatePacket(b.f, int64(b.Index.ManifestPacketOffset), b.size) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("manifest packet at offset %d: %w", b.Index.ManifestPacketOffset, err)
+	}
+	if ch.PacketType != PacketTypeManifest {
+		return fmt.Errorf("manifest packet at offset %d: expected manifest type, got %q", b.Index.ManifestPacketOffset, ch.PacketType)
+	}
+
+	if strict {
+		sr := io.NewSectionReader(b.f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
+
+		hash, err := dataHashReader(sr)
+		if err != nil {
+			return fmt.Errorf("manifest data at offset %d: hash error: %w", b.Index.ManifestDataOffset, err)
+		}
+		if hash != b.Index.ManifestDataB3 {
+			return fmt.Errorf("manifest data at offset %d: %w: hash mismatch", b.Index.ManifestDataOffset, ErrDataCorrupt)
 		}
 	}
 

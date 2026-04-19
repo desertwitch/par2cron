@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// Scan scans the bundle for app-specific packets by PAR2 magic, ignoring the
-// index packet index. Use this as a fallback if the index packet is corrupt.
+// Scan scans the bundle for app-specific packets by PAR2 magic bytes, ignoring
+// index packet metadata. Use this as fallback if the index packet is corrupt.
 func Scan(r io.ReaderAt, size int64) ([]FilePacket, *ManifestPacket) {
 	var files []FilePacket
 	var manifest *ManifestPacket
@@ -48,8 +48,8 @@ func Scan(r io.ReaderAt, size int64) ([]FilePacket, *ManifestPacket) {
 	return files, manifest
 }
 
-// findNextMagic scans r for the next occurrence of Magic starting at from.
-// Returns the offset of the match or an error if none is found.
+// findNextMagic scans r for the next occurrence of magic bytes starting at
+// from. Returns the offset of the match or an error if none is found.
 func findNextMagic(r io.ReaderAt, from, fileSize int64) (int64, error) {
 	const bufSize = 16 * 1024
 
@@ -102,6 +102,7 @@ func reconstructIndex(manifest *ManifestPacket, files []FilePacket) IndexPacket 
 			RecoverySetID: manifest.RecoverySetID,
 		},
 		Version:              Version,
+		Flags:                FlagIndexRebuilt,
 		ManifestPacketOffset: manifest.packetOffset,
 		ManifestDataOffset:   manifest.dataOffset,
 		ManifestDataLength:   manifest.DataLength,

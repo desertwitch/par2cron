@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/afero"
 )
 
-// Unpack extracts all file packets and the manifest to destDir. It attempts to
+// Unpack extracts all bundled files and the manifest to destDir. It attempts to
 // extract every file rather than stopping at the first error. If strict is
 // true, files that fail integrity checks are removed; otherwise they are kept
 // on disk (returning ErrDataCorrupt). Any returned errors are joined together.
@@ -52,9 +52,9 @@ func (b *Bundle) ExtractEntry(e IndexEntry, w io.Writer) error {
 	return nil
 }
 
-// ExtractManifest copies the manifest's data to w and verifies it against its
-// BLAKE3 hash. If an error is returned, the written data may be partial or
-// corrupt. If the transfer is complete but corrupt, ErrDataCorrupt is returned.
+// ExtractManifest copies the manifest's data stream to w and verifies it
+// against its BLAKE3 hash. If an error is returned, written data may be partial
+// or corrupt. If transfer is complete but corrupt, ErrDataCorrupt is returned.
 func (b *Bundle) ExtractManifest(w io.Writer) error {
 	sr := io.NewSectionReader(b.f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
 	expectedHash := b.Index.ManifestDataB3

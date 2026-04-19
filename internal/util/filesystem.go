@@ -109,7 +109,7 @@ func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest, isBundle bool
 		}
 		defer b.Close()
 
-		if err := b.UpdateManifest(data); err != nil {
+		if err := b.Update(data); err != nil {
 			return fmt.Errorf("failed to update bundle: %w", err)
 		}
 	}

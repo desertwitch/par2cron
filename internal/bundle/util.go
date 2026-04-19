@@ -7,12 +7,12 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-// dataHash computes the data integrity hash from a byte slice.
+// dataHash computes the BLAKE3 data integrity hash from a byte slice.
 func dataHash(data []byte) [32]byte {
 	return blake3.Sum256(data)
 }
 
-// dataHashReader computes the data integrity hash by streaming from r.
+// dataHashReader computes the BLAKE3 data integrity hash streaming from r.
 func dataHashReader(r io.Reader) ([32]byte, error) {
 	h := blake3.New()
 	if _, err := io.Copy(h, r); err != nil {

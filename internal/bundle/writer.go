@@ -107,13 +107,12 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 	return nil
 }
 
-// UpdateManifest replaces the manifest and rewrites the index, restoring both
-// to a clean state. Any prior corruption in either the manifest or the index is
+// Update updates the manifest. Any corruption in either index or manifest is
 // resolved after a successful call, with corrupt file packets (as opposed to
-// their raw data streams) being dropped from the index packet. The data streams
-// themselves will still be usable by downstream PAR2 parsing programs, just no
-// longer be extractable from the bundle due to their lost file packet metadata.
-func (b *Bundle) UpdateManifest(manifest []byte) error {
+// their PAR2 data streams) being dropped from the index packet. The PAR2 data
+// streams will still be usable by downstream PAR2 parsing programs, but may no
+// longer be extractable from the bundle due to their lost metadata file packet.
+func (b *Bundle) Update(manifest []byte) error {
 	manifestPacketOffset := b.Index.ManifestPacketOffset
 
 	// Truncate the file to drop the old manifest packet.
@@ -282,7 +281,7 @@ func writeIndexPacket(w io.Writer, recoverySetID [16]byte, flags uint64, entries
 	return writeCommonPacket(w, recoverySetID, PacketTypeIndex, body.Bytes())
 }
 
-// writeFileSegment writes a file packet plus the file's data and padding (usually none).
+// writeFileSegment writes a file packet plus the file's data stream and padding (usually none).
 func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, fi FileInput) (IndexEntry, error) {
 	src, err := fsys.Open(fi.Path)
 	if err != nil {

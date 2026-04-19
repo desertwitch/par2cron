@@ -353,7 +353,7 @@ func Test_WireFormat_ReferenceBundle_Pack_UpdatedManifest_Verify(t *testing.T) {
 
 			b, err := Open(fs, bundlePath)
 			require.NoError(t, err)
-			require.NoError(t, b.UpdateManifest([]byte("test")))
+			require.NoError(t, b.Update([]byte("test")))
 			require.NoError(t, b.Close())
 
 			cmd := exec.CommandContext(t.Context(), "par2", "verify", filepath.Base(gs.Bundle))
@@ -415,7 +415,7 @@ func Test_WireFormat_ReferenceBundle_Pack_UpdatedManifest_Repair(t *testing.T) {
 
 			b, err := Open(fs, bundlePath)
 			require.NoError(t, err)
-			require.NoError(t, b.UpdateManifest([]byte("test")))
+			require.NoError(t, b.Update([]byte("test")))
 			require.NoError(t, b.Close())
 
 			cmd := exec.CommandContext(t.Context(), "par2", "verify", filepath.Base(gs.Bundle))
@@ -488,7 +488,7 @@ func Test_WireFormat_ReferenceBundle_Unpack_UpdatedManifest_Verify(t *testing.T)
 			b, err := Open(fs, bundlePath)
 			require.NoError(t, err)
 			require.NoError(t, b.Validate(true))
-			require.NoError(t, b.UpdateManifest([]byte("test")))
+			require.NoError(t, b.Update([]byte("test")))
 			require.NoError(t, b.Unpack(fs, tmpDir, true))
 			require.NoError(t, b.Close())
 
@@ -566,7 +566,7 @@ func Test_WireFormat_ReferenceBundle_Unpack_UpdatedManifest_Repair(t *testing.T)
 			b, err := Open(fs, bundlePath)
 			require.NoError(t, err)
 			require.NoError(t, b.Validate(true))
-			require.NoError(t, b.UpdateManifest([]byte("test")))
+			require.NoError(t, b.Update([]byte("test")))
 			require.NoError(t, b.Unpack(fs, tmpDir, true))
 			require.NoError(t, b.Close())
 

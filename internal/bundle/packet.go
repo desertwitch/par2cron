@@ -63,7 +63,7 @@ type IndexPacket struct {
 	Entries    []IndexEntry
 }
 
-// IndexEntry is one entry in the index packet's file table.
+// IndexEntry is one file entry in the index packet's file table.
 type IndexEntry struct {
 	PacketOffset uint64
 	DataOffset   uint64
@@ -221,7 +221,7 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 	return mp, nil
 }
 
-// FilePacket wraps a single par2 file.
+// FilePacket is the metadata for a single bundled PAR2 file.
 type FilePacket struct {
 	CommonHeader
 
@@ -268,7 +268,7 @@ func parseFilePacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (File
 	return fp, nil
 }
 
-// ManifestPacket holds the JSON manifest.
+// ManifestPacket is the metadata for the JSON manifest.
 type ManifestPacket struct {
 	CommonHeader
 
