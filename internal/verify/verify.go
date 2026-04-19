@@ -267,7 +267,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 }
 
 func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) { //nolint:funcorder
-	if strings.Contains(par2path, schema.BundleExtension) {
+	if strings.Contains(filepath.Base(par2path), schema.BundleExtension) {
 		return prog.processBundleManifest(ctx, par2path, opts)
 	}
 
