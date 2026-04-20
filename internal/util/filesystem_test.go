@@ -2,6 +2,7 @@ package util
 
 import (
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -200,6 +201,227 @@ func Test_WriteManifest_WriteFails_Error(t *testing.T) {
 
 	exists, _ := afero.Exists(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension)
 	require.False(t, exists)
+}
+
+// Expectation: The manifest should be written into the bundle via Open and Update.
+func Test_WriteManifest_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.SHA256 = "abc123"
+
+	var updateCalled bool
+	var capturedData []byte
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			updateCalled = true
+			capturedData = data
+
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, bundlePath)
+
+			return mockBundle, nil
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+
+	require.NoError(t, err)
+	require.True(t, updateCalled)
+
+	var written schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedData, &written))
+	require.Equal(t, "abc123", written.SHA256)
+	require.Equal(t, schema.ProgramVersion, written.ProgramVersion)
+	require.Equal(t, schema.ManifestVersion, written.ManifestVersion)
+}
+
+// Expectation: The manifest version should be updated to current schema version when writing to a bundle.
+func Test_WriteManifest_Bundle_UpdatesVersions_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.ProgramVersion = "0.0.0"
+	mf.ManifestVersion = "0"
+
+	var capturedData []byte
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			capturedData = data
+
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+	require.NoError(t, err)
+
+	var written schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedData, &written))
+	require.Equal(t, schema.ProgramVersion, written.ProgramVersion)
+	require.Equal(t, schema.ManifestVersion, written.ManifestVersion)
+}
+
+// Expectation: An error should be returned when the bundle cannot be opened.
+func Test_WriteManifest_Bundle_OpenFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return nil, errors.New("corrupt bundle")
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+
+	require.ErrorContains(t, err, "failed to open bundle")
+}
+
+// Expectation: An error should be returned when the bundle update fails.
+func Test_WriteManifest_Bundle_UpdateFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			return errors.New("write failed")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+
+	require.ErrorContains(t, err, "failed to update bundle")
+}
+
+// Expectation: Close should be called even when Update succeeds.
+func Test_WriteManifest_Bundle_CloseCalled_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	var closeCalled bool
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			closeCalled = true
+
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	require.NoError(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+	require.True(t, closeCalled)
+}
+
+// Expectation: Close should be called even when Update fails.
+func Test_WriteManifest_Bundle_CloseCalledOnUpdateFailure_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	var closeCalled bool
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			return errors.New("update failed")
+		},
+		CloseFunc: func() error {
+			closeCalled = true
+
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	require.Error(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+	require.True(t, closeCalled)
+}
+
+// Expectation: No standalone file should be written to disk when writing to a bundle.
+func Test_WriteManifest_Bundle_NoStandaloneFile_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error { return nil },
+		CloseFunc:  func() error { return nil },
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	require.NoError(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+
+	// No file should be written to disk — the manifest lives inside the bundle.
+	entries, err := afero.ReadDir(fs, "/data")
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }
 
 // Expectation: The walker should visit all files and directories.

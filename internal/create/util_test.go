@@ -375,10 +375,11 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:     true,
 		},
 		{
-			name:         "hidden par2 name detects hidden bundle existing",
-			existingFile: "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
-			par2Name:     ".test" + schema.Par2Extension,
-			expected:     true,
+			name:          "hidden par2 name detects hidden bundle existing",
+			existingFile:  "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:      ".test" + schema.Par2Extension,
+			markerPersist: true,
+			expected:      true,
 		},
 		{
 			name:         "no par2 exists",

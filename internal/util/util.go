@@ -30,6 +30,8 @@ func (b *BundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16
 	return bundle.Pack(fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
 }
 
+var _ schema.Par2Handler = (*Par2Handler)(nil)
+
 type Par2Handler struct{}
 
 func (h *Par2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {

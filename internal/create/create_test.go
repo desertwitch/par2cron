@@ -3249,184 +3249,6 @@ func Test_Service_runCreate_Success(t *testing.T) {
 	require.True(t, manifestExists)
 }
 
-// Expectation: The function should run the creation and pack the result as a bundle.
-func Test_Service_runCreate_Bundle_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	runner := &testutil.MockRunner{
-		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
-			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2data"), 0o644))
-			require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
-
-			return nil
-		},
-	}
-
-	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
-
-	par2er := &testutil.MockPar2Handler{
-		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
-			return &par2.File{
-				Sets: []par2.Set{
-					{MainPacket: &par2.MainPacket{SetID: setID}},
-				},
-			}, nil
-		},
-	}
-
-	var packCalled bool
-	bundler := &testutil.MockBundleHandler{
-		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
-			packCalled = true
-
-			require.Equal(t, setID, recoverySetID)
-			require.NotEmpty(t, manifest.Bytes)
-			require.NotEmpty(t, files)
-
-			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
-
-			return nil
-		},
-	}
-
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, par2er)
-
-	job := &Job{
-		workingDir:   "/data/folder",
-		markerPath:   "/data/folder/_par2cron",
-		par2Mode:     schema.CreateFolderMode,
-		par2Name:     "test" + schema.Par2Extension,
-		par2Path:     "/data/folder/test" + schema.Par2Extension,
-		par2Args:     []string{"-r10"},
-		par2Glob:     "*",
-		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
-		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
-		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
-		asBundle:     true,
-	}
-
-	files := []schema.FsElement{
-		{Path: "/data/folder/file.txt", Name: "file.txt"},
-	}
-
-	require.NoError(t, prog.runCreate(t.Context(), job, files))
-	require.True(t, packCalled)
-
-	// Original PAR2 files should be cleaned up.
-	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
-	require.False(t, indexExists)
-
-	volExists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
-	require.False(t, volExists)
-
-	// Bundle should exist.
-	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
-	require.True(t, bundleExists)
-
-	// Job fields should have been updated to point to the bundle.
-	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.par2Name)
-	require.Equal(t, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, job.par2Path)
-
-	// No standalone manifest file should exist (it's inside the bundle).
-	manifestExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
-	require.False(t, manifestExists)
-}
-
-// Expectation: The function should return an error when bundling fails after successful PAR2 creation.
-func Test_Service_runCreate_Bundle_PackFails_Error(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	runner := &testutil.MockRunner{
-		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
-			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2data"), 0o644))
-			require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
-
-			return nil
-		},
-	}
-
-	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
-
-	par2er := &testutil.MockPar2Handler{
-		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
-			return &par2.File{
-				Sets: []par2.Set{
-					{MainPacket: &par2.MainPacket{SetID: setID}},
-				},
-			}, nil
-		},
-	}
-
-	bundler := &testutil.MockBundleHandler{
-		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
-			return errors.New("disk full")
-		},
-	}
-
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, par2er)
-
-	job := &Job{
-		workingDir:   "/data/folder",
-		markerPath:   "/data/folder/_par2cron",
-		par2Mode:     schema.CreateFolderMode,
-		par2Name:     "test" + schema.Par2Extension,
-		par2Path:     "/data/folder/test" + schema.Par2Extension,
-		par2Args:     []string{"-r10"},
-		par2Glob:     "*",
-		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
-		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
-		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
-		asBundle:     true,
-	}
-
-	files := []schema.FsElement{
-		{Path: "/data/folder/file.txt", Name: "file.txt"},
-	}
-
-	err := prog.runCreate(t.Context(), job, files)
-	require.ErrorContains(t, err, "failed to bundle")
-	require.Contains(t, logBuf.String(), "Failed to bundle created PAR2 files")
-
-	// PAR2 files should be cleaned up by the deferred cleanupAfterFailure.
-	par2Exists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
-	require.False(t, par2Exists)
-
-	volExists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
-	require.False(t, volExists)
-
-	// No bundle should exist.
-	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
-	require.False(t, bundleExists)
-
-	// No standalone manifest should exist.
-	manifestExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
-	require.False(t, manifestExists)
-}
-
 // Expectation: The function should create with run par2, verify par2 without failure.
 func Test_Service_runCreate_PostVerification_Success(t *testing.T) {
 	t.Parallel()
@@ -3982,4 +3804,182 @@ func Test_Service_runCreate_CtxCancel_Error(t *testing.T) {
 
 	err := prog.runCreate(ctx, job, files)
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+// Expectation: The function should run the creation and pack the result as a bundle.
+func Test_Service_runCreate_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+
+			return nil
+		},
+	}
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	var packCalled bool
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
+
+			require.Equal(t, setID, recoverySetID)
+			require.NotEmpty(t, manifest.Bytes)
+			require.NotEmpty(t, files)
+
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, par2er)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt"},
+	}
+
+	require.NoError(t, prog.runCreate(t.Context(), job, files))
+	require.True(t, packCalled)
+
+	// Original PAR2 files should be cleaned up.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, indexExists)
+
+	volExists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
+	require.False(t, volExists)
+
+	// Bundle should exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+
+	// Job fields should have been updated to point to the bundle.
+	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.par2Name)
+	require.Equal(t, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, job.par2Path)
+
+	// No standalone manifest file should exist (it's inside the bundle).
+	manifestExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
+	require.False(t, manifestExists)
+}
+
+// Expectation: The function should return an error when bundling fails after successful PAR2 creation.
+func Test_Service_runCreate_Bundle_PackFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+
+			return nil
+		},
+	}
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			return errors.New("disk full")
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, par2er)
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.runCreate(t.Context(), job, files)
+	require.ErrorContains(t, err, "failed to bundle")
+	require.Contains(t, logBuf.String(), "Failed to bundle created PAR2 files")
+
+	// PAR2 files should be cleaned up by the deferred cleanupAfterFailure.
+	par2Exists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, par2Exists)
+
+	volExists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
+	require.False(t, volExists)
+
+	// No bundle should exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.False(t, bundleExists)
+
+	// No standalone manifest should exist.
+	manifestExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
+	require.False(t, manifestExists)
 }

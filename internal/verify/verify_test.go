@@ -1282,86 +1282,6 @@ func Test_Service_RunVerify_Success(t *testing.T) {
 	require.True(t, manifestExists)
 }
 
-// Expectation: The verification should pass and the manifest should be updated inside the bundle.
-func Test_Service_RunVerify_Bundle_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	runner := &testutil.MockRunner{
-		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
-			return nil
-		},
-	}
-
-	var updateCalled bool
-	var capturedManifestData []byte
-	mockBundle := &testutil.MockBundle{
-		UpdateFunc: func(data []byte) error {
-			updateCalled = true
-			capturedManifestData = data
-
-			return nil
-		},
-		CloseFunc: func() error {
-			return nil
-		},
-	}
-
-	bundler := &testutil.MockBundleHandler{
-		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
-			require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, bundlePath)
-
-			return mockBundle, nil
-		},
-	}
-
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
-
-	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
-	mf.SHA256 = "abc123"
-
-	job := &Job{
-		workingDir:   "/data",
-		par2Name:     "test" + schema.BundleExtension + schema.Par2Extension,
-		par2Path:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
-		par2Args:     []string{"-v"},
-		manifestName: "test" + schema.BundleExtension + schema.Par2Extension,
-		manifestPath: "/data/test" + schema.BundleExtension + schema.Par2Extension,
-		manifest:     mf,
-		isBundle:     true,
-	}
-
-	require.NoError(t, prog.RunVerify(t.Context(), job, false))
-	require.True(t, updateCalled)
-
-	require.NotNil(t, job.manifest)
-	require.NotNil(t, job.manifest.Verification)
-	require.NotZero(t, job.manifest.Verification.Duration)
-	require.Equal(t, schema.Par2ExitCodeSuccess, job.manifest.Verification.ExitCode)
-	require.Equal(t, 1, job.manifest.Verification.Count)
-
-	// The manifest data written to the bundle should be valid JSON.
-	var unmarshaled schema.Manifest
-	require.NoError(t, json.Unmarshal(capturedManifestData, &unmarshaled))
-	require.Equal(t, schema.ProgramVersion, unmarshaled.ProgramVersion)
-	require.Equal(t, schema.ManifestVersion, unmarshaled.ManifestVersion)
-	require.NotNil(t, unmarshaled.Verification)
-
-	// No standalone manifest file should exist on disk.
-	standaloneExists, _ := afero.Exists(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension+schema.ManifestExtension)
-	require.False(t, standaloneExists)
-}
-
 // Expectation: The verification should use the correct arguments.
 func Test_Service_RunVerify_CorrectArgs_Success(t *testing.T) {
 	t.Parallel()
@@ -1647,6 +1567,86 @@ func Test_Service_RunVerify_ManifestWriteError_Error(t *testing.T) {
 	}
 
 	require.ErrorContains(t, prog.RunVerify(t.Context(), job, false), "failed to write manifest")
+}
+
+// Expectation: The verification should pass and the manifest should be updated inside the bundle.
+func Test_Service_RunVerify_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var updateCalled bool
+	var capturedManifestData []byte
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			updateCalled = true
+			capturedManifestData = data
+
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, bundlePath)
+
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.SHA256 = "abc123"
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.BundleExtension + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.BundleExtension + schema.Par2Extension,
+		manifestPath: "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		manifest:     mf,
+		isBundle:     true,
+	}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+	require.True(t, updateCalled)
+
+	require.NotNil(t, job.manifest)
+	require.NotNil(t, job.manifest.Verification)
+	require.NotZero(t, job.manifest.Verification.Duration)
+	require.Equal(t, schema.Par2ExitCodeSuccess, job.manifest.Verification.ExitCode)
+	require.Equal(t, 1, job.manifest.Verification.Count)
+
+	// The manifest data written to the bundle should be valid JSON.
+	var unmarshaled schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedManifestData, &unmarshaled))
+	require.Equal(t, schema.ProgramVersion, unmarshaled.ProgramVersion)
+	require.Equal(t, schema.ManifestVersion, unmarshaled.ManifestVersion)
+	require.NotNil(t, unmarshaled.Verification)
+
+	// No standalone manifest file should exist on disk.
+	standaloneExists, _ := afero.Exists(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension+schema.ManifestExtension)
+	require.False(t, standaloneExists)
 }
 
 // Expectation: The exit code should be parsed according to expectations.
