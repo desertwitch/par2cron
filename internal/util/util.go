@@ -7,13 +7,23 @@ import (
 	"time"
 
 	"github.com/davidscholberg/go-durationfmt"
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/spf13/afero"
 )
 
 const (
 	UmaskFilePerm      os.FileMode   = 0o666
 	ProcessKillTimeout time.Duration = 10 * time.Second
 )
+
+var _ schema.BundleOpener = (*BundleOpener)(nil)
+
+type BundleOpener struct{}
+
+func (b *BundleOpener) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) { //nolint:ireturn
+	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
+}
 
 type ResultTracker struct {
 	Selected int

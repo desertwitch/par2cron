@@ -13,7 +13,6 @@ import (
 	"syscall"
 
 	"github.com/bmatcuk/doublestar/v4"
-	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
@@ -86,7 +85,7 @@ func HashFile(fsys afero.Fs, filePath string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest, isBundle bool) error {
+func WriteManifest(fsys afero.Fs, opener schema.BundleOpener, path string, m *schema.Manifest, isBundle bool) error {
 	// Update versions here, as we un- and re-marshalled to a possibly
 	// new manifest format (adding new fields and dropping old fields).
 	m.ProgramVersion = schema.ProgramVersion
@@ -103,7 +102,7 @@ func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest, isBundle bool
 			return fmt.Errorf("failed to write: %w", err)
 		}
 	} else {
-		b, err := bundle.Open(fsys, path)
+		b, err := opener.Open(fsys, path)
 		if err != nil {
 			return fmt.Errorf("failed to open bundle: %w", err)
 		}
@@ -116,6 +115,8 @@ func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest, isBundle bool
 
 	return nil
 }
+
+var _ schema.FilesystemWalker = (*AferoWalker)(nil)
 
 // AferoWalker is an adapter to turn the [afero.Walk] into a [filepath.WalkDir] signature.
 type AferoWalker struct {
@@ -136,6 +137,8 @@ func (w AferoWalker) WalkDir(root string, fn fs.WalkDirFunc) error {
 		return fn(path, entry, err)
 	})
 }
+
+var _ schema.FilesystemWalker = (*OSWalker)(nil)
 
 // OSWalker is a wrapper structure for the native [filepath.WalkDir] function.
 type OSWalker struct{}

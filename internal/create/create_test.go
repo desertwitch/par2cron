@@ -17,6 +17,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -272,7 +273,7 @@ func Test_Service_Create_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -316,7 +317,7 @@ func Test_Service_Create_MultiRoot_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data", "/data2"}, args)
@@ -352,7 +353,7 @@ func Test_Service_Create_FileLocked_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -388,7 +389,7 @@ func Test_Service_Create_Generic_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -433,7 +434,7 @@ func Test_Service_Create_MultipleJobs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -478,7 +479,7 @@ func Test_Service_Create_MultipleJobs_OneFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -521,7 +522,7 @@ func Test_Service_Create_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -560,7 +561,7 @@ func Test_Service_Create_MultipleJobs_EnumerationFails_NoOtherJobs_Error(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -587,7 +588,7 @@ func Test_Service_Create_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -614,7 +615,7 @@ func Test_Service_Create_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	_, err := prog.Create(ctx, []string{"/data"}, args)
@@ -655,7 +656,7 @@ func Test_Service_Create_DurationExceeded_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
 
@@ -702,7 +703,7 @@ func Test_Service_Create_DurationNotExceeded_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10s"))
 
@@ -745,7 +746,7 @@ func Test_Service_Create_DurationExceeded_WithPriorError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
 
@@ -791,7 +792,7 @@ func Test_Service_Create_NoDuration_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -818,7 +819,7 @@ func Test_Service_Create_RecursiveArgWithoutRecursiveMode_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10", "-R"}, Par2Glob: "*"}
 	require.NoError(t, args.Par2Mode.Set(schema.CreateFileMode))
@@ -848,7 +849,7 @@ func Test_Service_Enumerate_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -876,7 +877,7 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -906,7 +907,7 @@ func Test_Service_Enumerate_IgnoreFileAll_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -934,7 +935,7 @@ func Test_Service_Enumerate_PartialError_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 	args := Options{Par2Args: []string{"-r10"}}
 
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -960,7 +961,7 @@ func Test_Service_Enumerate_NoMarkers_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -987,7 +988,7 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	_, err := prog.Enumerate(ctx, "/data", args)
@@ -1022,7 +1023,7 @@ func Test_Service_createPar2_FolderMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1071,7 +1072,7 @@ func Test_Service_createPar2_FolderMode_PersistMarker_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:    "/data/folder",
@@ -1127,7 +1128,7 @@ func Test_Service_createPar2_FolderMode_DeepGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1180,7 +1181,7 @@ func Test_Service_createPar2_FolderMode_NoFilesToProtect_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1229,7 +1230,7 @@ func Test_Service_createPar2_FolderMode_CreateFailure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1281,7 +1282,7 @@ func Test_Service_createPar2_NestedMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1337,7 +1338,7 @@ func Test_Service_createPar2_NestedMode_ShallowGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1391,7 +1392,7 @@ func Test_Service_createPar2_NestedMode_PersistMarker_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:    "/data/folder",
@@ -1449,7 +1450,7 @@ func Test_Service_createPar2_NestedMode_DeepGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1513,7 +1514,7 @@ func Test_Service_createPar2_NestedMode_DeeplyNested_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1563,7 +1564,7 @@ func Test_Service_createPar2_NestedMode_NoFilesToProtect_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1613,7 +1614,7 @@ func Test_Service_createPar2_NestedMode_CreateFailure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1662,7 +1663,7 @@ func Test_Service_createPar2_FileMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1717,7 +1718,7 @@ func Test_Service_createPar2_FileMode_DeepGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1771,7 +1772,7 @@ func Test_Service_createPar2_FileMode_NoFilesToProtect_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1820,7 +1821,7 @@ func Test_Service_createPar2_FileMode_CreateFailure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1870,7 +1871,7 @@ func Test_Service_createPar2_CannotRemoveMarker_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1914,7 +1915,7 @@ func Test_Service_findElementsToProtect_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1955,7 +1956,7 @@ func Test_Service_findElementsToProtect_DeepGlobRelativeName_FolderMode_Success(
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2002,7 +2003,7 @@ func Test_Service_findElementsToProtect_DeepGlobRelativeName_FileMode_Success(t 
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2052,7 +2053,7 @@ func Test_Service_findElementsToProtect_RecursiveMode_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2119,7 +2120,7 @@ func Test_Service_findElementsToProtect_RecursiveMode_NoDeepRecursion_Success(t 
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2337,7 +2338,7 @@ func Test_Service_findElementsToProtect_GlobMetacharsInWorkingDirPath_Table(t *t
 			}
 			_ = ls.LogLevel.Set("info")
 
-			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 			files, err := prog.findElementsToProtect(t.Context(), &tt.job)
 			require.NoError(t, err)
@@ -2375,7 +2376,7 @@ func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2411,7 +2412,7 @@ func Test_Service_findElementsToProtect_DeepGlobInRecursiveMode_Error(t *testing
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir: "/data/folder",
@@ -2449,7 +2450,7 @@ func Test_Service_findElementsToProtect_SymlinkInGlobPrefix_Error(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir: workingDir,
@@ -2488,7 +2489,7 @@ func Test_Service_findElementsToProtect_SymlinkInGlobResults_Success(t *testing.
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir: workingDir,
@@ -2533,7 +2534,7 @@ func Test_Service_findElementsToProtect_SymlinkDir_NoFollow_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir: workingDir,
@@ -2582,7 +2583,7 @@ func Test_Service_createCombined_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2626,7 +2627,7 @@ func Test_Service_createCombined_AlreadyExists_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2677,7 +2678,7 @@ func Test_Service_createNested_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2737,7 +2738,7 @@ func Test_Service_createNested_Grouping_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2810,7 +2811,7 @@ func Test_Service_createNested_DeepNesting_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2885,7 +2886,7 @@ func Test_Service_createNested_FirstFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2930,7 +2931,7 @@ func Test_Service_createNested_AlreadyExists_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2973,7 +2974,7 @@ func Test_Service_createNested_CtxCancel_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3022,7 +3023,7 @@ func Test_Service_createIndividual_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3079,7 +3080,7 @@ func Test_Service_createIndividual_FirstFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3124,7 +3125,7 @@ func Test_Service_createIndividual_AlreadyExists_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3167,7 +3168,7 @@ func Test_Service_createIndividual_CtxCancel_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3214,7 +3215,7 @@ func Test_Service_runCreate_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3276,7 +3277,7 @@ func Test_Service_runCreate_PostVerification_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3341,7 +3342,7 @@ func Test_Service_runCreate_PostVerification_Failure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3402,7 +3403,7 @@ func Test_Service_runCreate_CorrectArgs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3469,7 +3470,7 @@ func Test_Service_runCreate_CorrectArgs_RecursiveMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3532,7 +3533,7 @@ func Test_Service_runCreate_ManifestUnmarshal_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3613,7 +3614,7 @@ func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) 
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder2",
@@ -3667,7 +3668,7 @@ func Test_Service_runCreate_Par2Fails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3722,7 +3723,7 @@ func Test_Service_runCreate_ManifestWriteFails_Success(t *testing.T) {
 			return nil
 		},
 	}
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 	job := &Job{
 		workingDir:   "/data/folder",
 		markerPath:   "/data/folder/_par2cron",
@@ -3776,7 +3777,7 @@ func Test_Service_runCreate_CtxCancel_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",

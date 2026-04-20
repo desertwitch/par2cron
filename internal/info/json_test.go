@@ -10,6 +10,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ func Test_Service_PrintJSON_NoRunInterval_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	err := prog.PrintJSON(t.Context(), []string{"/data"}, args)
@@ -56,7 +57,7 @@ func Test_Service_PrintJSON_NoKnownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -102,7 +103,7 @@ func Test_Service_PrintJSON_WithOptions_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -141,7 +142,7 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -183,7 +184,7 @@ func Test_Service_PrintJSON_WithJobs_ZeroLastVerified_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -225,7 +226,7 @@ func Test_Service_PrintJSON_WithAgeFlag_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -265,7 +266,7 @@ func Test_Service_PrintJSON_WithDurationFlag_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -305,7 +306,7 @@ func Test_Service_PrintJSON_HealthyBacklog_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -346,7 +347,7 @@ func Test_Service_PrintJSON_UnhealthyBacklog_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -388,7 +389,7 @@ func Test_Service_PrintJSON_HealthyBacklog_UnknownDurations_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{IncludeExternal: true}
 	_ = args.RunInterval.Set("24h")
@@ -427,7 +428,7 @@ func Test_Service_PrintJSON_LargeJobWarning_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -467,7 +468,7 @@ func Test_Service_PrintJSON_AgeLessThanInterval_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -505,7 +506,7 @@ func Test_Service_PrintJSON_CycleInfo_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -548,7 +549,7 @@ func Test_Service_PrintJSON_CycleInfo_UnknownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{IncludeExternal: true}
 	_ = args.RunInterval.Set("24h")
@@ -582,7 +583,7 @@ func Test_Service_PrintJSON_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -615,7 +616,7 @@ func Test_Service_PrintJSON_AllSections_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -660,7 +661,7 @@ func Test_Service_PrintJSON_MinimalSections_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -692,7 +693,7 @@ func Test_Service_buildAgeInfo_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -723,7 +724,7 @@ func Test_Service_buildAgeInfo_AgeLessThanInterval_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -754,7 +755,7 @@ func Test_Service_buildAgeInfo_MinRequiredDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Millisecond,
@@ -784,7 +785,7 @@ func Test_Service_buildAgeInfo_RequiredDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 7 * time.Hour,
@@ -815,7 +816,7 @@ func Test_Service_buildDurationInfo_SingleRun_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration:   30 * time.Minute,
@@ -849,7 +850,7 @@ func Test_Service_buildDurationInfo_MultipleRuns_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration:   3 * time.Hour,
@@ -883,7 +884,7 @@ func Test_Service_buildDurationInfo_LargeJobWarning_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration:   2 * time.Hour,
@@ -916,7 +917,7 @@ func Test_Service_buildDurationInfo_NoWarning_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration:   30 * time.Minute,
@@ -948,7 +949,7 @@ func Test_Service_buildBacklogInfo_Healthy_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -983,7 +984,7 @@ func Test_Service_buildBacklogInfo_Unhealthy_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 10 * time.Hour,
@@ -1018,7 +1019,7 @@ func Test_Service_buildBacklogInfo_UnknownJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -1050,7 +1051,7 @@ func Test_Service_buildBacklogInfo_NoWarningWhenHealthy_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -1084,7 +1085,7 @@ func Test_Service_buildCycleInfo_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	now := time.Now()
 
@@ -1133,7 +1134,7 @@ func Test_Service_buildCycleInfo_OutsideWindow_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	now := time.Now()
 
@@ -1179,7 +1180,7 @@ func Test_Service_buildCycleInfo_UnknownJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	now := time.Now()
 
@@ -1224,7 +1225,7 @@ func Test_Service_buildCycleInfo_NoVerification_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	now := time.Now()
 
@@ -1264,7 +1265,7 @@ func Test_Service_buildCycleInfo_NilManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	now := time.Now()
 
@@ -1302,7 +1303,7 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	now := time.Now()
 

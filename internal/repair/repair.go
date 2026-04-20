@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -43,9 +42,10 @@ type Service struct {
 	log    *logging.Logger
 	runner schema.CommandRunner
 	walker schema.FilesystemWalker
+	opener schema.BundleOpener
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, opener schema.BundleOpener) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -58,6 +58,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 		log:    log.With("op", "repair"),
 		runner: runner,
 		walker: walker,
+		opener: opener,
 	}
 }
 
@@ -317,7 +318,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
-	b, err := bundle.Open(prog.fsys, bundlePath)
+	b, err := prog.opener.Open(prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
 		logger.Error("Failed to open bundle (will retry next run)", "error", err)
@@ -464,13 +465,13 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	// 	}, prog.repairLogger(ctx, job, nil))
 	// }
 
-	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest, job.isBundle); err != nil {
+	if err := util.WriteManifest(prog.fsys, prog.opener, job.manifestPath, job.manifest, job.isBundle); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)
 		logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.log, prog.runner)
+		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.opener)
 		vj := verify.NewJob(job.par2Path, verify.Options{}, job.manifest, job.isBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {

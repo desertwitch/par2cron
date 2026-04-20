@@ -7,6 +7,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +33,7 @@ func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -88,7 +89,7 @@ func Test_Service_cleanupAfterFailure_EdgeCases_Success(t *testing.T) {
 
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -146,7 +147,7 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -193,7 +194,7 @@ func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-R"},
@@ -220,7 +221,7 @@ func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T)
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-n3"},
@@ -248,7 +249,7 @@ func Test_Service_considerRecursive_RecursiveModeWithRArg_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-R"},
@@ -277,7 +278,7 @@ func Test_Service_considerRecursive_FileModeWithoutRArg_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-n3"},
@@ -305,7 +306,7 @@ func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-n3"},

@@ -69,9 +69,10 @@ type Service struct {
 	log    *logging.Logger
 	runner schema.CommandRunner
 	walker schema.FilesystemWalker
+	opener schema.BundleOpener
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, opener schema.BundleOpener) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -84,6 +85,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 		log:    log.With("op", "create"),
 		runner: runner,
 		walker: walker,
+		opener: opener,
 	}
 }
 
@@ -607,15 +609,15 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		logger.Warn("Failed to hash PAR2 for par2cron manifest (will retry on verify)", "error", err)
 	} else {
 		mf.SHA256 = sha256hash
-		if err := util.WriteManifest(prog.fsys, job.manifestPath, mf); err != nil {
+		if err := util.WriteManifest(prog.fsys, prog.opener, job.manifestPath, mf, false); err != nil {
 			logger := prog.creationLogger(ctx, job, job.manifestPath)
 			logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
 		}
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.log, prog.runner)
-		vj := verify.NewJob(job.par2Path, verify.Options{}, mf)
+		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.opener)
+		vj := verify.NewJob(job.par2Path, verify.Options{}, mf, false)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {
 			needsCleanup = true

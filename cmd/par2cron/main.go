@@ -204,7 +204,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
 			result, err := prog.CreationService.Create(ctx, resolvedPaths, createOptions)
@@ -274,7 +274,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
 			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyOptions)
@@ -342,7 +342,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
 			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairOptions)
@@ -409,7 +409,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
 			return prog.InfoService.Info(ctx, resolvedPaths, infoOptions)
@@ -436,14 +436,14 @@ type Program struct {
 	log *logging.Logger
 }
 
-func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner) *Program {
+func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner, opener schema.BundleOpener) *Program {
 	log := logging.NewLogger(ls)
 
 	return &Program{
-		CreationService:     create.NewService(fsys, log, runner),
-		VerificationService: verify.NewService(fsys, log, runner),
-		RepairService:       repair.NewService(fsys, log, runner),
-		InfoService:         info.NewService(fsys, log, runner),
+		CreationService:     create.NewService(fsys, log, runner, opener),
+		VerificationService: verify.NewService(fsys, log, runner, opener),
+		RepairService:       repair.NewService(fsys, log, runner, opener),
+		InfoService:         info.NewService(fsys, log, runner, opener),
 
 		log: log,
 	}
