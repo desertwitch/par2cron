@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 )
 
 const (
@@ -97,9 +98,9 @@ func packetMD5(recoverySetID [16]byte, packetType [16]byte, body []byte) [16]byt
 // readAndValidatePacket reads the common packet header at the given offset and
 // validates magic bytes and packet length alignment. Then it reads the rest of
 // the packet, validates MD5 and returns packet header, packet body or an error.
-func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64) (CommonHeader, []byte, error) {
+func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64, checkMD5 bool) (CommonHeader, []byte, error) {
 	// Bounds check: can we fit a header in the remaining file?
-	if offset < 0 || fileSize < 0 || offset+commonHeaderSize > fileSize {
+	if offset < 0 || fileSize < commonHeaderSize || offset > fileSize-commonHeaderSize {
 		return CommonHeader{}, nil, io.ErrUnexpectedEOF
 	}
 
@@ -127,11 +128,13 @@ func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64) (CommonHeader,
 		return CommonHeader{}, nil, fmt.Errorf("packet length %d not 4-byte aligned", ch.PacketLength)
 	}
 
+	// Safe: offset <= fileSize - 64
+	bodyOffset := offset + commonHeaderSize
+
 	// Bounds check: can we fit the body in the remaining file?
 	bodyLen := ch.PacketLength - commonHeaderSize
-	bodyOffset := offset + commonHeaderSize
-	if uint64(fileSize-bodyOffset) < bodyLen { //nolint:gosec
-		return CommonHeader{}, nil, fmt.Errorf("packet length %d exceeds stream size", ch.PacketLength)
+	if bodyLen > uint64(fileSize-bodyOffset) { //nolint:gosec
+		return CommonHeader{}, nil, fmt.Errorf("body length %d exceeds file size", ch.PacketLength)
 	}
 
 	// Memory allocation check: is it a sane packet length?
@@ -145,9 +148,11 @@ func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64) (CommonHeader,
 		return CommonHeader{}, nil, fmt.Errorf("failed to read body: %w", err)
 	}
 
-	// Verify the packet checksum.
-	if packetMD5(ch.RecoverySetID, ch.PacketType, body) != ch.PacketMD5 {
-		return CommonHeader{}, nil, errors.New("invalid packet checksum")
+	if checkMD5 {
+		// Verify the packet checksum.
+		if packetMD5(ch.RecoverySetID, ch.PacketType, body) != ch.PacketMD5 {
+			return CommonHeader{}, nil, errors.New("invalid packet checksum")
+		}
 	}
 
 	return ch, body, nil
@@ -158,19 +163,19 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 	var mp IndexPacket
 	mp.CommonHeader = ch
 
-	if err := binary.Read(r, binary.LittleEndian, &mp.Version); err != nil {
+	if err := safeReadU64(r, &mp.Version, math.MaxInt64); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read version: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &mp.Flags); err != nil {
+	if err := safeReadU64(r, &mp.Flags, math.MaxInt64); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read flags: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestPacketOffset); err != nil {
+	if err := safeReadU64(r, &mp.ManifestPacketOffset, math.MaxInt64); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read manifest packet offset: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestDataOffset); err != nil {
+	if err := safeReadU64(r, &mp.ManifestDataOffset, math.MaxInt64); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read manifest data offset: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestDataLength); err != nil {
+	if err := safeReadU64(r, &mp.ManifestDataLength, math.MaxInt64); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read manifest data length: %w", err)
 	}
 	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestDataB3); err != nil {
@@ -178,7 +183,7 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 	}
 
 	// Read manifest name.
-	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestNameLen); err != nil {
+	if err := safeReadU64(r, &mp.ManifestNameLen, math.MaxUint16); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read manifest name length: %w", err)
 	}
 	manifestNameBuf := make([]byte, padTo4(mp.ManifestNameLen))
@@ -188,25 +193,25 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 	mp.ManifestName = string(manifestNameBuf[:mp.ManifestNameLen])
 
 	// Read file entries.
-	if err := binary.Read(r, binary.LittleEndian, &mp.EntryCount); err != nil {
+	if err := safeReadU64(r, &mp.EntryCount, math.MaxUint16); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read entry count: %w", err)
 	}
 
 	mp.Entries = make([]IndexEntry, mp.EntryCount)
 	for i := range mp.EntryCount {
-		if err := binary.Read(r, binary.LittleEndian, &mp.Entries[i].PacketOffset); err != nil {
+		if err := safeReadU64(r, &mp.Entries[i].PacketOffset, math.MaxInt64); err != nil {
 			return IndexPacket{}, fmt.Errorf("failed to read entry packet offset: %w", err)
 		}
-		if err := binary.Read(r, binary.LittleEndian, &mp.Entries[i].DataOffset); err != nil {
+		if err := safeReadU64(r, &mp.Entries[i].DataOffset, math.MaxInt64); err != nil {
 			return IndexPacket{}, fmt.Errorf("failed to read entry data offset: %w", err)
 		}
-		if err := binary.Read(r, binary.LittleEndian, &mp.Entries[i].DataLength); err != nil {
+		if err := safeReadU64(r, &mp.Entries[i].DataLength, math.MaxInt64); err != nil {
 			return IndexPacket{}, fmt.Errorf("failed to read entry data length: %w", err)
 		}
 		if err := binary.Read(r, binary.LittleEndian, &mp.Entries[i].DataB3); err != nil {
 			return IndexPacket{}, fmt.Errorf("failed to read entry data hash: %w", err)
 		}
-		if err := binary.Read(r, binary.LittleEndian, &mp.Entries[i].NameLen); err != nil {
+		if err := safeReadU64(r, &mp.Entries[i].NameLen, math.MaxUint16); err != nil {
 			return IndexPacket{}, fmt.Errorf("failed to read entry name length: %w", err)
 		}
 
@@ -239,13 +244,17 @@ func parseFilePacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (File
 	var fp FilePacket
 	fp.CommonHeader = ch
 
-	if err := binary.Read(r, binary.LittleEndian, &fp.DataLength); err != nil {
+	if packetOffset < 0 {
+		return FilePacket{}, errors.New("negative packet offset")
+	}
+
+	if err := safeReadU64(r, &fp.DataLength, math.MaxInt64); err != nil {
 		return FilePacket{}, fmt.Errorf("failed to read data length: %w", err)
 	}
 	if err := binary.Read(r, binary.LittleEndian, &fp.DataB3); err != nil {
 		return FilePacket{}, fmt.Errorf("failed to read data hash: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &fp.NameLen); err != nil {
+	if err := safeReadU64(r, &fp.NameLen, math.MaxUint16); err != nil {
 		return FilePacket{}, fmt.Errorf("failed to read name length: %w", err)
 	}
 
@@ -257,12 +266,15 @@ func parseFilePacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (File
 	fp.Name = string(nameBuf[:fp.NameLen])
 
 	// Record offsets.
-	fp.packetOffset = uint64(packetOffset) //nolint:gosec
+	fp.packetOffset = uint64(packetOffset)
+
+	if fp.packetOffset > math.MaxUint64-ch.PacketLength {
+		return FilePacket{}, errors.New("packet offset/length overflow")
+	}
 	fp.dataOffset = fp.packetOffset + ch.PacketLength
 
-	// Validate data length.
-	if fp.dataOffset+fp.DataLength < fp.dataOffset {
-		return FilePacket{}, errors.New("invalid packet data length")
+	if fp.dataOffset > math.MaxUint64-fp.DataLength {
+		return FilePacket{}, errors.New("data offset/length overflow")
 	}
 
 	return fp, nil
@@ -286,15 +298,19 @@ func parseManifestPacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (
 	var mp ManifestPacket
 	mp.CommonHeader = ch
 
+	if packetOffset < 0 {
+		return ManifestPacket{}, errors.New("negative packet offset")
+	}
+
 	startRemaining := r.Len()
 
-	if err := binary.Read(r, binary.LittleEndian, &mp.DataLength); err != nil {
+	if err := safeReadU64(r, &mp.DataLength, math.MaxInt64); err != nil {
 		return ManifestPacket{}, fmt.Errorf("failed to read data length: %w", err)
 	}
 	if err := binary.Read(r, binary.LittleEndian, &mp.DataB3); err != nil {
 		return ManifestPacket{}, fmt.Errorf("failed to read data hash: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &mp.NameLen); err != nil {
+	if err := safeReadU64(r, &mp.NameLen, math.MaxUint16); err != nil {
 		return ManifestPacket{}, fmt.Errorf("failed to read name length: %w", err)
 	}
 
@@ -305,22 +321,30 @@ func parseManifestPacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (
 	}
 	mp.Name = string(nameBuf[:mp.NameLen])
 
+	// Record offsets.
 	endRemaining := r.Len()
-
-	// Just in case...
 	if startRemaining < 0 || endRemaining < 0 || startRemaining < endRemaining {
 		return ManifestPacket{}, errors.New("invalid buffer state")
 	}
 
-	// Record offsets.
-	headerBytesInBody := uint64(startRemaining - endRemaining)                  //nolint:gosec
-	mp.dataOffset = uint64(packetOffset) + commonHeaderSize + headerBytesInBody //nolint:gosec
-	mp.packetOffset = uint64(packetOffset)                                      //nolint:gosec
+	headerBytesInBody := uint64(startRemaining - endRemaining) //nolint:gosec
 
-	// Validate data length.
-	if mp.dataOffset+mp.DataLength > mp.packetOffset+ch.PacketLength ||
-		mp.dataOffset+mp.DataLength < mp.packetOffset {
-		return ManifestPacket{}, errors.New("invalid packet data length")
+	mp.packetOffset = uint64(packetOffset)
+	if mp.packetOffset > math.MaxUint64-ch.PacketLength {
+		return ManifestPacket{}, errors.New("packet offset/length overflow")
+	}
+
+	body := mp.packetOffset + commonHeaderSize
+	if body > math.MaxUint64-headerBytesInBody {
+		return ManifestPacket{}, errors.New("data offset/length overflow")
+	}
+	mp.dataOffset = body + headerBytesInBody
+
+	if mp.dataOffset > math.MaxUint64-mp.DataLength {
+		return ManifestPacket{}, errors.New("data offset/length overflow")
+	}
+	if mp.dataOffset+mp.DataLength > mp.packetOffset+ch.PacketLength {
+		return ManifestPacket{}, errors.New("data extends beyond packet")
 	}
 
 	return mp, nil

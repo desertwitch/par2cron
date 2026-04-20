@@ -1,6 +1,8 @@
 package bundle
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -56,4 +58,20 @@ func padTo4(n uint64) uint64 {
 // isAligned4 checks if n is aligned to 4.
 func isAligned4(n uint64) bool {
 	return n%4 == 0
+}
+
+// safeReadU64 reads a little-endian uint64 from r into data, returning an
+// error if the value exceeds maxVal. The caller must ensure data is non-nil.
+func safeReadU64(r io.Reader, data *uint64, maxVal uint64) error {
+	if data == nil {
+		return errors.New("value is nil")
+	}
+	if err := binary.Read(r, binary.LittleEndian, data); err != nil {
+		return err //nolint:wrapcheck
+	}
+	if *data > maxVal {
+		return errors.New("value is too large")
+	}
+
+	return nil
 }

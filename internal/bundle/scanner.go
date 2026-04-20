@@ -4,24 +4,34 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strings"
 )
 
 // Scan scans the bundle for app-specific packets by PAR2 magic bytes, ignoring
 // index packet metadata. Use this as fallback if the index packet is corrupt.
-func Scan(r io.ReaderAt, size int64) ([]FilePacket, *ManifestPacket) {
+func Scan(r io.ReaderAt, size int64, checkMD5 bool) ([]FilePacket, *ManifestPacket) {
 	var files []FilePacket
 	var manifest *ManifestPacket
 
+loop:
 	for offset := int64(0); offset+commonHeaderSize <= size; {
-		ch, body, err := readAndValidatePacket(r, offset, size)
+		ch, body, err := readAndValidatePacket(r, offset, size, checkMD5)
 		if err == nil {
 			switch ch.PacketType {
+			case PacketTypeIndex:
+				_, _ = parseIndexPacket(bytes.NewReader(body), ch)
+
 			case PacketTypeFile:
 				if fp, err := parseFilePacket(bytes.NewReader(body), ch, offset); err == nil {
 					files = append(files, fp)
-					offset += int64(ch.PacketLength) //nolint:gosec
+
+					if ch.PacketLength > math.MaxInt64 || offset > math.MaxInt64-int64(ch.PacketLength) {
+						break loop
+					}
+
+					offset += int64(ch.PacketLength)
 
 					continue
 				}
@@ -29,7 +39,12 @@ func Scan(r io.ReaderAt, size int64) ([]FilePacket, *ManifestPacket) {
 			case PacketTypeManifest:
 				if mp, err := parseManifestPacket(bytes.NewReader(body), ch, offset); err == nil {
 					manifest = &mp
-					offset += int64(ch.PacketLength) //nolint:gosec
+
+					if ch.PacketLength > math.MaxInt64 || offset > math.MaxInt64-int64(ch.PacketLength) {
+						break loop
+					}
+
+					offset += int64(ch.PacketLength)
 
 					continue
 				}

@@ -74,7 +74,7 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 
 	b := &Bundle{f: f, size: fi.Size()}
 	if err := b.readIndexPacket(); err != nil {
-		files, manifest := Scan(f, fi.Size())
+		files, manifest := Scan(f, fi.Size(), true)
 
 		if manifest == nil {
 			_ = f.Close()
@@ -143,7 +143,7 @@ func (b *Bundle) ValidateIndex() error {
 // requires reading the full data stream and may be slower for large bundles.
 func (b *Bundle) ValidateFiles(strict bool) error {
 	for i, entry := range b.Index.Entries {
-		ch, _, err := readAndValidatePacket(b.f, int64(entry.PacketOffset), b.size) //nolint:gosec
+		ch, _, err := readAndValidatePacket(b.f, int64(entry.PacketOffset), b.size, true) //nolint:gosec
 		if err != nil {
 			return fmt.Errorf("file packet %d (%q) at offset %d: %w", i, entry.Name, entry.PacketOffset, err)
 		}
@@ -172,7 +172,7 @@ func (b *Bundle) ValidateFiles(strict bool) error {
 // manifest data against its BLAKE3 hash to detect corruption, which requires
 // reading the full data stream and may be slower for large bundles.
 func (b *Bundle) ValidateManifest(strict bool) error {
-	ch, _, err := readAndValidatePacket(b.f, int64(b.Index.ManifestPacketOffset), b.size) //nolint:gosec
+	ch, _, err := readAndValidatePacket(b.f, int64(b.Index.ManifestPacketOffset), b.size, true) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("manifest packet at offset %d: %w", b.Index.ManifestPacketOffset, err)
 	}
@@ -197,7 +197,7 @@ func (b *Bundle) ValidateManifest(strict bool) error {
 
 // readIndexPacket reads and validates the index packet at offset 0.
 func (b *Bundle) readIndexPacket() error {
-	ch, body, err := readAndValidatePacket(b.f, 0, b.size)
+	ch, body, err := readAndValidatePacket(b.f, 0, b.size, true)
 	if err != nil {
 		return fmt.Errorf("failed to read packet: %w", err)
 	}

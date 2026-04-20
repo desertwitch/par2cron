@@ -171,7 +171,7 @@ func Fuzz_Bundle_Scan(f *testing.F) {
 	// We fuzz the content of the reference bundle.
 	f.Fuzz(func(t *testing.T, data []byte) {
 		r := bytes.NewReader(data)
-		_, _ = Scan(r, int64(len(data)))
+		_, _ = Scan(r, int64(len(data)), false)
 	})
 }
 
