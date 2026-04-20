@@ -418,7 +418,7 @@ func Test_WriteManifest_Bundle_NoStandaloneFile_Success(t *testing.T) {
 
 	require.NoError(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
 
-	// No file should be written to disk — the manifest lives inside the bundle.
+	// No file should be written to disk - the manifest lives inside the bundle.
 	entries, err := afero.ReadDir(fs, "/data")
 	require.NoError(t, err)
 	require.Empty(t, entries)
