@@ -66,6 +66,31 @@ func Test_NewJob_Success(t *testing.T) {
 	require.Equal(t, mf, job.manifest)
 }
 
+// Expectation: A new verification job for a bundle should reuse the bundle path for manifest and lock.
+func Test_NewJob_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	args := Options{
+		Par2Args: []string{"-v"},
+	}
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	job := NewJob("/data/test"+schema.BundleExtension+schema.Par2Extension, args, mf, true)
+
+	require.Equal(t, "/data", job.workingDir)
+	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.par2Name)
+	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, job.par2Path)
+	require.Equal(t, []string{"-v"}, job.par2Args)
+	require.True(t, job.isBundle)
+	require.Equal(t, mf, job.manifest)
+
+	// Bundle reuses its own path for manifest and lock.
+	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.manifestName)
+	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, job.manifestPath)
+	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, job.lockPath)
+}
+
 // Expectation: The program should run the verification with the correct outcome.
 func Test_Service_Verify_Success(t *testing.T) {
 	t.Parallel()

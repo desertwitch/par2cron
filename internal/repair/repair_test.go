@@ -45,6 +45,37 @@ func Test_NewRepairJob_Success(t *testing.T) {
 	require.Equal(t, mf, job.manifest)
 }
 
+// Expectation: A new repair job for a bundle should reuse the bundle path for manifest and lock.
+func Test_NewRepairJob_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	args := Options{
+		Par2Args:       []string{"-v"},
+		Par2Verify:     true,
+		PurgeBackups:   true,
+		RestoreBackups: true,
+	}
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	job := NewRepairJob("/data/test"+schema.BundleExtension+schema.Par2Extension, args, mf, true)
+
+	require.Equal(t, "/data", job.workingDir)
+	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.par2Name)
+	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, job.par2Path)
+	require.Equal(t, []string{"-v"}, job.par2Args)
+	require.True(t, job.par2Verify)
+	require.True(t, job.isBundle)
+	require.True(t, job.purgeBackups)
+	require.True(t, job.restoreBackups)
+	require.Equal(t, mf, job.manifest)
+
+	// Bundle reuses its own path for manifest and lock.
+	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.manifestName)
+	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, job.manifestPath)
+	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, job.lockPath)
+}
+
 // Expectation: NewRepairJob should clone args to prevent external modification.
 func Test_NewRepairJob_ArgsCloned_Success(t *testing.T) {
 	t.Parallel()
