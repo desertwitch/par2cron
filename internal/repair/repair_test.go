@@ -1118,6 +1118,454 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// Expectation: The correct repair job should be returned for a bundle with a repairable manifest.
+func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	mf.Verification = schema.NewVerificationManifest()
+	mf.Verification.RepairNeeded = true
+	mf.Verification.RepairPossible = true
+	mf.Verification.CountCorrupted = 1
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.NotNil(t, jobs[0].manifest)
+	require.True(t, jobs[0].isBundle)
+	require.Contains(t, jobs[0].par2Path, schema.BundleExtension)
+}
+
+// Expectation: The bundle should return a non-fatal error when it cannot be opened.
+func Test_Service_Enumerate_Bundle_OpenFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return nil, errors.New("corrupt file")
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.ErrorIs(t, err, schema.ErrNonFatal)
+	require.Contains(t, logBuf.String(), "Failed to open bundle")
+}
+
+// Expectation: The bundle should return a non-fatal error when the manifest cannot be read.
+func Test_Service_Enumerate_Bundle_ManifestReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return nil, errors.New("corrupt bundle")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.ErrorIs(t, err, schema.ErrNonFatal)
+	require.Contains(t, logBuf.String(), "Failed to read par2cron manifest")
+}
+
+// Expectation: The bundle should be silently skipped when the manifest is invalid JSON.
+func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return []byte("not valid json"), nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
+}
+
+// Expectation: A bundle without a creation manifest should be skipped when SkipNotCreated is set.
+func Test_Service_Enumerate_Bundle_SkipNotCreated_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Verification = schema.NewVerificationManifest()
+	mf.Verification.RepairNeeded = true
+	mf.Verification.RepairPossible = true
+	mf.Verification.CountCorrupted = 1
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true, MinTestedCount: 1}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "No creation manifest")
+}
+
+// Expectation: A bundle without a verification manifest should be silently skipped.
+func Test_Service_Enumerate_Bundle_NoVerificationManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "No verification manifest")
+}
+
+// Expectation: A bundle where repair is not needed should be silently skipped.
+func Test_Service_Enumerate_Bundle_RepairNotNeeded_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	mf.Verification = schema.NewVerificationManifest()
+	mf.Verification.RepairNeeded = false
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "Not a candidate for repair")
+}
+
+// Expectation: A bundle where repair is needed but not possible should be skipped without AttemptUnrepairables.
+func Test_Service_Enumerate_Bundle_RepairNotPossible_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	mf.Verification = schema.NewVerificationManifest()
+	mf.Verification.RepairNeeded = true
+	mf.Verification.RepairPossible = false
+	mf.Verification.CountCorrupted = 1
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "Not a candidate for repair")
+}
+
+// Expectation: A bundle where repair is needed but not possible should be returned with AttemptUnrepairables.
+func Test_Service_Enumerate_Bundle_AttemptUnrepairables_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	mf.Verification = schema.NewVerificationManifest()
+	mf.Verification.RepairNeeded = true
+	mf.Verification.RepairPossible = false
+	mf.Verification.CountCorrupted = 1
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1, AttemptUnrepairables: true}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.NotNil(t, jobs[0].manifest)
+	require.True(t, jobs[0].isBundle)
+}
+
+// Expectation: A bundle where CountCorrupted is below MinTestedCount should be skipped.
+func Test_Service_Enumerate_Bundle_BelowMinTestedCount_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	mf.Verification = schema.NewVerificationManifest()
+	mf.Verification.RepairNeeded = true
+	mf.Verification.RepairPossible = true
+	mf.Verification.CountCorrupted = 1
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+
+	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 5}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "Not a candidate for repair")
+}
+
 // Expectation: The repair should pass and a manifest be updated.
 func Test_Service_runRepair_Success(t *testing.T) {
 	t.Parallel()
@@ -2144,4 +2592,192 @@ func Test_Service_runRepair_HashError_FailsRepair_Error(t *testing.T) {
 
 	require.ErrorContains(t, prog.runRepair(t.Context(), job), "failed to hash")
 	require.False(t, called)
+}
+
+// Expectation: The repair should pass for a bundle and the manifest should be updated inside the bundle.
+func Test_Service_runRepair_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var updateCalled bool
+	var capturedManifestData []byte
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			updateCalled = true
+			capturedManifestData = data
+
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.BundleExtension + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.BundleExtension + schema.Par2Extension,
+		manifestPath: "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		lockPath:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		manifest:     mf,
+		isBundle:     true,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.True(t, updateCalled)
+
+	require.NotNil(t, job.manifest.Repair)
+	require.NotZero(t, job.manifest.Repair.Duration)
+	require.Equal(t, schema.Par2ExitCodeSuccess, job.manifest.Repair.ExitCode)
+	require.Equal(t, 1, job.manifest.Repair.Count)
+
+	var unmarshaled schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedManifestData, &unmarshaled))
+	require.NotNil(t, unmarshaled.Repair)
+	require.Equal(t, schema.ProgramVersion, unmarshaled.Repair.ProgramVersion)
+
+	// No standalone manifest file should exist on disk.
+	standaloneExists, _ := afero.Exists(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension+schema.ManifestExtension)
+	require.False(t, standaloneExists)
+}
+
+// Expectation: The bundle repair should skip hash checking.
+func Test_Service_runRepair_Bundle_SkipsHashCheck_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called = true
+
+			return nil
+		},
+	}
+
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error { return nil },
+		CloseFunc:  func() error { return nil },
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.SHA256 = "deliberately-wrong-hash"
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.BundleExtension + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.BundleExtension + schema.Par2Extension,
+		manifestPath: "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		lockPath:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		manifest:     mf,
+		isBundle:     true,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.True(t, called)
+	require.NotContains(t, logBuf.String(), "hash mismatch")
+}
+
+// Expectation: The bundle repair should return an error when par2 fails.
+func Test_Service_runRepair_Bundle_Par2Fails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, 1)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.BundleExtension + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.BundleExtension + schema.Par2Extension,
+		manifestPath: "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		lockPath:     "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		manifest:     mf,
+		isBundle:     true,
+	}
+
+	require.ErrorContains(t, prog.runRepair(t.Context(), job), "par2cmdline:")
+	require.Contains(t, logBuf.String(), "Failed to repair PAR2")
 }
