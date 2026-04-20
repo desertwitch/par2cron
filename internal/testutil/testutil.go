@@ -197,3 +197,43 @@ func (m *MockBundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID
 
 	return errors.New("not implemented")
 }
+
+// MockBundle is a mock implementation of schema.Bundle.
+type MockBundle struct {
+	CloseFunc         func() error
+	ManifestFunc      func() ([]byte, error)
+	UpdateFunc        func(manifest []byte) error
+	ValidateIndexFunc func() error
+}
+
+func (m *MockBundle) Close() error {
+	if m.CloseFunc != nil {
+		return m.CloseFunc()
+	}
+
+	return nil
+}
+
+func (m *MockBundle) Manifest() ([]byte, error) {
+	if m.ManifestFunc != nil {
+		return m.ManifestFunc()
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundle) Update(manifest []byte) error {
+	if m.UpdateFunc != nil {
+		return m.UpdateFunc(manifest)
+	}
+
+	return errors.New("not implemented")
+}
+
+func (m *MockBundle) ValidateIndex() error {
+	if m.ValidateIndexFunc != nil {
+		return m.ValidateIndexFunc()
+	}
+
+	return nil
+}
