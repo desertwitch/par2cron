@@ -441,15 +441,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 }
 
 func (prog *Service) createCombined(ctx context.Context, job *Job, elements []schema.FsElement) error {
-	logger := prog.creationLogger(ctx, job, job.par2Path)
-
-	if _, err := util.LstatIfPossible(prog.fsys, job.par2Path); err == nil {
-		if job.markerPersist {
-			logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
-		} else {
-			logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-		}
-
+	if prog.par2AlreadyExists(ctx, job) {
 		return nil
 	}
 
@@ -457,7 +449,7 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 		return err
 	}
 
-	logger = prog.creationLogger(ctx, job, job.par2Path) // mut
+	logger := prog.creationLogger(ctx, job, job.par2Path)
 	logger.Info("Succeeded to create PAR2")
 
 	return nil
@@ -488,15 +480,8 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 		ctx := context.WithValue(ctx, schema.MposKey, mpos)
 
 		j := newNestedModeJob(*job, dir)
-		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
-		if _, err := util.LstatIfPossible(prog.fsys, j.par2Path); err == nil {
-			if job.markerPersist {
-				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
-			} else {
-				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-			}
-
+		if prog.par2AlreadyExists(ctx, &j) {
 			continue
 		}
 
@@ -506,7 +491,7 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 			continue
 		}
 
-		logger = prog.creationLogger(ctx, &j, j.par2Path) // mut
+		logger := prog.creationLogger(ctx, &j, j.par2Path)
 		logger.Info("Succeeded to create PAR2")
 	}
 
@@ -530,15 +515,8 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 
 		j := newFileModeJob(*job, f.Path)
 		je := []schema.FsElement{elements[i]}
-		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
-		if _, err := util.LstatIfPossible(prog.fsys, j.par2Path); err == nil {
-			if job.markerPersist {
-				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
-			} else {
-				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-			}
-
+		if prog.par2AlreadyExists(ctx, &j) {
 			continue
 		}
 
@@ -548,7 +526,7 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 			continue
 		}
 
-		logger = prog.creationLogger(ctx, &j, j.par2Path) // mut
+		logger := prog.creationLogger(ctx, &j, j.par2Path)
 		logger.Info("Succeeded to create PAR2")
 	}
 

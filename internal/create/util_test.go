@@ -2,6 +2,7 @@ package create
 
 import (
 	"io"
+	"path/filepath"
 	"testing"
 
 	"github.com/desertwitch/par2cron/internal/logging"
@@ -318,4 +319,118 @@ func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) 
 	require.NoError(t, err)
 	require.Len(t, opts.Par2Args, 2)
 	require.NotContains(t, opts.Par2Args, "-R")
+}
+
+// Expectation: The function should detect existing PAR2 files in all naming variants.
+func Test_Service_par2AlreadyExists_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		existingFile  string
+		par2Name      string
+		markerPersist bool
+		expected      bool
+	}{
+		{
+			name:         "plain par2 name detects plain existing",
+			existingFile: "/data/folder/test" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects hidden existing",
+			existingFile: "/data/folder/.test" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects bundle existing",
+			existingFile: "/data/folder/test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects hidden bundle existing",
+			existingFile: "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "hidden par2 name detects plain existing",
+			existingFile: "/data/folder/test" + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "hidden par2 name detects hidden existing",
+			existingFile: "/data/folder/.test" + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "hidden par2 name detects bundle existing",
+			existingFile: "/data/folder/test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "hidden par2 name detects hidden bundle existing",
+			existingFile: "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "no par2 exists",
+			existingFile: "",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "unrelated file exists",
+			existingFile: "/data/folder/test.txt",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewMemMapFs()
+			require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+
+			if tt.existingFile != "" {
+				require.NoError(t, afero.WriteFile(fs, tt.existingFile, []byte("existing"), 0o644))
+			}
+
+			var logBuf testutil.SafeBuffer
+			ls := logging.Options{
+				Logout: &logBuf,
+				Stdout: io.Discard,
+				Stderr: io.Discard,
+			}
+			_ = ls.LogLevel.Set("debug")
+
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+
+			job := &Job{
+				workingDir:    "/data/folder",
+				par2Name:      tt.par2Name,
+				par2Path:      filepath.Join("/data/folder", tt.par2Name),
+				markerPersist: tt.markerPersist,
+			}
+
+			result := prog.par2AlreadyExists(t.Context(), job)
+
+			require.Equal(t, tt.expected, result)
+
+			if tt.expected {
+				require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+			} else {
+				require.NotContains(t, logBuf.String(), "Same-named PAR2 already exists")
+			}
+		})
+	}
 }

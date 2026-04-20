@@ -79,6 +79,34 @@ func (prog *Service) considerRecursive(opts *Options) error {
 	return nil
 }
 
+func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
+	baseName := strings.TrimSuffix(job.par2Name, schema.Par2Extension)
+	baseName = strings.TrimPrefix(baseName, ".")
+
+	candidates := []string{
+		filepath.Join(job.workingDir, baseName+schema.Par2Extension),
+		filepath.Join(job.workingDir, "."+baseName+schema.Par2Extension),
+		filepath.Join(job.workingDir, baseName+schema.BundleExtension+schema.Par2Extension),
+		filepath.Join(job.workingDir, "."+baseName+schema.BundleExtension+schema.Par2Extension),
+	}
+
+	for _, path := range candidates {
+		if _, err := util.LstatIfPossible(prog.fsys, path); err == nil {
+			if job.markerPersist {
+				logger := prog.creationLogger(ctx, job, path)
+				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
+			} else {
+				logger := prog.creationLogger(ctx, job, path)
+				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
+			}
+
+			return true
+		}
+	}
+
+	return false
+}
+
 func getPaths(files []schema.FsElement) []string {
 	paths := make([]string, len(files))
 	for i, f := range files {
