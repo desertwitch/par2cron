@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
-	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
@@ -24,7 +23,7 @@ func (prog *Service) packAsBundle(ctx context.Context, job *Job, mf *schema.Mani
 		return fmt.Errorf("failed to find created files: %w", err)
 	}
 
-	p, err := par2.ParseFile(prog.fsys, job.par2Path, true)
+	p, err := prog.par2er.ParseFile(prog.fsys, job.par2Path, true)
 	if err != nil {
 		return fmt.Errorf("failed to parse index par2: %w", err)
 	}

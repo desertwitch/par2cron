@@ -25,7 +25,7 @@ func Test_Service_debugArgsModified_Add_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	prog.debugArgsModified("-r", "20", []string{}, []string{"-r20"}, false, "/data/_par2cron")
 
@@ -46,7 +46,7 @@ func Test_Service_debugArgsModified_Replace_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	prog.debugArgsModified("-r", "20", "-r10", "-r20", true, "/data/_par2cron")
 

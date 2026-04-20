@@ -6,6 +6,7 @@ import (
 	"io/fs"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/spf13/afero"
 )
 
@@ -17,6 +18,10 @@ type FilesystemWalker interface {
 
 type CommandRunner interface {
 	Run(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error
+}
+
+type Par2Handler interface {
+	ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *par2.File, e error)
 }
 
 type BundleHandler interface {
