@@ -17,11 +17,11 @@ const (
 	ProcessKillTimeout time.Duration = 10 * time.Second
 )
 
-var _ schema.BundleOpener = (*BundleOpener)(nil)
+var _ schema.BundleHandler = (*BundleHandler)(nil)
 
-type BundleOpener struct{}
+type BundleHandler struct{}
 
-func (b *BundleOpener) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) { //nolint:ireturn
+func (b *BundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) { //nolint:ireturn
 	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
 }
 

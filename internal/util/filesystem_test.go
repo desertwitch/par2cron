@@ -130,7 +130,7 @@ func Test_WriteManifest_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
-	err := WriteManifest(fs, &BundleOpener{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
+	err := WriteManifest(fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
 
 	require.NoError(t, err)
 
@@ -151,7 +151,7 @@ func Test_WriteManifest_UpdatesManifestVersion_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.ManifestVersion = "0" // simulate old version
 
-	err := WriteManifest(fsys, &BundleOpener{}, "/data/test"+schema.ManifestExtension, mf, false)
+	err := WriteManifest(fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
 	require.NoError(t, err)
 
 	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
@@ -172,7 +172,7 @@ func Test_WriteManifest_UpdatesProgramVersion_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.ProgramVersion = "0.0.0" // simulate old version
 
-	err := WriteManifest(fsys, &BundleOpener{}, "/data/test"+schema.ManifestExtension, mf, false)
+	err := WriteManifest(fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
 	require.NoError(t, err)
 
 	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
@@ -194,7 +194,7 @@ func Test_WriteManifest_WriteFails_Error(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
-	err := WriteManifest(fs, &BundleOpener{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
+	err := WriteManifest(fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
 
 	require.ErrorContains(t, err, "failed to write")
 

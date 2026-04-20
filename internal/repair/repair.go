@@ -42,10 +42,10 @@ type Service struct {
 	log    *logging.Logger
 	runner schema.CommandRunner
 	walker schema.FilesystemWalker
-	opener schema.BundleOpener
+	bundler schema.BundleHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, opener schema.BundleOpener) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -58,7 +58,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 		log:    log.With("op", "repair"),
 		runner: runner,
 		walker: walker,
-		opener: opener,
+		bundler: bundler,
 	}
 }
 
@@ -318,7 +318,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
-	b, err := prog.opener.Open(prog.fsys, bundlePath)
+	b, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
 		logger.Error("Failed to open bundle (will retry next run)", "error", err)
@@ -465,13 +465,13 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	// 	}, prog.repairLogger(ctx, job, nil))
 	// }
 
-	if err := util.WriteManifest(prog.fsys, prog.opener, job.manifestPath, job.manifest, job.isBundle); err != nil {
+	if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)
 		logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.opener)
+		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
 		vj := verify.NewJob(job.par2Path, verify.Options{}, job.manifest, job.isBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {

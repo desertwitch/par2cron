@@ -27,7 +27,7 @@ func Test_Service_Stats_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	timeA := time.Now().Add(-5 * time.Minute)
 	timeB := time.Now().Add(-10 * time.Minute)
@@ -95,7 +95,7 @@ func Test_Service_Stats_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	js := prog.Stats([]*Job{})
 
@@ -123,7 +123,7 @@ func Test_Service_Stats_WithUnknownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	jobs := []*Job{
 		{manifest: nil},
@@ -158,7 +158,7 @@ func Test_Service_Stats_IdentifyLargestDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleOpener{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	job1 := &Job{
 		par2Path: "/data/job1" + schema.Par2Extension,

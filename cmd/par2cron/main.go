@@ -204,7 +204,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
 			result, err := prog.CreationService.Create(ctx, resolvedPaths, createOptions)
@@ -216,8 +216,9 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 	}
-	createCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
 	createCmd.Flags().BoolVar(&createOptions.HideFiles, "hidden", false, "create PAR2 sets and related files as hidden (dotfiles)")
+	createCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
+	createCmd.Flags().BoolVarP(&createOptions.Bundle, "bundle", "b", false, "bundle created files into one single file")
 	createCmd.Flags().BoolVarP(&createOptions.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of creation")
 	createCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	createCmd.Flags().StringVarP(&createOptions.Par2Glob, "glob", "g", "*", "PAR2 set default glob (files to include)")
@@ -274,7 +275,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
 			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyOptions)
@@ -342,7 +343,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
 			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairOptions)
@@ -409,7 +410,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleOpener{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
 			return prog.InfoService.Info(ctx, resolvedPaths, infoOptions)
@@ -436,14 +437,14 @@ type Program struct {
 	log *logging.Logger
 }
 
-func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner, opener schema.BundleOpener) *Program {
+func NewProgram(fsys afero.Fs, ls logging.Options, runner schema.CommandRunner, bundler schema.BundleHandler) *Program {
 	log := logging.NewLogger(ls)
 
 	return &Program{
-		CreationService:     create.NewService(fsys, log, runner, opener),
-		VerificationService: verify.NewService(fsys, log, runner, opener),
-		RepairService:       repair.NewService(fsys, log, runner, opener),
-		InfoService:         info.NewService(fsys, log, runner, opener),
+		CreationService:     create.NewService(fsys, log, runner, bundler),
+		VerificationService: verify.NewService(fsys, log, runner, bundler),
+		RepairService:       repair.NewService(fsys, log, runner, bundler),
+		InfoService:         info.NewService(fsys, log, runner, bundler),
 
 		log: log,
 	}
