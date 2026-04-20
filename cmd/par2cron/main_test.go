@@ -197,6 +197,19 @@ func Test_NewCreateCmd_HasHiddenFlag_Success(t *testing.T) {
 	require.Equal(t, "false", flag.Value.String())
 }
 
+// Expectation: The "create" command should have a "bundle" flag.
+func Test_NewCreateCmd_HasBundleFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newCreateCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("bundle")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.Value.String())
+}
+
 // Expectation: The "create" command should have a "verify" flag.
 func Test_NewCreateCmd_HasVerifyFlag_Success(t *testing.T) {
 	t.Parallel()

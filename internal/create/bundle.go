@@ -109,5 +109,9 @@ func (prog *Service) findBundleableFiles(job *Job) ([]bundle.FileInput, error) {
 		})
 	}
 
+	if len(inputs) == 0 {
+		return nil, errors.New("no files to bundle")
+	}
+
 	return inputs, nil
 }

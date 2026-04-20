@@ -186,6 +186,13 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 		cfg.PersistMarker = yamlConfig.PersistMarker
 	}
 
+	if yamlConfig.Bundle != nil {
+		logger := prog.markerLogger(markerPath, "bundle", *yamlConfig.Bundle)
+		logger.Debug("Parsed setting from marker file contents")
+
+		cfg.Bundle = yamlConfig.Bundle
+	}
+
 	return nil
 }
 

@@ -599,6 +599,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 
 	if job.asBundle {
 		if err := prog.packAsBundle(ctx, job, mf); err != nil {
+			needsCleanup = true
 			logger.Error("Failed to bundle created PAR2 files (will retry next run)", "error", err)
 
 			return fmt.Errorf("failed to bundle: %w", err)

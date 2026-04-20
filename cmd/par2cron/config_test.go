@@ -125,6 +125,7 @@ func Test_parseConfigFile_ValidConfig_Success(t *testing.T) {
   json: true
   duration: "2d"
   hidden: true
+  bundle: true
 verify:
   args: ["-B"]
   duration: "2h"
@@ -256,6 +257,7 @@ func Test_configFileCreate_Merge_AllFields_Success(t *testing.T) {
 		LogLevel:    &flags.LogLevel{},
 		WantJSON:    new(true),
 		HideFiles:   new(true),
+		Bundle:      new(true),
 	}
 	_ = yamlCfg.LogLevel.Set("debug")
 
@@ -283,6 +285,7 @@ func Test_configFileCreate_Merge_AllFields_Success(t *testing.T) {
 	require.Equal(t, slog.LevelDebug, logs.LogLevel.Value)
 	require.True(t, logs.WantJSON)
 	require.True(t, cfg.HideFiles)
+	require.True(t, cfg.Bundle)
 }
 
 // Expectation: External args should take precedence over YAML config.
@@ -321,6 +324,7 @@ func Test_configFileCreate_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		LogLevel:    &flags.LogLevel{},
 		WantJSON:    new(true),
 		HideFiles:   new(true),
+		Bundle:      new(true),
 	}
 	_ = yamlCfg.LogLevel.Set("debug")
 
@@ -345,6 +349,7 @@ func Test_configFileCreate_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"json":      true,
 		"duration":  true,
 		"hidden":    true,
+		"bundle":    true,
 	}
 
 	yamlCfg.Merge(&cfg, &logs, false, setFlags)
@@ -356,6 +361,7 @@ func Test_configFileCreate_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.False(t, logs.WantJSON)
 	require.Zero(t, cfg.MaxDuration)
 	require.False(t, cfg.HideFiles)
+	require.False(t, cfg.Bundle)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values.

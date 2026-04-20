@@ -34,6 +34,7 @@ func Test_NewMarkerConfig_Success(t *testing.T) {
 	require.False(t, *cfg.Par2Verify)
 	require.False(t, *cfg.HideFiles)
 	require.False(t, *cfg.PersistMarker)
+	require.False(t, *cfg.Bundle)
 }
 
 // Expectation: Validation should pass when mode is recursive with a shallow glob.
@@ -181,7 +182,8 @@ glob: "*.txt"
 mode: "file"
 verify: true
 hidden: true
-persist: true`
+persist: true
+bundle: true`
 	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(yamlContent), 0o644))
 
 	var logBuf testutil.SafeBuffer
@@ -206,6 +208,7 @@ persist: true`
 	require.True(t, *cfg.Par2Verify)
 	require.True(t, *cfg.HideFiles)
 	require.True(t, *cfg.PersistMarker)
+	require.True(t, *cfg.Bundle)
 }
 
 // Expectation: The YAML configuration should reject an unknown mode.

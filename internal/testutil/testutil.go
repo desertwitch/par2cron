@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/bundle"
+	"github.com/desertwitch/par2cron/internal/par2"
+	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
 
@@ -158,4 +161,39 @@ func CreateExitError(t *testing.T, ctx context.Context, code int) error {
 	cmd.WaitDelay = 5 * time.Second //nolint:mnd
 
 	return cmd.Run()
+}
+
+// MockPar2Handler is a mock implementation of schema.Par2Handler.
+type MockPar2Handler struct {
+	ParseFileFunc func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error)
+}
+
+func (m *MockPar2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+	if m.ParseFileFunc != nil {
+		return m.ParseFileFunc(fsys, path, panicAsErr)
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+// MockBundleHandler is a mock implementation of schema.BundleHandler.
+type MockBundleHandler struct {
+	OpenFunc func(fsys afero.Fs, bundlePath string) (schema.Bundle, error)
+	PackFunc func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
+}
+
+func (m *MockBundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+	if m.OpenFunc != nil {
+		return m.OpenFunc(fsys, bundlePath)
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+	if m.PackFunc != nil {
+		return m.PackFunc(fsys, bundlePath, recoverySetID, manifest, files)
+	}
+
+	return errors.New("not implemented")
 }
