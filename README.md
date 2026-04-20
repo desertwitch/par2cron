@@ -643,6 +643,10 @@ hidden: true
 # If set, no warnings will be raised about existing PAR2 sets
 # Allows re-use of marker file for growing folders (e.g. in nested mode)
 persist: true
+
+# Create only one single (PAR2-compatible) file per PAR2 set
+# Helps reduce filesystem clutter by embedding the manifest in the PAR2 set
+bundle: true
 ```
 
 The directives are designed to be easy to remember, although for the rare case

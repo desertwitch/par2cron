@@ -56,6 +56,14 @@ create:
   # Default: false
   hidden: false
 
+  # bundle: Bundle created PAR2 set files and par2cron-specific files
+  # Only a single (PAR2-compatible) file is created for each created PAR2 set
+  # Helps reduce filesystem clutter by embedding the manifest in the PAR2 set
+  # Changeable as needed for individual sets using the marker configuration
+  #
+  # Default: false
+  bundle: false
+
   # log-level: Minimum level of emitted logs
   #
   # Options: "debug", "info", "warn", "error"
