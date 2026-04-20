@@ -39,9 +39,9 @@ func (o *Options) SetPar2Args(args []string) {
 type Service struct {
 	fsys afero.Fs
 
-	log    *logging.Logger
-	runner schema.CommandRunner
-	walker schema.FilesystemWalker
+	log     *logging.Logger
+	runner  schema.CommandRunner
+	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
 }
 
@@ -54,10 +54,10 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 
 	return &Service{
-		fsys:   fsys,
-		log:    log.With("op", "repair"),
-		runner: runner,
-		walker: walker,
+		fsys:    fsys,
+		log:     log.With("op", "repair"),
+		runner:  runner,
+		walker:  walker,
 		bundler: bundler,
 	}
 }
@@ -382,16 +382,16 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	defer unlock()
 
 	if !job.isBundle {
-		par2Hash, err := util.HashFile(prog.fsys, job.par2Path)
+		sha256hash, err := util.HashFile(prog.fsys, job.par2Path)
 		if err != nil {
 			logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
 
 			return fmt.Errorf("failed to hash par2: %w", err)
 		}
 
-		if par2Hash != job.manifest.SHA256 {
+		if sha256hash != job.manifest.SHA256 {
 			logger.Warn("PAR2 has changed (needs re-verification; skipping repair)",
-				"currentHash", par2Hash,
+				"currentHash", sha256hash,
 				"manifestHash", job.manifest.SHA256,
 			)
 

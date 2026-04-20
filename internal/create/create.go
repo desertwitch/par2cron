@@ -67,9 +67,9 @@ func (o *Options) Validate() error {
 type Service struct {
 	fsys afero.Fs
 
-	log    *logging.Logger
-	runner schema.CommandRunner
-	walker schema.FilesystemWalker
+	log     *logging.Logger
+	runner  schema.CommandRunner
+	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
 }
 
@@ -82,10 +82,10 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 
 	return &Service{
-		fsys:   fsys,
-		log:    log.With("op", "create"),
-		runner: runner,
-		walker: walker,
+		fsys:    fsys,
+		log:     log.With("op", "create"),
+		runner:  runner,
+		walker:  walker,
 		bundler: bundler,
 	}
 }
@@ -104,6 +104,7 @@ type Job struct {
 	lockPath      string
 	manifestName  string
 	manifestPath  string
+	asBundle      bool
 }
 
 func NewJob(markerPath string, cfg MarkerConfig) *Job {
@@ -115,6 +116,7 @@ func NewJob(markerPath string, cfg MarkerConfig) *Job {
 	}
 	cj.hiddenFiles = *cfg.HideFiles
 	cj.markerPersist = *cfg.PersistMarker
+	cj.asBundle = *cfg.Bundle
 
 	cj.par2Mode = cfg.Par2Mode.Value
 	cj.par2Args = slices.Clone(*cfg.Par2Args)
@@ -453,6 +455,7 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 		return err
 	}
 
+	logger = prog.creationLogger(ctx, job, job.par2Path) // mut
 	logger.Info("Succeeded to create PAR2")
 
 	return nil
@@ -501,6 +504,7 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 			continue
 		}
 
+		logger = prog.creationLogger(ctx, &j, j.par2Path) // mut
 		logger.Info("Succeeded to create PAR2")
 	}
 
@@ -542,6 +546,7 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 			continue
 		}
 
+		logger = prog.creationLogger(ctx, &j, j.par2Path) // mut
 		logger.Info("Succeeded to create PAR2")
 	}
 
@@ -610,6 +615,15 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		logger.Warn("Failed to hash PAR2 for par2cron manifest (will retry on verify)", "error", err)
 	} else {
 		mf.SHA256 = sha256hash
+	}
+
+	if job.asBundle {
+		if err := prog.packAsBundle(ctx, job, mf); err != nil {
+			logger.Error("Failed to bundle created PAR2 files (will retry next run)", "error", err)
+
+			return fmt.Errorf("failed to bundle: %w", err)
+		}
+	} else {
 		if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, mf, false); err != nil {
 			logger := prog.creationLogger(ctx, job, job.manifestPath)
 			logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
@@ -618,7 +632,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 
 	if job.par2Verify {
 		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
-		vj := verify.NewJob(job.par2Path, verify.Options{}, mf, false)
+		vj := verify.NewJob(job.par2Path, verify.Options{}, mf, job.asBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {
 			needsCleanup = true

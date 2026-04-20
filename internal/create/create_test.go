@@ -74,6 +74,7 @@ func Test_NewJob_Success(t *testing.T) {
 		Par2Verify:    new(true),
 		HideFiles:     new(false),
 		PersistMarker: new(false),
+		Bundle:        new(false),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -91,6 +92,7 @@ func Test_NewJob_Success(t *testing.T) {
 	require.True(t, job.par2Verify)
 	require.False(t, job.hiddenFiles)
 	require.False(t, job.markerPersist)
+	require.False(t, job.asBundle)
 }
 
 // Expectation: The correct paths should be derived from the [createConfig].
@@ -105,6 +107,7 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 		Par2Verify:    new(true),
 		HideFiles:     new(true),
 		PersistMarker: new(true),
+		Bundle:        new(true),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -122,6 +125,7 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 	require.True(t, job.par2Verify)
 	require.True(t, job.hiddenFiles)
 	require.True(t, job.markerPersist)
+	require.True(t, job.asBundle)
 }
 
 // Expectation: The relevant fields should be changed for file mode, others not.

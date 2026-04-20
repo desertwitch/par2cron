@@ -25,6 +25,7 @@ type MarkerConfig struct {
 	Par2Verify    *bool             `yaml:"verify"`
 	HideFiles     *bool             `yaml:"hidden"`
 	PersistMarker *bool             `yaml:"persist"`
+	Bundle        *bool             `yaml:"bundle"`
 }
 
 func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
@@ -36,6 +37,7 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	par2Mode := opts.Par2Mode
 	par2Verify := opts.Par2Verify
 	hideFiles := opts.HideFiles
+	asBundle := opts.Bundle
 	persistMarker := false
 
 	cfg.Par2Name = &par2Name
@@ -44,6 +46,7 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	cfg.Par2Mode = &par2Mode
 	cfg.Par2Verify = &par2Verify
 	cfg.HideFiles = &hideFiles
+	cfg.Bundle = &asBundle
 	cfg.PersistMarker = &persistMarker
 
 	return cfg

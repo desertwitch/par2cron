@@ -25,6 +25,10 @@ func (b *BundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, e
 	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
 }
 
+func (b *BundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+	return bundle.Pack(fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
+}
+
 type ResultTracker struct {
 	Selected int
 	Success  int

@@ -28,9 +28,9 @@ type Options struct {
 type Service struct {
 	fsys afero.Fs
 
-	log    *logging.Logger
-	runner schema.CommandRunner
-	walker schema.FilesystemWalker
+	log     *logging.Logger
+	runner  schema.CommandRunner
+	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
 }
 
@@ -43,10 +43,10 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 
 	return &Service{
-		fsys:   fsys,
-		log:    log,
-		runner: runner,
-		walker: walker,
+		fsys:    fsys,
+		log:     log,
+		runner:  runner,
+		walker:  walker,
 		bundler: bundler,
 	}
 }

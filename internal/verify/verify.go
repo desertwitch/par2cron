@@ -80,9 +80,9 @@ func NewJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *
 type Service struct {
 	fsys afero.Fs
 
-	log    *logging.Logger
-	runner schema.CommandRunner
-	walker schema.FilesystemWalker
+	log     *logging.Logger
+	runner  schema.CommandRunner
+	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
 }
 
@@ -95,10 +95,10 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 
 	return &Service{
-		fsys:   fsys,
-		log:    log.With("op", "verify"),
-		runner: runner,
-		walker: walker,
+		fsys:    fsys,
+		log:     log.With("op", "verify"),
+		runner:  runner,
+		walker:  walker,
 		bundler: bundler,
 	}
 }
@@ -409,7 +409,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 		defer unlock()
 	}
 
-	var par2Hash string
+	var sha256hash string
 	if !job.isBundle {
 		hash, err := util.HashFile(prog.fsys, job.par2Path)
 		if err != nil {
@@ -417,11 +417,11 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 
 			return fmt.Errorf("failed to hash par2: %w", err)
 		}
-		par2Hash = hash
+		sha256hash = hash
 
-		if job.manifest != nil && par2Hash != job.manifest.SHA256 {
+		if job.manifest != nil && sha256hash != job.manifest.SHA256 {
 			logger.Warn("PAR2 has changed (manifest out of date; resetting manifest)",
-				"currentHash", par2Hash,
+				"currentHash", sha256hash,
 				"manifestHash", job.manifest.SHA256,
 			)
 
@@ -431,7 +431,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 
 	if job.manifest == nil {
 		job.manifest = schema.NewManifest(job.par2Name)
-		job.manifest.SHA256 = par2Hash
+		job.manifest.SHA256 = sha256hash
 	}
 
 	if job.manifest.Verification == nil {

@@ -5,6 +5,7 @@ import (
 	"io"
 	"io/fs"
 
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/spf13/afero"
 )
 
@@ -18,8 +19,9 @@ type CommandRunner interface {
 	Run(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error
 }
 
-type BundleOpener interface {
+type BundleHandler interface {
 	Open(fsys afero.Fs, bundlePath string) (Bundle, error)
+	Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
 }
 
 type Bundle interface {

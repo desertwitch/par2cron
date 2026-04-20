@@ -78,6 +78,7 @@ type configFileCreate struct {
 	Par2Mode    *flags.CreateMode `yaml:"mode"`
 	MaxDuration *flags.Duration   `yaml:"duration"`
 	HideFiles   *bool             `yaml:"hidden"`
+	Bundle      *bool             `yaml:"bundle"`
 
 	LogLevel *flags.LogLevel `yaml:"log-level"`
 	WantJSON *bool           `yaml:"json"`
@@ -101,6 +102,9 @@ func (yamlCfg *configFileCreate) Merge(cfg *create.Options, logs *logging.Option
 	}
 	if yamlCfg.HideFiles != nil && !setFlags["hidden"] {
 		cfg.HideFiles = *yamlCfg.HideFiles
+	}
+	if yamlCfg.Bundle != nil && !setFlags["bundle"] {
+		cfg.Bundle = *yamlCfg.Bundle
 	}
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
 		logs.LogLevel = *yamlCfg.LogLevel
