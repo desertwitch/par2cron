@@ -1,5 +1,4 @@
 PAR2CRON APPLICATION BUNDLE SPECIFICATION
-
 extending on Parity Volume Set Specification 2.0
 making use of the "Application-Specific Packet Type"
 
@@ -20,28 +19,36 @@ one manifest JSON file for par2cron and each of them original PAR2 files
 
 GENERAL RULES AND CONVENTIONS:
 
+File Format:
 - Bundle files must end with ".p2c.par2" as suffix
 - Everything must be little endian, 4-byte aligned
-- Unknown flags should be ignored by reading programs
-- Readers should parse all spec versions (warn if not)
-- If version is unreadable, expect latest spec version
 - Strings are expected as UTF-8 (except in raw_stream)
+- String length fields reflect actual len(str) without padding
+  A filename "par2cron.file" would have a value 13 length field
+
+Parsing:
+- Readers should parse all spec versions (warn if not)
+- Unknown flags should be ignored by reading programs
+- If version is unreadable, expect latest spec version
+- If in doubt the PAR 2.0 specification is the ultimate deciding factor
+
+Index and Ordering:
+- Index packet file entries are lexicographically sorted (by filename)
+- Ensure that index packet is updated when updating the manifest packet
+- No data should ever follow the manifest packet, writers will truncate
+
+Raw Stream Restrictions:
 - raw_stream must be unmodified PAR2 file/packet stream bytes
 - raw_stream sha256 is strictly for informing users when unpacking
 - raw_stream corruption is responsibility of downstream PAR2 reader
 - raw_stream is never dropped due to detected hash mismatch/corruption
-- Index packet file entries are lexicographically sorted (by filename)
+
+Error Recovery:
 - Unpacking programs should still unpack any bundled but corrupted file
+- Unpacking must inform a bundle may be incomplete on index rebuilt flag
 - A corrupted index packet can be derived (appropriate flag must be set)
 - A corrupted manifest packet can be overwritten (with a fresh manifest)
 - A corrupted file packet can remain unhandled (but may hinder unpacking)
-- Unpack programs must inform bundle may be incomplete on index rebuilt flag
-- No data should ever follow the manifest packet, writers will truncate file
-- Ensure index packet is appropriately updated when updating manifest packet
-- If in doubt the PAR 2.0 specification is the ultimate last deciding factor
-
-String length fields should reflect actual len(str) without any padding
-A filename "par2cron.file" would therefore have a value 13 length field
 
 ╔══════════════════════════════════════════════════════════╗
 ║ COMMON PACKET HEADER (according to PAR2 specification)   ║
@@ -54,7 +61,7 @@ A filename "par2cron.file" would therefore have a value 13 length field
 ║  recovery_set_id   [16]byte  copied from source PAR2     ║
 ║  packet_type       [16]byte  type id (see table below)   ║
 ║                                                          ║
-║  (app-specific fields start at offset 64)                ║
+║  (type-specific fields start at offset 64)               ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
 ║ APP-SPECIFIC PACKET TYPES                                ║
@@ -64,7 +71,7 @@ A filename "par2cron.file" would therefore have a value 13 length field
 ║  Manifest  [16]byte  "P2C BundleMfst\0\0"                ║
 ║                                                          ║
 ╠══════════════════════════════════════════════════════════╣
-║ BUNDLE FILE CONTENT ORDER                                ║
+║ BUNDLE FILE FORMAT ORDER                                 ║
 ║                                                          ║
 ║  [INDEX PACKET]                                          ║
 ║  repeat for each bundled PAR2 file:                      ║
@@ -81,7 +88,6 @@ A filename "par2cron.file" would therefore have a value 13 length field
 ║   version                  u64                           ║
 ║   flags                    u64                           ║
 ║     bit0 = index rebuilt                                 ║
-║     (readers ignore unknown flags)                       ║
 ║                                                          ║
 ║   manifest_packet_offset   u64                           ║
 ║   manifest_data_offset     u64                           ║
