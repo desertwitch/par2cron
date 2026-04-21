@@ -17,19 +17,19 @@ const (
 
 	// indexFixedSize is the fixed size of every index packet prefix.
 	// version(8) + flags(8) + manifestPacketOffset(8) + manifestDataOffset(8) +
-	// manifestDataLength(8) + manifestDataB3(32) + manifestNameLen(8) + entryCount(8) = 88.
+	// manifestDataLength(8) + manifestDataSHA256(32) + manifestNameLen(8) + entryCount(8) = 88.
 	indexFixedSize = 88
 
 	// IndexEntryFixedSize is the fixed size of every index packet entry prefix.
-	// packetOffset(8) + dataOffset(8) + dataLength(8) + dataB3(32) + nameLen(8) = 64.
+	// packetOffset(8) + dataOffset(8) + dataLength(8) + dataSHA256(32) + nameLen(8) = 64.
 	indexEntryFixedSize = 64
 
 	// FileBodyPrefixSize is the fixed size of every file packet body prefix.
-	// dataLength(8) + dataB3(32) + nameLen(8) = 48.
+	// dataLength(8) + dataSHA256(32) + nameLen(8) = 48.
 	fileBodyPrefixSize = 48
 
 	// ManifestBodyPrefixSize is the fixed size of every manifest packet body prefix.
-	// dataLength(8) + dataB3(32) + nameLen(8) = 48.
+	// dataLength(8) + dataSHA256(32) + nameLen(8) = 48.
 	manifestBodyPrefixSize = 48
 
 	// maxPacketBodyBytes is the maximum allowed body length for any of our packets.
@@ -56,7 +56,7 @@ type IndexPacket struct {
 	ManifestPacketOffset uint64
 	ManifestDataOffset   uint64
 	ManifestDataLength   uint64
-	ManifestDataB3       [32]byte
+	ManifestDataSHA256   [32]byte
 	ManifestNameLen      uint64
 	ManifestName         string
 
@@ -69,7 +69,7 @@ type IndexEntry struct {
 	PacketOffset uint64
 	DataOffset   uint64
 	DataLength   uint64
-	DataB3       [32]byte
+	DataSHA256   [32]byte
 	NameLen      uint64
 	Name         string
 }
@@ -178,7 +178,7 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 	if err := safeReadU64(r, &mp.ManifestDataLength, math.MaxInt64); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read manifest data length: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestDataB3); err != nil {
+	if err := binary.Read(r, binary.LittleEndian, &mp.ManifestDataSHA256); err != nil {
 		return IndexPacket{}, fmt.Errorf("failed to read manifest data hash: %w", err)
 	}
 
@@ -208,7 +208,7 @@ func parseIndexPacket(r *bytes.Reader, ch CommonHeader) (IndexPacket, error) {
 		if err := safeReadU64(r, &mp.Entries[i].DataLength, math.MaxInt64); err != nil {
 			return IndexPacket{}, fmt.Errorf("failed to read entry data length: %w", err)
 		}
-		if err := binary.Read(r, binary.LittleEndian, &mp.Entries[i].DataB3); err != nil {
+		if err := binary.Read(r, binary.LittleEndian, &mp.Entries[i].DataSHA256); err != nil {
 			return IndexPacket{}, fmt.Errorf("failed to read entry data hash: %w", err)
 		}
 		if err := safeReadU64(r, &mp.Entries[i].NameLen, math.MaxUint16); err != nil {
@@ -231,7 +231,7 @@ type FilePacket struct {
 	CommonHeader
 
 	DataLength uint64
-	DataB3     [32]byte
+	DataSHA256 [32]byte
 	NameLen    uint64
 	Name       string
 
@@ -251,7 +251,7 @@ func parseFilePacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (File
 	if err := safeReadU64(r, &fp.DataLength, math.MaxInt64); err != nil {
 		return FilePacket{}, fmt.Errorf("failed to read data length: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &fp.DataB3); err != nil {
+	if err := binary.Read(r, binary.LittleEndian, &fp.DataSHA256); err != nil {
 		return FilePacket{}, fmt.Errorf("failed to read data hash: %w", err)
 	}
 	if err := safeReadU64(r, &fp.NameLen, math.MaxUint16); err != nil {
@@ -285,7 +285,7 @@ type ManifestPacket struct {
 	CommonHeader
 
 	DataLength uint64
-	DataB3     [32]byte
+	DataSHA256 [32]byte
 	NameLen    uint64
 	Name       string
 
@@ -307,7 +307,7 @@ func parseManifestPacket(r *bytes.Reader, ch CommonHeader, packetOffset int64) (
 	if err := safeReadU64(r, &mp.DataLength, math.MaxInt64); err != nil {
 		return ManifestPacket{}, fmt.Errorf("failed to read data length: %w", err)
 	}
-	if err := binary.Read(r, binary.LittleEndian, &mp.DataB3); err != nil {
+	if err := binary.Read(r, binary.LittleEndian, &mp.DataSHA256); err != nil {
 		return ManifestPacket{}, fmt.Errorf("failed to read data hash: %w", err)
 	}
 	if err := safeReadU64(r, &mp.NameLen, math.MaxUint16); err != nil {

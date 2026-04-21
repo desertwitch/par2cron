@@ -1,22 +1,21 @@
 package bundle
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-
-	"github.com/zeebo/blake3"
 )
 
-// dataHash computes the BLAKE3 data integrity hash from a byte slice.
+// dataHash computes the SHA256 data integrity hash from a byte slice.
 func dataHash(data []byte) [32]byte {
-	return blake3.Sum256(data)
+	return sha256.Sum256(data)
 }
 
-// dataHashReader computes the BLAKE3 data integrity hash streaming from r.
+// dataHashReader computes the SHA256 data integrity hash streaming from r.
 func dataHashReader(r io.Reader) ([32]byte, error) {
-	h := blake3.New()
+	h := sha256.New()
 	if _, err := io.Copy(h, r); err != nil {
 		return [32]byte{},
 			fmt.Errorf("failed to io: %w", err)

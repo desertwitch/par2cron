@@ -106,7 +106,7 @@ func reconstructIndex(manifest *ManifestPacket, files []FilePacket) IndexPacket 
 			PacketOffset: fp.packetOffset,
 			DataOffset:   fp.dataOffset,
 			DataLength:   fp.DataLength,
-			DataB3:       fp.DataB3,
+			DataSHA256:   fp.DataSHA256,
 			NameLen:      fp.NameLen,
 			Name:         fp.Name,
 		}
@@ -121,7 +121,7 @@ func reconstructIndex(manifest *ManifestPacket, files []FilePacket) IndexPacket 
 		ManifestPacketOffset: manifest.packetOffset,
 		ManifestDataOffset:   manifest.dataOffset,
 		ManifestDataLength:   manifest.DataLength,
-		ManifestDataB3:       manifest.DataB3,
+		ManifestDataSHA256:   manifest.DataSHA256,
 		ManifestNameLen:      manifest.NameLen,
 		ManifestName:         manifest.Name,
 		EntryCount:           uint64(len(entries)),

@@ -144,7 +144,7 @@ func (b *Bundle) Update(manifest []byte) error {
 	b.Index.ManifestPacketOffset = mf.packetOffset
 	b.Index.ManifestDataOffset = mf.dataOffset
 	b.Index.ManifestDataLength = mf.dataLength
-	b.Index.ManifestDataB3 = mf.dataB3
+	b.Index.ManifestDataSHA256 = mf.dataSHA256
 	b.Index.ManifestNameLen = mf.nameLen
 	b.Index.ManifestName = mf.name
 
@@ -181,7 +181,7 @@ type manifestWriteEntry struct {
 	packetOffset uint64
 	dataOffset   uint64
 	dataLength   uint64
-	dataB3       [32]byte
+	dataSHA256   [32]byte
 	nameLen      uint64
 	name         string
 }
@@ -234,7 +234,7 @@ func writeIndexPacket(w io.Writer, recoverySetID [16]byte, flags uint64, entries
 	if err := writeUint64LE(&body, mf.dataLength); err != nil {
 		return fmt.Errorf("failed to write manifest data length: %w", err)
 	}
-	if err := writeAll(&body, mf.dataB3[:]); err != nil {
+	if err := writeAll(&body, mf.dataSHA256[:]); err != nil {
 		return fmt.Errorf("failed to write manifest data hash: %w", err)
 	}
 	if err := writeUint64LE(&body, mf.nameLen); err != nil {
@@ -263,7 +263,7 @@ func writeIndexPacket(w io.Writer, recoverySetID [16]byte, flags uint64, entries
 		if err := writeUint64LE(&body, e.DataLength); err != nil {
 			return fmt.Errorf("failed to write entry data length: %w", err)
 		}
-		if err := writeAll(&body, e.DataB3[:]); err != nil {
+		if err := writeAll(&body, e.DataSHA256[:]); err != nil {
 			return fmt.Errorf("failed to write entry data hash: %w", err)
 		}
 		if err := writeUint64LE(&body, e.NameLen); err != nil {
@@ -310,7 +310,7 @@ func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, f
 	}
 
 	// Hash data stream to calculate checksum.
-	dataB3, err := dataHashReader(src)
+	dataSHA256, err := dataHashReader(src)
 	if err != nil {
 		return IndexEntry{}, fmt.Errorf("failed to hash data: %w", err)
 	}
@@ -322,7 +322,7 @@ func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, f
 	dataOffset := uint64(filePacketOffset) + filePacketLength
 
 	// Write the file packet first.
-	if err := writeFilePacket(w, recoverySetID, fi.Name, dataLen, dataB3); err != nil {
+	if err := writeFilePacket(w, recoverySetID, fi.Name, dataLen, dataSHA256); err != nil {
 		return IndexEntry{}, fmt.Errorf("failed to write file packet: %w", err)
 	}
 
@@ -342,14 +342,14 @@ func writeFileSegment(fsys afero.Fs, w io.WriteSeeker, recoverySetID [16]byte, f
 		PacketOffset: uint64(filePacketOffset),
 		DataOffset:   dataOffset,
 		DataLength:   dataLen,
-		DataB3:       dataB3,
+		DataSHA256:   dataSHA256,
 		NameLen:      nameLen,
 		Name:         fi.Name,
 	}, nil
 }
 
 // writeFilePacket writes a file packet (header + body prefix + padded name).
-func writeFilePacket(w io.Writer, recoverySetID [16]byte, name string, dataLen uint64, dataB3 [32]byte) error {
+func writeFilePacket(w io.Writer, recoverySetID [16]byte, name string, dataLen uint64, dataSHA256 [32]byte) error {
 	var body bytes.Buffer
 
 	nameLen := uint64(len(name))
@@ -358,7 +358,7 @@ func writeFilePacket(w io.Writer, recoverySetID [16]byte, name string, dataLen u
 	if err := writeUint64LE(&body, dataLen); err != nil {
 		return fmt.Errorf("failed to write data length: %w", err)
 	}
-	if err := writeAll(&body, dataB3[:]); err != nil {
+	if err := writeAll(&body, dataSHA256[:]); err != nil {
 		return fmt.Errorf("failed to write data hash: %w", err)
 	}
 	if err := writeUint64LE(&body, nameLen); err != nil {
@@ -379,7 +379,7 @@ func writeManifestPacket(w io.Writer, recoverySetID [16]byte, manifest ManifestI
 	var body bytes.Buffer
 
 	dataLen := uint64(len(manifest.Bytes))
-	dataB3 := dataHash(manifest.Bytes)
+	dataSHA256 := dataHash(manifest.Bytes)
 	nameLen := uint64(len(manifest.Name))
 	paddedNameLen := padTo4(nameLen)
 
@@ -388,7 +388,7 @@ func writeManifestPacket(w io.Writer, recoverySetID [16]byte, manifest ManifestI
 	if err := writeUint64LE(&body, dataLen); err != nil {
 		return manifestWriteEntry{}, fmt.Errorf("failed to write data length: %w", err)
 	}
-	if err := writeAll(&body, dataB3[:]); err != nil {
+	if err := writeAll(&body, dataSHA256[:]); err != nil {
 		return manifestWriteEntry{}, fmt.Errorf("failed to write data hash: %w", err)
 	}
 	if err := writeUint64LE(&body, nameLen); err != nil {
@@ -416,7 +416,7 @@ func writeManifestPacket(w io.Writer, recoverySetID [16]byte, manifest ManifestI
 		packetOffset: packetOffset,
 		dataOffset:   dataOffset,
 		dataLength:   dataLen,
-		dataB3:       dataB3,
+		dataSHA256:   dataSHA256,
 		nameLen:      nameLen,
 		name:         manifest.Name,
 	}, nil

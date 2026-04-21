@@ -27,7 +27,7 @@ GENERAL RULES AND CONVENTIONS:
 - If version is unreadable, expect latest spec version
 - Strings are expected as UTF-8 (except in raw_stream)
 - raw_stream must be unmodified PAR2 file/packet stream bytes
-- raw_stream data_b3 is strictly for informing users when unpacking
+- raw_stream sha256 is strictly for informing users when unpacking
 - raw_stream corruption is responsibility of downstream PAR2 reader
 - raw_stream is never dropped due to detected hash mismatch/corruption
 - Index packet file entries are lexicographically sorted (by filename)
@@ -39,9 +39,6 @@ GENERAL RULES AND CONVENTIONS:
 - No data should ever follow the manifest packet, writers will truncate file
 - Ensure index packet is appropriately updated when updating manifest packet
 - If in doubt the PAR 2.0 specification is the ultimate last deciding factor
-
-B3 refers to 32-byte BLAKE3 hashes, which are superior to MD5 hashing
-These are used where not otherwise mandated by the PAR2 specification
 
 String length fields should reflect actual len(str) without any padding
 A filename "par2cron.file" would therefore have a value 13 length field
@@ -89,7 +86,7 @@ A filename "par2cron.file" would therefore have a value 13 length field
 ║   manifest_packet_offset   u64                           ║
 ║   manifest_data_offset     u64                           ║
 ║   manifest_data_length     u64                           ║
-║   manifest_data_b3         [32]byte                      ║
+║   manifest_data_sha256     [32]byte                      ║
 ║   manifest_name_len        u64                           ║
 ║   manifest_name            [name_len]byte padded to 4    ║
 ║                                                          ║
@@ -98,7 +95,7 @@ A filename "par2cron.file" would therefore have a value 13 length field
 ║     packet_offset          u64   (file packet offset)    ║
 ║     data_offset            u64   (raw stream offset)     ║
 ║     data_length            u64   (raw stream length)     ║
-║     data_b3                [32]byte                      ║
+║     data_sha256            [32]byte                      ║
 ║     name_len               u64                           ║
 ║     name                   [name_len]byte padded to 4    ║
 ║                                                          ║
@@ -107,7 +104,7 @@ A filename "par2cron.file" would therefore have a value 13 length field
 ║                                                          ║
 ║   [common header, 64 bytes]                              ║
 ║   data_length              u64   (raw stream length)     ║
-║   data_b3                  [32]byte                      ║
+║   data_sha256              [32]byte                      ║
 ║   name_len                 u64                           ║
 ║   name                     [name_len]byte padded to 4    ║
 ║                                                          ║
@@ -124,7 +121,7 @@ A filename "par2cron.file" would therefore have a value 13 length field
 ║                                                          ║
 ║   [common header, 64 bytes]                              ║
 ║   data_length              u64                           ║
-║   data_b3                  [32]byte                      ║
+║   data_sha256              [32]byte                      ║
 ║   name_len                 u64                           ║
 ║   name                     [name_len]byte padded to 4    ║
 ║                                                          ║

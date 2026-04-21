@@ -34,11 +34,11 @@ func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) error {
 }
 
 // ExtractEntry copies a file packet's data stream to w and verifies it against
-// its BLAKE3 hash. If an error is returned, the written data may be partial or
+// its SHA256 hash. If an error is returned, the written data may be partial or
 // corrupt. If the transfer is complete but corrupt, ErrDataCorrupt is returned.
 func (b *Bundle) ExtractEntry(e IndexEntry, w io.Writer) error {
 	sr := io.NewSectionReader(b.f, int64(e.DataOffset), int64(e.DataLength)) //nolint:gosec
-	expectedHash := e.DataB3
+	expectedHash := e.DataSHA256
 
 	hash, err := dataHashReader(io.TeeReader(sr, w))
 	if err != nil {
@@ -53,11 +53,11 @@ func (b *Bundle) ExtractEntry(e IndexEntry, w io.Writer) error {
 }
 
 // ExtractManifest copies the manifest's data stream to w and verifies it
-// against its BLAKE3 hash. If an error is returned, written data may be partial
+// against its SHA256 hash. If an error is returned, written data may be partial
 // or corrupt. If transfer is complete but corrupt, ErrDataCorrupt is returned.
 func (b *Bundle) ExtractManifest(w io.Writer) error {
 	sr := io.NewSectionReader(b.f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
-	expectedHash := b.Index.ManifestDataB3
+	expectedHash := b.Index.ManifestDataSHA256
 
 	hash, err := dataHashReader(io.TeeReader(sr, w))
 	if err != nil {

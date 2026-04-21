@@ -95,7 +95,7 @@ func (b *Bundle) Close() error {
 	return b.f.Close() //nolint:wrapcheck
 }
 
-// Manifest reads and returns the manifest bytes, verified against the BLAKE3
+// Manifest reads and returns the manifest bytes, verified against the SHA256
 // hash. On errors the bytes are still returned for inspection but should be
 // treated as suspect. ErrDataCorrupt is returned on hash mismatch (corruption).
 func (b *Bundle) Manifest() ([]byte, error) {
@@ -110,7 +110,7 @@ func (b *Bundle) Manifest() ([]byte, error) {
 
 // Validate checks the bundle's integrity by validating the index, all file
 // packets, and the manifest in sequence. If strict is true, manifest and file
-// data is additionally verified against their BLAKE3 hashes, which requires
+// data is additionally verified against their SHA256 hashes, which requires
 // reading the full data streams and may be slower for large bundles.
 func (b *Bundle) Validate(strict bool) error {
 	if err := b.ValidateIndex(); err != nil {
@@ -139,7 +139,7 @@ func (b *Bundle) ValidateIndex() error {
 
 // ValidateFiles verifies that every file entry in the index points to a valid
 // file packet at the expected offset. If strict is true, it additionally checks
-// each file stream's data against its BLAKE3 hash to detect corruption, which
+// each file stream's data against its SHA256 hash to detect corruption, which
 // requires reading the full data stream and may be slower for large bundles.
 func (b *Bundle) ValidateFiles(strict bool) error {
 	for i, entry := range b.Index.Entries {
@@ -158,7 +158,7 @@ func (b *Bundle) ValidateFiles(strict bool) error {
 			if err != nil {
 				return fmt.Errorf("file data %d (%q) at offset %d: hash error: %w", i, entry.Name, entry.DataOffset, err)
 			}
-			if hash != entry.DataB3 {
+			if hash != entry.DataSHA256 {
 				return fmt.Errorf("file data %d (%q) at offset %d: %w: hash mismatch", i, entry.Name, entry.DataOffset, ErrDataCorrupt)
 			}
 		}
@@ -169,7 +169,7 @@ func (b *Bundle) ValidateFiles(strict bool) error {
 
 // ValidateManifest verifies that the manifest packet is present and well-formed
 // at the expected offset. If strict is true, it additionally checks the
-// manifest data against its BLAKE3 hash to detect corruption, which requires
+// manifest data against its SHA256 hash to detect corruption, which requires
 // reading the full data stream and may be slower for large bundles.
 func (b *Bundle) ValidateManifest(strict bool) error {
 	ch, _, err := readAndValidatePacket(b.f, int64(b.Index.ManifestPacketOffset), b.size, true) //nolint:gosec
@@ -187,7 +187,7 @@ func (b *Bundle) ValidateManifest(strict bool) error {
 		if err != nil {
 			return fmt.Errorf("manifest data at offset %d: hash error: %w", b.Index.ManifestDataOffset, err)
 		}
-		if hash != b.Index.ManifestDataB3 {
+		if hash != b.Index.ManifestDataSHA256 {
 			return fmt.Errorf("manifest data at offset %d: %w: hash mismatch", b.Index.ManifestDataOffset, ErrDataCorrupt)
 		}
 	}
