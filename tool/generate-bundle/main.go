@@ -12,10 +12,12 @@ import (
 	"github.com/spf13/afero"
 )
 
+const programName = "tool/generate-bundle"
+
 var (
-	dir   = flag.String("dir", "testdata", "testdata directory")
-	out   = flag.String("out", "output.bun.par2", "output filename within -dir")
-	parse = flag.String("parse", "", "path to the index .par2 file")
+	dir   = flag.String("dir", "testdata", "base directory for all file paths")
+	out   = flag.String("out", "output.bun.par2", "output filename relative to -dir")
+	parse = flag.String("parse", "", "index .par2 file relative to -dir")
 )
 
 var manifest = bundle.ManifestInput{
@@ -27,22 +29,24 @@ func main() {
 	flag.Parse()
 
 	if *parse == "" {
-		log.Fatalf("%s: args error: -parse flag is required", os.Args[0])
+		log.Fatalf("%s: args error: -parse flag is required", programName)
 	}
 
 	files := flag.Args()
 	if len(files) == 0 {
-		log.Fatalf("%s: args error: at least one input file must be given", os.Args[0])
+		log.Fatalf("%s: args error: at least one input file must be given", programName)
 	}
 
 	fs := afero.NewOsFs()
 
-	pf, err := par2.ParseFile(fs, *parse, true)
+	parsePath := filepath.Join(*dir, *parse)
+	pf, err := par2.ParseFile(fs, parsePath, true)
 	if err != nil {
-		log.Fatalf("%s: parse error: %v", os.Args[0], err)
+		log.Fatalf("%s: parse error: %v", programName, err)
 	}
+
 	if len(pf.Sets) < 1 || pf.Sets[0].MainPacket == nil {
-		log.Fatalf("%s: parsed file has no sets or main packet", os.Args[0])
+		log.Fatalf("%s: parsed file has no sets or main packet", programName)
 	}
 
 	recoverySetID := pf.Sets[0].MainPacket.SetID
@@ -51,30 +55,29 @@ func main() {
 	for i, name := range files {
 		inputs[i] = bundle.FileInput{
 			Name: filepath.Base(name),
-			Path: name,
+			Path: filepath.Join(*dir, name),
 		}
 	}
 
 	outPath := filepath.Join(*dir, *out)
-
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil { //nolint:mnd
-		log.Fatalf("%s: fs error: %v", os.Args[0], err)
+		log.Fatalf("%s: fs error: %v", programName, err)
 	}
 
 	if err := bundle.Pack(fs, outPath, recoverySetID, manifest, inputs); err != nil {
-		log.Fatalf("%s: pack error: %v", os.Args[0], err)
+		log.Fatalf("%s: pack error: %v", programName, err)
 	}
 
 	bun, err := bundle.Open(fs, outPath)
 	if err != nil {
-		log.Fatalf("%s: bundle open error: %v", os.Args[0], err)
+		log.Fatalf("%s: bundle open error: %v", programName, err)
 	}
 
 	if err := bun.Validate(true); err != nil {
 		bun.Close()
-		log.Fatalf("%s: bundle validate error: %v", os.Args[0], err)
+		log.Fatalf("%s: bundle validate error: %v", programName, err)
 	}
 
 	bun.Close()
-	log.Printf("%s: success: %s\n", os.Args[0], outPath)
+	log.Printf("%s: success: %s\n", programName, outPath)
 }
