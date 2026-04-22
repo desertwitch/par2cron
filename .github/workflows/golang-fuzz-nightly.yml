@@ -27,7 +27,7 @@ jobs:
       - name: Clean the environment
         run: make clean
 
-      - name: Run Go fuzz tests (60min)
+      - name: Run Go fuzz tests (60min per unit)
         run: make test-fuzz-long
 
       - name: Archive the testdata folder
@@ -57,7 +57,7 @@ jobs:
       - name: Clean the environment
         run: make clean
 
-      - name: Run Go fuzz tests (60min)
+      - name: Run Go fuzz tests (60min per unit)
         env:
           GOARCH: 386
         run: make test-fuzz-long

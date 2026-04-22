@@ -37,7 +37,7 @@ jobs:
       - name: Clean the environment
         run: make clean
 
-      - name: Run Go fuzz tests (3m)
+      - name: Run Go fuzz tests (3m per unit)
         run: make test-fuzz-quick
 
       - name: Archive the testdata folder
@@ -70,7 +70,7 @@ jobs:
       - name: Clean the environment
         run: make clean
 
-      - name: Run Go fuzz tests (3m)
+      - name: Run Go fuzz tests (3m per unit)
         env:
           GOARCH: 386
         run: make test-fuzz-quick
