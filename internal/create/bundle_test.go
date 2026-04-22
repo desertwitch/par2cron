@@ -722,6 +722,76 @@ func Test_Service_packAsBundle_CleanupManifestFails_Success(t *testing.T) {
 	require.True(t, bundleExists)
 }
 
+// Expectation: The function should warn but not error when cleanup of the lock file fails after bundling.
+func Test_Service_packAsBundle_CleanupLockFails_Success(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("lock"), 0o644))
+
+	fs := &testutil.FailingRemoveFs{Fs: baseFs, FailSuffix: schema.LockExtension}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			require.NoError(t, afero.WriteFile(baseFs, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+	require.Contains(t, logBuf.String(), "Failed to cleanup a file after bundling")
+
+	// The lock file that failed to remove should still exist.
+	lockExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension)
+	require.True(t, lockExists)
+
+	// The PAR2 index that succeeded removal should be gone.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, indexExists)
+
+	// Bundle should still exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+}
+
 // Expectation: The function should find only PAR2 index and volume files matching the base name.
 func Test_Service_findBundleableFiles_Success(t *testing.T) {
 	t.Parallel()
@@ -966,4 +1036,31 @@ func Test_Service_findBundleableFiles_HiddenFiles_Success(t *testing.T) {
 	require.Contains(t, names, ".test"+schema.Par2Extension)
 	require.Contains(t, names, ".test.vol00+01"+schema.Par2Extension)
 	require.NotContains(t, names, "test"+schema.Par2Extension)
+}
+
+// Expectation: The function should return an error when the working directory cannot be read.
+func Test_Service_findBundleableFiles_ReadDirFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+
+	job := &Job{
+		workingDir: "/missing",
+		par2Name:   "test" + schema.Par2Extension,
+		par2Path:   "/missing/test" + schema.Par2Extension,
+	}
+
+	files, err := prog.findBundleableFiles(job)
+	require.ErrorContains(t, err, "failed to read directory")
+	require.Nil(t, files)
 }
