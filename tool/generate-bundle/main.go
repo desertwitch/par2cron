@@ -1,83 +1,152 @@
-//nolint:gosec
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
-	"github.com/desertwitch/par2cron/internal/par2"
+	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 )
 
 const programName = "tool/generate-bundle"
-
-var (
-	dir   = flag.String("dir", "testdata", "base directory for all file paths")
-	out   = flag.String("out", "output.bun.par2", "output filename relative to -dir")
-	parse = flag.String("parse", "", "index .par2 file relative to -dir")
-)
 
 var manifest = bundle.ManifestInput{
 	Name:  "manifest.json",
 	Bytes: []byte(`{"version":1,"description":"reference bundle"}`),
 }
 
-func main() {
-	flag.Parse()
+type Options struct {
+	Dir   string
+	Out   string
+	Parse string
+	Files []string
+}
 
-	if *parse == "" {
-		log.Fatalf("%s: args error: -parse flag is required", programName)
+func (o Options) Validate() error {
+	if o.Parse == "" {
+		return errors.New("-parse flag is required")
+	}
+	if len(o.Files) == 0 {
+		return errors.New("at least one input file must be given")
 	}
 
-	files := flag.Args()
-	if len(files) == 0 {
-		log.Fatalf("%s: args error: at least one input file must be given", programName)
+	return nil
+}
+
+type Service struct {
+	fsys    afero.Fs
+	par2er  schema.Par2Handler
+	bundler schema.BundleHandler
+}
+
+func NewService(fsys afero.Fs, par2er schema.Par2Handler, bundler schema.BundleHandler) *Service {
+	return &Service{
+		fsys:    fsys,
+		par2er:  par2er,
+		bundler: bundler,
+	}
+}
+
+func (s *Service) Run(opts Options) (string, error) {
+	if err := opts.Validate(); err != nil {
+		return "", fmt.Errorf("args error: %w", err)
 	}
 
-	fs := afero.NewOsFs()
-
-	parsePath := filepath.Join(*dir, *parse)
-	pf, err := par2.ParseFile(fs, parsePath, true)
+	parsePath := filepath.Join(opts.Dir, opts.Parse)
+	pf, err := s.par2er.ParseFile(s.fsys, parsePath, true)
 	if err != nil {
-		log.Fatalf("%s: parse error: %v", programName, err)
+		return "", fmt.Errorf("parse error: %w", err)
 	}
 
 	if len(pf.Sets) < 1 || pf.Sets[0].MainPacket == nil {
-		log.Fatalf("%s: parsed file has no sets or main packet", programName)
+		return "", errors.New("parsed file has no sets or main packet")
 	}
 
 	recoverySetID := pf.Sets[0].MainPacket.SetID
 
-	inputs := make([]bundle.FileInput, len(files))
-	for i, name := range files {
+	inputs := make([]bundle.FileInput, len(opts.Files))
+	for i, name := range opts.Files {
 		inputs[i] = bundle.FileInput{
 			Name: filepath.Base(name),
-			Path: filepath.Join(*dir, name),
+			Path: filepath.Join(opts.Dir, name),
 		}
 	}
 
-	outPath := filepath.Join(*dir, *out)
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil { //nolint:mnd
-		log.Fatalf("%s: fs error: %v", programName, err)
+	outPath := filepath.Join(opts.Dir, opts.Out)
+	if err := s.fsys.MkdirAll(filepath.Dir(outPath), 0o755); err != nil { //nolint:mnd
+		return "", fmt.Errorf("fs error: %w", err)
 	}
 
-	if err := bundle.Pack(fs, outPath, recoverySetID, manifest, inputs); err != nil {
-		log.Fatalf("%s: pack error: %v", programName, err)
+	if err := s.bundler.Pack(s.fsys, outPath, recoverySetID, manifest, inputs); err != nil {
+		return "", fmt.Errorf("pack error: %w", err)
 	}
 
-	bun, err := bundle.Open(fs, outPath)
+	bun, err := s.bundler.Open(s.fsys, outPath)
 	if err != nil {
-		log.Fatalf("%s: bundle open error: %v", programName, err)
+		return "", fmt.Errorf("bundle open error: %w", err)
 	}
+	defer bun.Close()
 
 	if err := bun.Validate(true); err != nil {
-		bun.Close()
-		log.Fatalf("%s: bundle validate error: %v", programName, err)
+		return "", fmt.Errorf("bundle validate error: %w", err)
 	}
 
-	bun.Close()
-	log.Printf("%s: success: %s\n", programName, outPath)
+	return outPath, nil
+}
+
+func parseArgs(args []string) (Options, error) {
+	flags := flag.NewFlagSet(programName, flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+
+	dir := flags.String("dir", "testdata", "base directory for all file paths")
+	out := flags.String("out", "output.bun.par2", "output filename relative to -dir")
+	parse := flags.String("parse", "", "index .par2 file relative to -dir")
+
+	if err := flags.Parse(args); err != nil {
+		return Options{}, fmt.Errorf("args error: %w", err)
+	}
+
+	opts := Options{
+		Dir:   *dir,
+		Out:   *out,
+		Parse: *parse,
+		Files: flags.Args(),
+	}
+	if err := opts.Validate(); err != nil {
+		return Options{}, fmt.Errorf("args error: %w", err)
+	}
+
+	return opts, nil
+}
+
+func run(args []string, stdout io.Writer, service *Service) error {
+	opts, err := parseArgs(args)
+	if err != nil {
+		return err
+	}
+
+	outPath, err := service.Run(opts)
+	if err != nil {
+		return err
+	}
+
+	if _, err := fmt.Fprintf(stdout, "%s: success: %s\n", programName, outPath); err != nil {
+		return fmt.Errorf("failed to write output: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	service := NewService(afero.NewOsFs(), &util.Par2Handler{}, &util.BundleHandler{})
+	if err := run(os.Args[1:], os.Stdout, service); err != nil {
+		log.Fatalf("%s: %v", programName, err)
+	}
 }

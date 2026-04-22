@@ -33,6 +33,7 @@ type Bundle interface {
 	Close() error
 	Manifest() ([]byte, error)
 	Update(manifest []byte) error
+	Validate(strict bool) error
 	ValidateIndex() error
 }
 

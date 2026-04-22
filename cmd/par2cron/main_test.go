@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -14,6 +16,71 @@ import (
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/stretchr/testify/require"
 )
+
+// Expectation: checkForPar2 should set schema.Par2Version from the first output line.
+//
+//nolint:paralleltest
+func Test_checkForPar2_Success(t *testing.T) {
+	oldVersion := schema.Par2Version
+
+	t.Cleanup(func() {
+		schema.Par2Version = oldVersion
+	})
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			require.Equal(t, "par2", cmd)
+			require.Equal(t, []string{"-V"}, args)
+			require.Empty(t, workingDir)
+			_, err := io.WriteString(stdout, "par2cmdline version 0.8.1\nother line\n")
+
+			return err
+		},
+	}
+
+	schema.Par2Version = ""
+	require.NoError(t, checkForPar2(t.Context(), runner, io.Discard))
+	require.Equal(t, "par2cmdline version 0.8.1", schema.Par2Version)
+}
+
+// Expectation: checkForPar2 should not modify schema.Par2Version when command output is empty.
+//
+//nolint:paralleltest
+func Test_checkForPar2_EmptyOutput_Success(t *testing.T) {
+	oldVersion := schema.Par2Version
+
+	t.Cleanup(func() {
+		schema.Par2Version = oldVersion
+	})
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	schema.Par2Version = "keep-this"
+	require.NoError(t, checkForPar2(t.Context(), runner, io.Discard))
+	require.Equal(t, "keep-this", schema.Par2Version)
+}
+
+// Expectation: checkForPar2 should return an exec-prefixed error when par2 is unavailable.
+//
+//nolint:paralleltest
+func Test_checkForPar2_RunFails_Error(t *testing.T) {
+	var errOut bytes.Buffer
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return errors.New("runner boom")
+		},
+	}
+
+	err := checkForPar2(t.Context(), runner, &errOut)
+	require.ErrorContains(t, err, "exec:")
+	require.ErrorContains(t, err, "runner boom")
+	require.Contains(t, errOut.String(), "requires a \"par2\"")
+}
 
 // Expectation: A new program should be established.
 func Test_NewProgram_Success(t *testing.T) {

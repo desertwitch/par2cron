@@ -203,6 +203,7 @@ type MockBundle struct {
 	CloseFunc         func() error
 	ManifestFunc      func() ([]byte, error)
 	UpdateFunc        func(manifest []byte) error
+	ValidateFunc      func(strict bool) error
 	ValidateIndexFunc func() error
 }
 
@@ -228,6 +229,14 @@ func (m *MockBundle) Update(manifest []byte) error {
 	}
 
 	return errors.New("not implemented")
+}
+
+func (m *MockBundle) Validate(strict bool) error {
+	if m.ValidateFunc != nil {
+		return m.ValidateFunc(strict)
+	}
+
+	return nil
 }
 
 func (m *MockBundle) ValidateIndex() error {

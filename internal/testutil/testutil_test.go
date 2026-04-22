@@ -763,6 +763,31 @@ func Test_MockBundle_ValidateIndex_WithFunc_Success(t *testing.T) {
 	require.True(t, called)
 }
 
+// Expectation: The mock bundle should return nil when no Validate function is provided.
+func Test_MockBundle_Validate_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	require.NoError(t, b.Validate(true))
+}
+
+// Expectation: The mock bundle should return the error from the Validate function.
+func Test_MockBundle_Validate_WithFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("validation error")
+	b := &MockBundle{
+		ValidateFunc: func(bool) error {
+			return expectedErr
+		},
+	}
+
+	err := b.Validate(true)
+
+	require.ErrorIs(t, err, expectedErr)
+}
+
 // Expectation: The mock bundle should return nil when no ValidateIndex function is provided.
 func Test_MockBundle_ValidateIndex_NoFunc_Success(t *testing.T) {
 	t.Parallel()

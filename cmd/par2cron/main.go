@@ -33,8 +33,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"os/signal"
 	"runtime/debug"
 	"runtime/pprof"
@@ -55,18 +55,17 @@ import (
 
 var profFile *os.File
 
-func checkForPar2(ctx context.Context) error {
-	par2cmd := exec.CommandContext(ctx, "par2", "-V")
-	par2cmd.WaitDelay = util.ProcessKillTimeout
+func checkForPar2(ctx context.Context, runner schema.CommandRunner, errout io.Writer) error {
+	var out bytes.Buffer
 
-	b, err := par2cmd.Output()
+	err := runner.Run(ctx, "par2", []string{"-V"}, "", &out, io.Discard)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "This command requires a \"par2\" (par2cmdline) installation in your $PATH")
+		fmt.Fprintln(errout, "This command requires a \"par2\" (par2cmdline) installation in your $PATH")
 
 		return fmt.Errorf("exec: %w", err)
 	}
 
-	scanner := bufio.NewScanner(bytes.NewReader(b))
+	scanner := bufio.NewScanner(bytes.NewReader(out.Bytes()))
 	if scanner.Scan() {
 		schema.Par2Version = strings.TrimSpace(scanner.Text())
 	}
@@ -166,6 +165,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 	var resolvedPaths []string
 
 	fsys := afero.NewOsFs()
+	runner := &util.CtxRunner{}
 
 	_ = logSettings.LogLevel.Set("info")
 	logSettings.Logout = os.Stderr
@@ -181,7 +181,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 		Example: createHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := checkForPar2(ctx); err != nil {
+			if err := checkForPar2(ctx, runner, logSettings.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
@@ -204,7 +204,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
 			result, err := prog.CreationService.Create(ctx, resolvedPaths, createOptions)
@@ -237,6 +237,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 	var resolvedPaths []string
 
 	fsys := afero.NewOsFs()
+	runner := &util.CtxRunner{}
 
 	_ = logSettings.LogLevel.Set("info")
 	logSettings.Logout = os.Stderr
@@ -252,7 +253,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 		Example: verifyHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := checkForPar2(ctx); err != nil {
+			if err := checkForPar2(ctx, runner, logSettings.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
@@ -275,7 +276,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
 			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyOptions)
@@ -307,6 +308,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 	var resolvedPaths []string
 
 	fsys := afero.NewOsFs()
+	runner := &util.CtxRunner{}
 
 	_ = logSettings.LogLevel.Set("info")
 	logSettings.Logout = os.Stderr
@@ -320,7 +322,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 		Example: repairHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
-			if err := checkForPar2(ctx); err != nil {
+			if err := checkForPar2(ctx, runner, logSettings.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
@@ -343,7 +345,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
 			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairOptions)
