@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
-	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 )
 
@@ -44,6 +44,22 @@ type Service struct {
 	fsys    afero.Fs
 	par2er  schema.Par2Handler
 	bundler schema.BundleHandler
+}
+
+type bundleHandler struct{}
+
+func (bundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) { //nolint:ireturn
+	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
+}
+
+func (bundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+	return bundle.Pack(fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
+}
+
+type par2Handler struct{}
+
+func (par2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+	return par2.ParseFile(fsys, path, panicAsErr) //nolint:wrapcheck
 }
 
 func NewService(fsys afero.Fs, par2er schema.Par2Handler, bundler schema.BundleHandler) *Service {
@@ -145,7 +161,7 @@ func run(args []string, stdout io.Writer, service *Service) error {
 }
 
 func main() {
-	service := NewService(afero.NewOsFs(), &util.Par2Handler{}, &util.BundleHandler{})
+	service := NewService(afero.NewOsFs(), par2Handler{}, bundleHandler{})
 	if err := run(os.Args[1:], os.Stdout, service); err != nil {
 		log.Fatalf("%s: %v", programName, err)
 	}
