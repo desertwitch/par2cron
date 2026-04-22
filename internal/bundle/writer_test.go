@@ -32,6 +32,16 @@ func (zeroWriter) Write(p []byte) (int, error) {
 	return 0, nil
 }
 
+type failingReadFile struct {
+	afero.File
+
+	readErr error
+}
+
+func (f *failingReadFile) Read(p []byte) (int, error) {
+	return 0, f.readErr
+}
+
 // Expectation: Pack should write deterministic entries and place file and manifest bytes at the indexed offsets.
 func Test_Pack_Success(t *testing.T) {
 	t.Parallel()
@@ -86,6 +96,32 @@ func Test_Pack_CreateFails_Error(t *testing.T) {
 
 	require.ErrorContains(t, err, "failed to create")
 	require.ErrorContains(t, err, "create boom")
+}
+
+// Expectation: Pack should return an error when writing the initial index placeholder fails.
+func Test_Pack_WriteIndexPlaceholderFails_Error(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+	fs := &testFs{
+		Fs: base,
+		createFunc: func(name string) (afero.File, error) {
+			f, err := base.Create(name)
+			require.NoError(t, err)
+
+			return &callbackFile{
+				File: f,
+				writeFunc: func(p []byte) (int, error) {
+					return 0, errors.New("write boom")
+				},
+			}, nil
+		},
+	}
+
+	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+
+	require.ErrorContains(t, err, "failed to write index packet placeholder")
+	require.ErrorContains(t, err, "write boom")
 }
 
 // Expectation: Pack should return an error when the manifest packet position cannot be read from the writer.
@@ -530,6 +566,21 @@ func Test_writeCommonPacket_Success(t *testing.T) {
 	require.Equal(t, body, gotBody)
 }
 
+// Expectation: writeCommonPacket should surface writer failures while writing the packet body.
+func Test_writeCommonPacket_WriteBodyFails_Error(t *testing.T) {
+	t.Parallel()
+
+	w := &limitedWriter{
+		remaining: commonHeaderSize, // allow full header, fail on body write
+		err:       errors.New("writer boom"),
+	}
+
+	err := writeCommonPacket(w, testRecoverySetID, PacketTypeFile, []byte("data"))
+
+	require.ErrorContains(t, err, "failed to write packet body")
+	require.ErrorContains(t, err, "writer boom")
+}
+
 // Expectation: writeIndexPacket should serialize a parseable index packet with the provided manifest and entry metadata.
 func Test_writeIndexPacket_Success(t *testing.T) {
 	t.Parallel()
@@ -563,6 +614,28 @@ func Test_writeIndexPacket_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, manifest.packetOffset, got.ManifestPacketOffset)
 	require.Equal(t, []string{"alpha.par2"}, []string{got.Entries[0].Name})
+}
+
+// Expectation: writeIndexPacket should surface writer failures from the underlying packet write.
+func Test_writeIndexPacket_WritePacketFails_Error(t *testing.T) {
+	t.Parallel()
+
+	w := &limitedWriter{
+		remaining: 8, // magic bytes succeed, next write fails
+		err:       errors.New("writer boom"),
+	}
+
+	err := writeIndexPacket(w, testRecoverySetID, 0, nil, manifestWriteEntry{
+		packetOffset: 100,
+		dataOffset:   164,
+		dataLength:   7,
+		dataSHA256:   dataHash([]byte("payload")),
+		nameLen:      uint64(len("manifest.json")),
+		name:         "manifest.json",
+	})
+
+	require.ErrorContains(t, err, "failed to write packet length")
+	require.ErrorContains(t, err, "writer boom")
 }
 
 // Expectation: writeFileSegment should write the file packet and raw file bytes at the returned offsets.
@@ -773,6 +846,35 @@ func Test_writeFileSegment_SeekSourceToStartFails_Error(t *testing.T) {
 	require.ErrorContains(t, err, "seek boom")
 }
 
+// Expectation: writeFileSegment should return an error when hashing the source stream fails.
+func Test_writeFileSegment_HashDataFails_Error(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(base, "/src/file.par2", []byte("abc"), 0o644))
+
+	fs := &testFs{
+		Fs: base,
+		openFunc: func(name string) (afero.File, error) {
+			f, err := base.Open(name)
+			require.NoError(t, err)
+
+			return &failingReadFile{File: f, readErr: errors.New("read boom")}, nil
+		},
+	}
+
+	out, err := base.Create("/out.par2")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, out.Close())
+	})
+
+	_, err = writeFileSegment(fs, out, testRecoverySetID, FileInput{Name: "file.par2", Path: "/src/file.par2"})
+
+	require.ErrorContains(t, err, "failed to hash data")
+	require.ErrorContains(t, err, "read boom")
+}
+
 // Expectation: writeFileSegment should return an error when writing the file packet fails.
 func Test_writeFileSegment_WriteFilePacketFails_Error(t *testing.T) {
 	t.Parallel()
@@ -876,6 +978,44 @@ func Test_writeFileSegment_ShortWrite_Error(t *testing.T) {
 	require.ErrorIs(t, err, io.ErrShortWrite)
 }
 
+// Expectation: writeFileSegment should return an error when writing alignment padding for the file stream fails.
+func Test_writeFileSegment_WriteFileStreamPaddingFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/src/file.par2", []byte{0xAA}, 0o644))
+
+	out, err := fs.Create("/out.par2")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, out.Close())
+	})
+
+	nameLen := uint64(len("file.par2"))
+	filePacketLength := uint64(commonHeaderSize) + fileBodyPrefixSize + padTo4(nameLen)
+	failAfter := filePacketLength + 1
+	var written uint64
+
+	w := &callbackFile{
+		File: out,
+		writeFunc: func(p []byte) (int, error) {
+			if written >= failAfter {
+				return 0, errors.New("pad boom")
+			}
+
+			n, writeErr := out.Write(p)
+			written += uint64(n) //nolint:gosec
+
+			return n, writeErr
+		},
+	}
+
+	_, err = writeFileSegment(fs, w, testRecoverySetID, FileInput{Name: "file.par2", Path: "/src/file.par2"})
+
+	require.ErrorContains(t, err, "failed to write file stream padding")
+	require.ErrorContains(t, err, "pad boom")
+}
+
 // Expectation: writeFilePacket should serialize the file metadata into a parseable packet.
 func Test_writeFilePacket_Success(t *testing.T) {
 	t.Parallel()
@@ -893,6 +1033,21 @@ func Test_writeFilePacket_Success(t *testing.T) {
 	require.Equal(t, "alpha.par2", got.Name)
 	require.Equal(t, uint64(3), got.DataLength)
 	require.Equal(t, hash, got.DataSHA256)
+}
+
+// Expectation: writeFilePacket should surface writer failures from the underlying packet write.
+func Test_writeFilePacket_WritePacketFails_Error(t *testing.T) {
+	t.Parallel()
+
+	w := &limitedWriter{
+		remaining: 8, // magic bytes succeed, next write fails
+		err:       errors.New("writer boom"),
+	}
+
+	err := writeFilePacket(w, testRecoverySetID, "alpha.par2", 3, dataHash([]byte("abc")))
+
+	require.ErrorContains(t, err, "failed to write packet length")
+	require.ErrorContains(t, err, "writer boom")
 }
 
 // Expectation: writeManifestPacket should place the manifest bytes at the calculated data offset inside the packet.
@@ -947,6 +1102,15 @@ func Test_writeDataPadding_Success(t *testing.T) {
 	require.Empty(t, buf.Bytes())
 }
 
+// Expectation: writeDataPadding should surface write failures from the destination writer.
+func Test_writeDataPadding_WriteFails_Error(t *testing.T) {
+	t.Parallel()
+
+	err := writeDataPadding(zeroWriter{}, 1)
+
+	require.ErrorIs(t, err, io.ErrShortWrite)
+}
+
 // Expectation: writeUint64LE should encode uint64 values in little-endian byte order.
 func Test_writeUint64LE_Success(t *testing.T) {
 	t.Parallel()
@@ -955,6 +1119,15 @@ func Test_writeUint64LE_Success(t *testing.T) {
 	require.NoError(t, writeUint64LE(&buf, 0x0102030405060708))
 
 	require.Equal(t, []byte{0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01}, buf.Bytes())
+}
+
+// Expectation: writeUint64LE should surface write failures from the destination writer.
+func Test_writeUint64LE_WriteFails_Error(t *testing.T) {
+	t.Parallel()
+
+	err := writeUint64LE(zeroWriter{}, 42)
+
+	require.ErrorIs(t, err, io.ErrShortWrite)
 }
 
 // Expectation: writeAll should continue writing until the full payload has been flushed.
@@ -972,4 +1145,18 @@ func Test_writeAll_ZeroWriter_Error(t *testing.T) {
 	t.Parallel()
 
 	require.ErrorIs(t, writeAll(zeroWriter{}, []byte("payload")), io.ErrShortWrite)
+}
+
+// Expectation: writeAll should return underlying writer errors when partial writes fail.
+func Test_writeAll_WriterError_Error(t *testing.T) {
+	t.Parallel()
+
+	w := &limitedWriter{
+		remaining: 2,
+		err:       errors.New("write boom"),
+	}
+
+	err := writeAll(w, []byte("payload"))
+
+	require.ErrorContains(t, err, "write boom")
 }

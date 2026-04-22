@@ -4,12 +4,35 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/binary"
+	"errors"
 	"io"
 	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+type selectiveFailReaderAt struct {
+	data          []byte
+	failAtOrAfter int64
+	err           error
+}
+
+func (r selectiveFailReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	if off >= r.failAtOrAfter {
+		return 0, r.err
+	}
+	if off < 0 || off >= int64(len(r.data)) {
+		return 0, io.EOF
+	}
+
+	n := copy(p, r.data[off:])
+	if n < len(p) {
+		return n, io.EOF
+	}
+
+	return n, nil
+}
 
 func encodeCommonHeader(t *testing.T, ch CommonHeader) []byte {
 	t.Helper()
@@ -169,6 +192,79 @@ func Test_readAndValidatePacket_BodyExceedsFileSize_Error(t *testing.T) {
 	require.ErrorContains(t, err, "exceeds file size")
 }
 
+// Expectation: readAndValidatePacket should reject offsets and file sizes that cannot contain a full packet header.
+func Test_readAndValidatePacket_Bounds_Error(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		offset   int64
+		fileSize int64
+	}{
+		{name: "negative offset", offset: -1, fileSize: commonHeaderSize},
+		{name: "file too small", offset: 0, fileSize: commonHeaderSize - 1},
+		{name: "offset past header space", offset: 1, fileSize: commonHeaderSize},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, _, err := readAndValidatePacket(bytes.NewReader(nil), tt.offset, tt.fileSize, false)
+			require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+		})
+	}
+}
+
+// Expectation: readAndValidatePacket should reject unknown packet types.
+func Test_readAndValidatePacket_UnknownPacketType_Error(t *testing.T) {
+	t.Parallel()
+
+	ch := CommonHeader{
+		Magic:         Magic,
+		PacketLength:  commonHeaderSize,
+		RecoverySetID: testRecoverySetID,
+		PacketType:    [16]byte{'x'},
+	}
+
+	_, _, err := readAndValidatePacket(bytes.NewReader(encodeCommonHeader(t, ch)), 0, commonHeaderSize, false)
+
+	require.ErrorContains(t, err, "unknown packet type")
+}
+
+// Expectation: readAndValidatePacket should surface header read failures from the underlying ReaderAt.
+func Test_readAndValidatePacket_ReadHeaderFails_Error(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := readAndValidatePacket(failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize, false)
+
+	require.ErrorContains(t, err, "failed to read header")
+	require.ErrorContains(t, err, "read boom")
+}
+
+// Expectation: readAndValidatePacket should surface body read failures from the underlying ReaderAt.
+func Test_readAndValidatePacket_ReadBodyFails_Error(t *testing.T) {
+	t.Parallel()
+
+	ch := CommonHeader{
+		Magic:         Magic,
+		PacketLength:  commonHeaderSize + 4,
+		RecoverySetID: testRecoverySetID,
+		PacketType:    PacketTypeFile,
+	}
+	raw := append(encodeCommonHeader(t, ch), []byte{0, 0, 0, 0}...)
+	r := selectiveFailReaderAt{
+		data:          raw,
+		failAtOrAfter: commonHeaderSize,
+		err:           errors.New("body boom"),
+	}
+
+	_, _, err := readAndValidatePacket(r, 0, int64(len(raw)), false)
+
+	require.ErrorContains(t, err, "failed to read body")
+	require.ErrorContains(t, err, "body boom")
+}
+
 // Expectation: parseIndexPacket should decode manifest metadata and file entries with padded names.
 func Test_parseIndexPacket_Success(t *testing.T) {
 	t.Parallel()
@@ -229,6 +325,67 @@ func Test_parseIndexPacket_NameLenTooLarge_Error(t *testing.T) {
 	_, err := parseIndexPacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeIndex})
 
 	require.ErrorContains(t, err, "failed to read manifest name length")
+}
+
+// Expectation: parseIndexPacket should reject entry counts above the supported range.
+func Test_parseIndexPacket_EntryCountTooLarge_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, Version))
+	require.NoError(t, writeUint64LE(&body, 0))
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeUint64LE(&body, 2))
+	require.NoError(t, writeUint64LE(&body, 3))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, 0))
+	require.NoError(t, writeUint64LE(&body, math.MaxUint16+1))
+
+	_, err := parseIndexPacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeIndex})
+
+	require.ErrorContains(t, err, "failed to read entry count")
+}
+
+// Expectation: parseIndexPacket should fail when the manifest name bytes are truncated.
+func Test_parseIndexPacket_ManifestNameReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, Version))
+	require.NoError(t, writeUint64LE(&body, 0))
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeUint64LE(&body, 2))
+	require.NoError(t, writeUint64LE(&body, 3))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, 4))
+
+	_, err := parseIndexPacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeIndex})
+
+	require.ErrorContains(t, err, "failed to read manifest name")
+}
+
+// Expectation: parseIndexPacket should fail when an entry name is truncated.
+func Test_parseIndexPacket_EntryNameReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, Version))
+	require.NoError(t, writeUint64LE(&body, 0))
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeUint64LE(&body, 2))
+	require.NoError(t, writeUint64LE(&body, 3))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, 0))
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeUint64LE(&body, 100))
+	require.NoError(t, writeUint64LE(&body, 164))
+	require.NoError(t, writeUint64LE(&body, 3))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, 4))
+
+	_, err := parseIndexPacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeIndex})
+
+	require.ErrorContains(t, err, "failed to read entry name")
 }
 
 // Expectation: parseFilePacket should decode name, sizes, and derived offsets from a valid body.
@@ -301,6 +458,55 @@ func Test_parseFilePacket_DataOffsetLengthOverflow_Error(t *testing.T) {
 	}, math.MaxInt64)
 
 	require.ErrorContains(t, err, "data offset/length overflow")
+}
+
+// Expectation: parseFilePacket should fail when the data length field cannot be read.
+func Test_parseFilePacket_DataLengthReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseFilePacket(bytes.NewReader(nil), CommonHeader{PacketType: PacketTypeFile}, 0)
+
+	require.ErrorContains(t, err, "failed to read data length")
+}
+
+// Expectation: parseFilePacket should fail when the data hash field is truncated.
+func Test_parseFilePacket_DataHashReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, 1))
+
+	_, err := parseFilePacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeFile}, 0)
+
+	require.ErrorContains(t, err, "failed to read data hash")
+}
+
+// Expectation: parseFilePacket should reject name lengths above the supported range.
+func Test_parseFilePacket_NameLenTooLarge_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, math.MaxUint16+1))
+
+	_, err := parseFilePacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeFile}, 0)
+
+	require.ErrorContains(t, err, "failed to read name length")
+}
+
+// Expectation: parseFilePacket should fail when the name bytes are truncated.
+func Test_parseFilePacket_NameReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, 4))
+
+	_, err := parseFilePacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeFile}, 0)
+
+	require.ErrorContains(t, err, "failed to read name")
 }
 
 // Expectation: parseManifestPacket should decode in-packet manifest data offsets correctly.
@@ -394,4 +600,53 @@ func Test_parseManifestPacket_DataExtendsBeyondPacket_Error(t *testing.T) {
 	}, 64)
 
 	require.ErrorContains(t, err, "data extends beyond packet")
+}
+
+// Expectation: parseManifestPacket should fail when the data length field cannot be read.
+func Test_parseManifestPacket_DataLengthReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseManifestPacket(bytes.NewReader(nil), CommonHeader{PacketType: PacketTypeManifest}, 0)
+
+	require.ErrorContains(t, err, "failed to read data length")
+}
+
+// Expectation: parseManifestPacket should fail when the data hash field is truncated.
+func Test_parseManifestPacket_DataHashReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, 1))
+
+	_, err := parseManifestPacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeManifest}, 0)
+
+	require.ErrorContains(t, err, "failed to read data hash")
+}
+
+// Expectation: parseManifestPacket should reject name lengths above the supported range.
+func Test_parseManifestPacket_NameLenTooLarge_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, math.MaxUint16+1))
+
+	_, err := parseManifestPacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeManifest}, 0)
+
+	require.ErrorContains(t, err, "failed to read name length")
+}
+
+// Expectation: parseManifestPacket should fail when the name bytes are truncated.
+func Test_parseManifestPacket_NameReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	var body bytes.Buffer
+	require.NoError(t, writeUint64LE(&body, 1))
+	require.NoError(t, writeAll(&body, make([]byte, sha256Size)))
+	require.NoError(t, writeUint64LE(&body, 4))
+
+	_, err := parseManifestPacket(bytes.NewReader(body.Bytes()), CommonHeader{PacketType: PacketTypeManifest}, 0)
+
+	require.ErrorContains(t, err, "failed to read name")
 }

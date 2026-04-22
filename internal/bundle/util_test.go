@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -122,4 +123,14 @@ func Test_safeReadU64_TooLarge_Error(t *testing.T) {
 
 	var got uint64
 	require.ErrorContains(t, safeReadU64(bytes.NewReader(buf.Bytes()), &got, 99), "value is too large")
+}
+
+// Expectation: safeReadU64 should surface binary read failures from the underlying reader.
+func Test_safeReadU64_ReadError_Error(t *testing.T) {
+	t.Parallel()
+
+	var got uint64
+	err := safeReadU64(bytes.NewReader([]byte{0x01}), &got, math.MaxUint64)
+
+	require.Error(t, err)
 }

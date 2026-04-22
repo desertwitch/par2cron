@@ -473,6 +473,19 @@ func Test_Bundle_Validate_FilesError_Error(t *testing.T) {
 	require.ErrorContains(t, err, "expected file type")
 }
 
+// Expectation: Validate should return a manifest-prefixed error when manifest validation fails.
+func Test_Bundle_Validate_ManifestError_Error(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+	b.Index.ManifestPacketOffset = b.Index.Entries[0].PacketOffset
+
+	err := b.Validate(false)
+
+	require.ErrorContains(t, err, "manifest:")
+	require.ErrorContains(t, err, "expected manifest type")
+}
+
 // Expectation: ValidateFiles should surface packet read failures from the indexed packet offset.
 func Test_Bundle_ValidateFiles_ReadPacketFails_Error(t *testing.T) {
 	t.Parallel()
@@ -602,6 +615,63 @@ func Test_Bundle_ValidateManifest_DataHashReadFails_Error(t *testing.T) {
 	require.ErrorContains(t, err, "read boom")
 }
 
+// Expectation: ValidateManifest should detect strict manifest hash mismatches.
+func Test_Bundle_ValidateManifest_HashMismatch_Error(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+
+	badHash := b.Index.ManifestDataSHA256
+	badHash[0] ^= 0xFF
+	b.Index.ManifestDataSHA256 = badHash
+
+	err := b.ValidateManifest(true)
+
+	require.ErrorContains(t, err, "manifest data at offset")
+	require.ErrorContains(t, err, "hash mismatch")
+	require.ErrorIs(t, err, ErrDataCorrupt)
+}
+
+// Expectation: ValidateManifest should surface packet-read failures from the indexed manifest packet offset.
+func Test_Bundle_ValidateManifest_ReadPacketFails_Error(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+	b.Index.ManifestPacketOffset = uint64(b.size) //nolint:gosec
+
+	err := b.ValidateManifest(false)
+
+	require.ErrorContains(t, err, "manifest packet at offset")
+	require.ErrorContains(t, err, "unexpected EOF")
+}
+
+// Expectation: readIndexPacket should parse a valid on-disk index packet at offset zero.
+func Test_Bundle_readIndexPacket_Success(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+
+	f, err := fixture.fs.OpenFile(fixture.bundlePath, os.O_RDWR, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, f.Close())
+	})
+
+	fi, err := f.Stat()
+	require.NoError(t, err)
+
+	b := &Bundle{
+		f:    f,
+		size: fi.Size(),
+	}
+
+	require.NoError(t, b.readIndexPacket())
+
+	require.Equal(t, testRecoverySetID, b.Index.RecoverySetID)
+	require.Equal(t, fixture.manifest.Name, b.Index.ManifestName)
+	require.Len(t, b.Index.Entries, len(fixture.files))
+}
+
 // Expectation: readIndexPacket should reject a packet of the wrong type at offset zero.
 func Test_Bundle_readIndexPacket_WrongType_Error(t *testing.T) {
 	t.Parallel()
@@ -626,4 +696,25 @@ func Test_Bundle_readIndexPacket_WrongType_Error(t *testing.T) {
 	b := &Bundle{f: f, size: int64(buf.Len())}
 
 	require.ErrorContains(t, b.readIndexPacket(), fmt.Sprintf("expected index packet at offset 0, got %q", PacketTypeManifest))
+}
+
+// Expectation: readIndexPacket should report parse errors for malformed index packet bodies.
+func Test_Bundle_readIndexPacket_ParseFails_Error(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeCommonPacket(&buf, testRecoverySetID, PacketTypeIndex, nil))
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/bundle.par2", buf.Bytes(), 0o644))
+
+	f, err := fs.OpenFile("/bundle.par2", os.O_RDWR, 0)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, f.Close())
+	})
+
+	b := &Bundle{f: f, size: int64(buf.Len())}
+
+	require.ErrorContains(t, b.readIndexPacket(), "failed to parse packet")
 }

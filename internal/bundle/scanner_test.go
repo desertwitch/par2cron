@@ -47,6 +47,42 @@ func Test_Scan_SkipsCorruptPrefix_Success(t *testing.T) {
 	require.Positive(t, files[0].packetOffset)
 }
 
+// Expectation: Scan should skip a syntactically valid file packet whose body cannot be parsed and continue to later packets.
+func Test_Scan_SkipsUnparsableFilePacket_Success(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeCommonPacket(&buf, testRecoverySetID, PacketTypeFile, nil))
+
+	manifestOffset := uint64(buf.Len()) //nolint:gosec
+	_, err := writeManifestPacket(&buf, testRecoverySetID, ManifestInput{
+		Name:  "manifest.json",
+		Bytes: []byte(`{"ok":true}`),
+	}, manifestOffset)
+	require.NoError(t, err)
+
+	files, manifest := Scan(bytes.NewReader(buf.Bytes()), int64(buf.Len()), true)
+
+	require.Empty(t, files)
+	require.NotNil(t, manifest)
+	require.Equal(t, "manifest.json", manifest.Name)
+}
+
+// Expectation: Scan should keep successfully parsed file packets even when a later manifest packet body is malformed.
+func Test_Scan_SkipsUnparsableManifestPacket_Success(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeFilePacket(&buf, testRecoverySetID, "file.par2", 3, dataHash([]byte("abc"))))
+	require.NoError(t, writeCommonPacket(&buf, testRecoverySetID, PacketTypeManifest, nil))
+
+	files, manifest := Scan(bytes.NewReader(buf.Bytes()), int64(buf.Len()), true)
+
+	require.Len(t, files, 1)
+	require.Equal(t, "file.par2", files[0].Name)
+	require.Nil(t, manifest)
+}
+
 // Expectation: findNextMagic should return the offset of the first matching magic sequence.
 func Test_findNextMagic_Success(t *testing.T) {
 	t.Parallel()
@@ -130,4 +166,59 @@ func Test_reconstructIndex_SortsEntries_Success(t *testing.T) {
 	require.Equal(t, FlagIndexRebuilt, got.Flags)
 	require.Equal(t, manifest.packetOffset, got.ManifestPacketOffset)
 	require.Equal(t, []string{"a.par2", "z.par2"}, []string{got.Entries[0].Name, got.Entries[1].Name})
+}
+
+// Expectation: reconstructIndex should preserve manifest metadata even when no file packets are present.
+func Test_reconstructIndex_EmptyFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	manifest := &ManifestPacket{
+		CommonHeader: CommonHeader{RecoverySetID: testRecoverySetID},
+		DataLength:   42,
+		DataSHA256:   dataHash([]byte("manifest")),
+		NameLen:      uint64(len("manifest.json")),
+		Name:         "manifest.json",
+		packetOffset: 100,
+		dataOffset:   180,
+	}
+
+	got := reconstructIndex(manifest, nil)
+
+	require.Equal(t, testRecoverySetID, got.RecoverySetID)
+	require.Equal(t, manifest.packetOffset, got.ManifestPacketOffset)
+	require.Equal(t, manifest.dataOffset, got.ManifestDataOffset)
+	require.Equal(t, manifest.DataLength, got.ManifestDataLength)
+	require.Equal(t, manifest.DataSHA256, got.ManifestDataSHA256)
+	require.Equal(t, manifest.NameLen, got.ManifestNameLen)
+	require.Equal(t, manifest.Name, got.ManifestName)
+	require.Empty(t, got.Entries)
+	require.Equal(t, uint64(0), got.EntryCount)
+}
+
+// Expectation: reconstructIndex should always mark the rebuilt index flag.
+func Test_reconstructIndex_SetsRebuiltFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	manifest := &ManifestPacket{
+		CommonHeader: CommonHeader{RecoverySetID: testRecoverySetID},
+		NameLen:      uint64(len("manifest.json")),
+		Name:         "manifest.json",
+		packetOffset: 10,
+		dataOffset:   80,
+	}
+
+	files := []FilePacket{
+		{
+			DataLength:   3,
+			DataSHA256:   dataHash([]byte("abc")),
+			NameLen:      uint64(len("a.par2")),
+			Name:         "a.par2",
+			packetOffset: 200,
+			dataOffset:   264,
+		},
+	}
+
+	got := reconstructIndex(manifest, files)
+
+	require.Equal(t, FlagIndexRebuilt, got.Flags)
 }

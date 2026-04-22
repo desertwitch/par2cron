@@ -87,6 +87,65 @@ func Test_Bundle_ExtractEntry_HashMismatch_Error(t *testing.T) {
 	require.NotEmpty(t, buf.Bytes())
 }
 
+// Expectation: ExtractEntry should surface writer I/O failures while streaming data.
+func Test_Bundle_ExtractEntry_WriterError_Error(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+	entry := b.Index.Entries[0]
+	w := &limitedWriter{
+		remaining: int(entry.DataLength / 2), //nolint:gosec
+		err:       errors.New("writer boom"),
+	}
+
+	err := b.ExtractEntry(entry, w)
+
+	require.ErrorContains(t, err, "failed to io")
+	require.ErrorContains(t, err, "writer boom")
+	require.NotEmpty(t, w.buf.Bytes())
+}
+
+// Expectation: ExtractManifest should write the full manifest bytes on success.
+func Test_Bundle_ExtractManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+
+	var buf bytes.Buffer
+	err := b.ExtractManifest(&buf)
+
+	require.NoError(t, err)
+	require.Equal(t, fixture.manifest.Bytes, buf.Bytes())
+}
+
+// Expectation: ExtractManifest should return ErrDataCorrupt after copying bytes when the manifest hash mismatches.
+func Test_Bundle_ExtractManifest_HashMismatch_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	b, err := Open(fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	require.NoError(t, b.Close())
+
+	overwriteBundleBytes(t, fixture.fs, fixture.bundlePath, func(raw []byte) {
+		raw[b.Index.ManifestDataOffset] ^= 0xFF
+	})
+
+	b, err = Open(fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, b.Close())
+	})
+
+	var buf bytes.Buffer
+	err = b.ExtractManifest(&buf)
+
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.ErrorContains(t, err, "failed to validate")
+	require.NotEmpty(t, buf.Bytes())
+	require.NotEqual(t, fixture.manifest.Bytes, buf.Bytes())
+}
+
 // Expectation: ExtractManifest should surface writer I/O failures.
 func Test_Bundle_ExtractManifest_WriterError_Error(t *testing.T) {
 	t.Parallel()
@@ -120,6 +179,44 @@ func Test_extractToFile_Success(t *testing.T) {
 	got, readErr := afero.ReadFile(fs, "/out.bin")
 	require.NoError(t, readErr)
 	require.Equal(t, []byte("payload"), got)
+}
+
+// Expectation: extractToFile should return an error when the output file cannot be created.
+func Test_extractToFile_CreateFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := &testFs{
+		Fs: afero.NewMemMapFs(),
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			return nil, errors.New("create boom")
+		},
+	}
+
+	err := extractToFile(fs, "/out.bin", func(w io.Writer) error {
+		return nil
+	}, true)
+
+	require.ErrorContains(t, err, "failed to create")
+	require.ErrorContains(t, err, "create boom")
+}
+
+// Expectation: extractToFile should remove the output file for non-corruption extraction failures even when strict is disabled.
+func Test_extractToFile_GenericExtractErrorRemovesFile_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	err := extractToFile(fs, "/out.bin", func(w io.Writer) error {
+		_, writeErr := w.Write([]byte("payload"))
+		require.NoError(t, writeErr)
+
+		return errors.New("extract boom")
+	}, false)
+
+	require.ErrorContains(t, err, "extract boom")
+
+	exists, existsErr := afero.Exists(fs, "/out.bin")
+	require.NoError(t, existsErr)
+	require.False(t, exists)
 }
 
 // Expectation: extractToFile should keep corrupt-but-complete output when strict mode is disabled.
