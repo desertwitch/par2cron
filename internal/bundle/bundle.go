@@ -16,7 +16,7 @@ import (
 	"github.com/spf13/afero"
 )
 
-var Magic = [8]byte{'P', 'A', 'R', '2', 0, 'P', 'K', 'D'}
+var Magic = [8]byte{'P', 'A', 'R', '2', 0, 'P', 'K', 'T'}
 
 var (
 	PacketTypeIndex    = [16]byte{'P', '2', 'C', ' ', 'B', 'u', 'n', 'd', 'l', 'e', 'I', 'n', 'd', 'x', 0, 0}

@@ -157,10 +157,8 @@ try {
 
         Write-Output "Repairing: $par2FileName"
         Push-Location $verifyDir
-        $ErrorActionPreference = "Continue"
         $repairOutput = & $par2j.FullName r ".\$par2FileName" 2>&1 | Out-String
-        $global:LASTEXITCODE = 0
-        $ErrorActionPreference = "Stop"
+        $global:LASTEXITCODE = 0 # Above exits with unclean exit code even on success
         Pop-Location
         Write-Output $repairOutput
 
