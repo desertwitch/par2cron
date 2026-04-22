@@ -135,9 +135,7 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 
 	indexData, err := ParseFile(fsys, indexFile, panicAsErr)
 	if err != nil {
-		var pe *ParserPanicError
-
-		if errors.As(err, &pe) {
+		if pe, ok := errors.AsType[*ParserPanicError](err); ok {
 			return nil, pe // Do not swallow panics.
 		}
 	} else {
@@ -159,9 +157,7 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 
 		parsed, err := ParseFile(fsys, match, panicAsErr)
 		if err != nil {
-			var pe *ParserPanicError
-
-			if errors.As(err, &pe) {
+			if pe, ok := errors.AsType[*ParserPanicError](err); ok {
 				return nil, pe // Do not swallow panics.
 			}
 
