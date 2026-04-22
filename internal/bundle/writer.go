@@ -430,9 +430,18 @@ func writeDataPadding(w io.Writer, dataLen uint64) error {
 	}
 
 	var pad [3]byte // max padding for 4-byte alignment is 3
-	_, err := w.Write(pad[:padLen&3])
+	buf := pad[:padLen&3]
 
-	return err //nolint:wrapcheck
+	n, err := w.Write(buf)
+	if err != nil {
+		return err //nolint:wrapcheck
+	}
+
+	if n != len(buf) {
+		return io.ErrShortWrite
+	}
+
+	return nil
 }
 
 // writeUint64LE writes v to w as 8 bytes in little-endian order.
@@ -440,9 +449,17 @@ func writeUint64LE(w io.Writer, v uint64) error {
 	var buf [8]byte
 
 	binary.LittleEndian.PutUint64(buf[:], v)
-	_, err := w.Write(buf[:])
 
-	return err //nolint:wrapcheck
+	n, err := w.Write(buf[:])
+	if err != nil {
+		return err //nolint:wrapcheck
+	}
+
+	if n != len(buf) {
+		return io.ErrShortWrite
+	}
+
+	return nil
 }
 
 // writeAll writes all of p to w, looping until done or an error occurs.
@@ -456,6 +473,7 @@ func writeAll(w io.Writer, p []byte) error {
 		if n == 0 {
 			return io.ErrShortWrite
 		}
+
 		p = p[n:]
 	}
 

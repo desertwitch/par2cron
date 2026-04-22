@@ -46,6 +46,7 @@ linters:
       - path: _test\.go
         linters:
           - dupl
+          - dogsled
           - err113
           - funlen
           - gosmopolitan
