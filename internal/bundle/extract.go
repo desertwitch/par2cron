@@ -6,31 +6,53 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/afero"
 )
 
 // Unpack extracts all bundled files and the manifest to destDir. It attempts to
-// extract every file rather than stopping at the first error. If strict is
-// true, files that fail integrity checks are removed; otherwise they are kept
-// on disk (returning ErrDataCorrupt). Any returned errors are joined together.
-func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) error {
+// extract every file rather than stopping at the first error, returning the
+// paths that were successfully written alongside any errors. If strict is true,
+// files that fail integrity checks are removed; otherwise they are kept on disk
+// (returning ErrDataCorrupt).
+func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
 	var errs []error
+	var extractedPaths []string
 
 	for _, e := range b.Index.Entries {
-		if err := extractToFile(fsys, filepath.Join(destDir, e.Name), func(w io.Writer) error {
+		path, err := safePath(destDir, e.Name)
+		if err != nil {
+			errs = append(errs, err)
+
+			continue
+		}
+		err = extractToFile(fsys, path, func(w io.Writer) error {
 			return b.ExtractEntry(e, w)
-		}, strict); err != nil {
+		}, strict)
+		if err != nil {
 			errs = append(errs, fmt.Errorf("%q: %w", e.Name, err))
+		}
+		if err == nil || (!strict && errors.Is(err, ErrDataCorrupt)) {
+			extractedPaths = append(extractedPaths, path)
 		}
 	}
 
-	if err := extractToFile(fsys, filepath.Join(destDir, b.Index.ManifestName),
-		b.ExtractManifest, strict); err != nil {
-		errs = append(errs, fmt.Errorf("manifest: %w", err))
+	path, err := safePath(destDir, b.Index.ManifestName)
+	if err != nil {
+		errs = append(errs, err)
+	} else {
+		err := extractToFile(fsys, path,
+			b.ExtractManifest, strict)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("manifest: %w", err))
+		}
+		if err == nil || (!strict && errors.Is(err, ErrDataCorrupt)) {
+			extractedPaths = append(extractedPaths, path)
+		}
 	}
 
-	return errors.Join(errs...)
+	return extractedPaths, errors.Join(errs...)
 }
 
 // ExtractEntry copies a file packet's data stream to w and verifies it against
@@ -103,4 +125,17 @@ func extractToFile(fsys afero.Fs, path string, extract func(io.Writer) error, st
 	}
 
 	return nil
+}
+
+func safePath(destDir, name string) (string, error) {
+	rel, err := filepath.Rel(destDir, filepath.Join(destDir, name))
+	if err != nil {
+		return "", fmt.Errorf("invalid path %q: %w", name, err)
+	}
+
+	if strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("invalid path %q: escapes destination directory", name)
+	}
+
+	return filepath.Join(destDir, rel), nil
 }

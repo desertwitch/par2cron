@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -18,7 +19,8 @@ func Test_Bundle_Unpack_Success(t *testing.T) {
 	b, fixture := openTestBundle(t)
 	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
 
-	require.NoError(t, b.Unpack(fixture.fs, "/out", true))
+	_, err := b.Unpack(fixture.fs, "/out", true)
+	require.NoError(t, err)
 
 	for name, want := range fixture.files {
 		got, err := afero.ReadFile(fixture.fs, "/out/"+name)
@@ -40,11 +42,150 @@ func Test_Bundle_Unpack_JoinedErrors_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fixture.fs, "/out/"+b.Index.Entries[0].Name, []byte("existing"), 0o644))
 	require.NoError(t, afero.WriteFile(fixture.fs, "/out/"+fixture.manifest.Name, []byte("existing"), 0o644))
 
-	err := b.Unpack(fixture.fs, "/out", true)
+	_, err := b.Unpack(fixture.fs, "/out", true)
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, b.Index.Entries[0].Name)
 	require.ErrorContains(t, err, "manifest")
+}
+
+// Expectation: Unpack should reject entry names that traverse outside the destination directory.
+func Test_Bundle_Unpack_PathTraversal_Error(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
+
+	b.Index.Entries[0].Name = "../../etc/passwd"
+
+	paths, err := b.Unpack(fixture.fs, "/out", true)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "escapes destination directory")
+	require.NotContains(t, paths, "/etc/passwd")
+}
+
+// Expectation: Unpack should reject manifest names that traverse outside the destination directory.
+func Test_Bundle_Unpack_ManifestPathTraversal_Error(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
+
+	b.Index.ManifestName = "../manifest.json"
+
+	paths, err := b.Unpack(fixture.fs, "/out", true)
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "escapes destination directory")
+	for _, p := range paths {
+		require.NotContains(t, p, "manifest.json")
+	}
+}
+
+// Expectation: Unpack should continue extracting remaining entries after a path traversal rejection.
+func Test_Bundle_Unpack_PathTraversalContinuesOthers(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
+	require.Greater(t, len(b.Index.Entries), 1, "fixture must have at least two entries")
+
+	b.Index.Entries[0].Name = "../../escape"
+
+	paths, err := b.Unpack(fixture.fs, "/out", true)
+
+	require.Error(t, err)
+	require.NotEmpty(t, paths, "valid entries should still be extracted")
+}
+
+// Expectation: Unpack should return all extracted paths on success.
+func Test_Bundle_Unpack_ReturnsPaths(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
+
+	paths, err := b.Unpack(fixture.fs, "/out", true)
+
+	require.NoError(t, err)
+	require.Len(t, paths, len(b.Index.Entries)+1) // entries + manifest
+	for _, e := range b.Index.Entries {
+		require.Contains(t, paths, filepath.Join("/out", e.Name))
+	}
+	require.Contains(t, paths, filepath.Join("/out", b.Index.ManifestName))
+}
+
+// Expectation: Unpack strict should exclude failed entries from the returned paths.
+func Test_Bundle_Unpack_Strict_ExcludesFailedPaths(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
+
+	// Block the first entry by pre-creating it (O_EXCL will fail).
+	require.NoError(t, afero.WriteFile(fixture.fs, "/out/"+b.Index.Entries[0].Name, []byte("existing"), 0o644))
+
+	paths, err := b.Unpack(fixture.fs, "/out", true)
+
+	require.Error(t, err)
+	require.NotContains(t, paths, filepath.Join("/out", b.Index.Entries[0].Name))
+}
+
+// Expectation: Unpack non-strict should include corrupt entries in the returned paths.
+func Test_Bundle_Unpack_NonStrict_IncludesCorruptPaths(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	b, err := Open(fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	require.NoError(t, b.Close())
+
+	overwriteBundleBytes(t, fixture.fs, fixture.bundlePath, func(raw []byte) {
+		raw[b.Index.Entries[0].DataOffset] ^= 0xFF
+	})
+
+	b, err = Open(fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, b.Close())
+	})
+
+	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
+
+	paths, err := b.Unpack(fixture.fs, "/out", false)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.Contains(t, paths, filepath.Join("/out", b.Index.Entries[0].Name))
+}
+
+// Expectation: Unpack strict should exclude corrupt entries from the returned paths.
+func Test_Bundle_Unpack_Strict_ExcludesCorruptPaths(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	b, err := Open(fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	require.NoError(t, b.Close())
+
+	overwriteBundleBytes(t, fixture.fs, fixture.bundlePath, func(raw []byte) {
+		raw[b.Index.Entries[0].DataOffset] ^= 0xFF
+	})
+
+	b, err = Open(fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, b.Close())
+	})
+
+	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
+
+	paths, err := b.Unpack(fixture.fs, "/out", true)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotContains(t, paths, filepath.Join("/out", b.Index.Entries[0].Name))
 }
 
 // Expectation: ExtractEntry should write the full file payload from the referenced offset.
@@ -323,4 +464,24 @@ func Test_extractToFile_CloseFails_Error(t *testing.T) {
 	exists, existsErr := afero.Exists(base, "/out.bin")
 	require.NoError(t, existsErr)
 	require.False(t, exists)
+}
+
+// Expectation: safePath should accept simple relative names.
+func Test_safePath_Valid(t *testing.T) {
+	t.Parallel()
+
+	path, err := safePath("/dest", "subdir/file.txt")
+
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join("/dest", "subdir/file.txt"), path)
+}
+
+// Expectation: safePath should reject parent-directory traversal.
+func Test_safePath_DotDot_Error(t *testing.T) {
+	t.Parallel()
+
+	_, err := safePath("/dest", "../outside")
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "escapes destination directory")
 }
