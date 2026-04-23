@@ -489,8 +489,8 @@ func Test_Service_packEnumerate_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-// Expectation: An invalid manifest should result in a non-fatal error but still continue.
-func Test_Service_packEnumerate_InvalidManifest_Error(t *testing.T) {
+// Expectation: An invalid manifest should return a job with a nil manifest.
+func Test_Service_packEnumerate_InvalidManifest_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -509,7 +509,35 @@ func Test_Service_packEnumerate_InvalidManifest_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
 
 	jobs, err := prog.packEnumerate(t.Context(), "/data", Options{})
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Nil(t, jobs[0].manifest)
+}
+
+// Expectation: A manifest read failure should return a non-fatal error.
+func Test_Service_packEnumerate_ReadFailure_PartialErrors(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, []byte("{}"), 0o644))
+
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: schema.ManifestExtension}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	jobs, err := prog.packEnumerate(t.Context(), "/data", Options{})
 	require.ErrorIs(t, err, schema.ErrNonFatal)
+	require.ErrorContains(t, err, "manifests failed to read")
 	require.Empty(t, jobs)
 }
 
@@ -657,8 +685,8 @@ func Test_Service_packProcessManifest_NoManifest_SilentSkip(t *testing.T) {
 	require.Nil(t, job)
 }
 
-// Expectation: The function should return a non-fatal error when the manifest is invalid JSON.
-func Test_Service_packProcessManifest_InvalidManifest_Error(t *testing.T) {
+// Expectation: The function should return a job with a nil manifest on invalid manifest.
+func Test_Service_packProcessManifest_InvalidManifest_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -677,8 +705,9 @@ func Test_Service_packProcessManifest_InvalidManifest_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
 
 	job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{})
-	require.ErrorIs(t, err, schema.ErrNonFatal)
-	require.Nil(t, job)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.Nil(t, job.manifest)
 }
 
 // Expectation: The function should return a non-fatal error when the manifest file cannot be read.
@@ -705,6 +734,114 @@ func Test_Service_packProcessManifest_ReadFails_Error(t *testing.T) {
 	job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{})
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Nil(t, job)
+}
+
+// Expectation: IncludeExternal=true should return a job even when no manifest file exists.
+func Test_Service_packProcessManifest_NoManifest_IncludeExternal_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{IncludeExternal: true})
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.Nil(t, job.manifest)
+	require.Equal(t, "/data/test"+schema.Par2Extension, job.par2Path)
+}
+
+// Expectation: SkipNotCreated=true with invalid JSON should return ErrSilentSkip.
+func Test_Service_packProcessManifest_InvalidManifest_SkipNotCreated_SilentSkip(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, []byte("not valid json"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{SkipNotCreated: true})
+	require.ErrorIs(t, err, schema.ErrSilentSkip)
+	require.Nil(t, job)
+}
+
+// Expectation: SkipNotCreated=true with valid JSON but nil Creation should return ErrSilentSkip.
+func Test_Service_packProcessManifest_NoCreation_SkipNotCreated_SilentSkip(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	mf := &schema.Manifest{Name: "test" + schema.Par2Extension, Creation: nil}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{SkipNotCreated: true})
+	require.ErrorIs(t, err, schema.ErrSilentSkip)
+	require.Nil(t, job)
+}
+
+// Expectation: SkipNotCreated=true with valid JSON and non-nil Creation should return the job.
+func Test_Service_packProcessManifest_WithCreation_SkipNotCreated_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	creation := &schema.CreationManifest{}
+	mf := &schema.Manifest{Name: "test" + schema.Par2Extension, Creation: creation}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{SkipNotCreated: true})
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.NotNil(t, job.manifest)
+	require.Equal(t, "test"+schema.Par2Extension, job.manifest.Name)
 }
 
 // Expectation: The function should pack PAR2 files into a bundle and clean up originals.
@@ -854,6 +991,69 @@ func Test_Service_packBundle_UpperCase_Success(t *testing.T) {
 
 	lockExists, _ := afero.Exists(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension)+schema.LockExtension)
 	require.False(t, lockExists)
+
+	// Bundle should exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+}
+
+// Expectation: packBundle with nil manifest should auto-create the manifest and succeed.
+func Test_Service_packBundle_NilManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	var capturedManifest bundle.ManifestInput
+	bndlr := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			capturedManifest = manifest
+
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
+
+	job := NewJob("/data/folder/test"+schema.Par2Extension, Options{}, nil, false)
+	require.Nil(t, job.manifest)
+
+	require.NoError(t, prog.packBundle(t.Context(), job))
+
+	// Manifest should have been auto-created.
+	require.NotNil(t, job.manifest)
+	require.Equal(t, "test"+schema.Par2Extension, job.manifest.Name)
+
+	// Manifest data passed to Pack should be valid JSON of the auto-created manifest.
+	require.NotEmpty(t, capturedManifest.Bytes)
+
+	var unmarshaled *schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedManifest.Bytes, &unmarshaled))
+	require.Equal(t, "test"+schema.Par2Extension, unmarshaled.Name)
+	require.NotEmpty(t, unmarshaled.SHA256)
 
 	// Bundle should exist.
 	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)

@@ -16,7 +16,9 @@ import (
 )
 
 type Options struct {
-	Force bool
+	Force           bool
+	IncludeExternal bool
+	SkipNotCreated  bool
 }
 
 type Service struct {
@@ -212,9 +214,18 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 	logger := prog.bundleLogger(ctx, nil, manifestPath)
 
 	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
-		logger.Debug("No manifest found (skipping)")
+		if !opts.IncludeExternal {
+			logger.Debug("No manifest found (skipping)")
 
-		return nil, schema.ErrSilentSkip
+			return nil, schema.ErrSilentSkip
+		}
+
+		job := NewJob(par2path, opts, nil, false)
+
+		logger := prog.bundleLogger(ctx, job, manifestPath)
+		logger.Debug("Failed to find par2cron manifest (resetting manifest)", "error", err)
+
+		return job, nil
 	}
 
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
@@ -238,9 +249,24 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(data, mf); err != nil {
-		logger.Error("No unmarshalable manifest (skipping)")
+		if opts.SkipNotCreated {
+			logger.Debug("No unmarshalable manifest (skipping; --skip-not-created)")
 
-		return nil, schema.ErrNonFatal
+			return nil, schema.ErrSilentSkip
+		}
+
+		job := NewJob(par2path, opts, nil, false)
+
+		logger := prog.bundleLogger(ctx, job, manifestPath)
+		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
+
+		return job, nil
+	}
+
+	if opts.SkipNotCreated && mf.Creation == nil {
+		logger.Debug("No creation manifest (skipping; --skip-not-created)")
+
+		return nil, schema.ErrSilentSkip
 	}
 
 	job := NewJob(par2path, opts, mf, false)
@@ -278,6 +304,14 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
 	bundleName := baseName + schema.BundleExtension + schema.Par2Extension
 	bundlePath := filepath.Join(job.workingDir, bundleName)
+
+	if job.manifest == nil {
+		job.manifest = schema.NewManifest(job.par2Name)
+
+		if sha256hash, err := util.HashFile(prog.fsys, job.par2Path); err == nil {
+			job.manifest.SHA256 = sha256hash
+		}
+	}
 
 	manifestData, err := json.MarshalIndent(job.manifest, "", "  ")
 	if err != nil {
