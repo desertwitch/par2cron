@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
-	"strings"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/logging"
@@ -178,7 +177,7 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 
 			return nil
 		}
-		if strings.Contains(filepath.Base(par2path), schema.BundleExtension) {
+		if util.IsPar2Bundle(par2path) {
 			return nil
 		}
 
@@ -258,7 +257,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
-	files, err := prog.findBundleableFiles(job)
+	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
 	if err != nil {
 		return fmt.Errorf("failed to find files to bundle: %w", err)
 	}
@@ -276,7 +275,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 	recoverySetID := p.Sets[0].MainPacket.SetID
 	logger.Debug("Parsed PAR2 main packet", "setID", recoverySetID)
 
-	baseName := strings.TrimSuffix(job.par2Name, schema.Par2Extension)
+	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
 	bundleName := baseName + schema.BundleExtension + schema.Par2Extension
 	bundlePath := filepath.Join(job.workingDir, bundleName)
 
@@ -334,7 +333,7 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 
 			return nil
 		}
-		if !strings.Contains(filepath.Base(par2path), schema.BundleExtension) {
+		if !util.IsPar2Bundle(par2path) {
 			return nil
 		}
 
@@ -410,45 +409,6 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	}
 
 	return nil
-}
-
-func (prog *Service) findBundleableFiles(job *Job) ([]bundle.FileInput, error) {
-	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read directory: %w", err)
-	}
-
-	inputs := []bundle.FileInput{}
-
-	baseName := strings.TrimSuffix(job.par2Name, schema.Par2Extension) + "."
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-
-		if !strings.HasPrefix(name, baseName) {
-			continue
-		}
-		if !util.IsPar2Index(name) && !util.IsPar2Volume(name) {
-			continue
-		}
-		if strings.Contains(name, schema.BundleExtension) {
-			continue
-		}
-
-		inputs = append(inputs, bundle.FileInput{
-			Name: name,
-			Path: filepath.Join(job.workingDir, name),
-		})
-	}
-
-	if len(inputs) == 0 {
-		return nil, errors.New("no files to bundle")
-	}
-
-	return inputs, nil
 }
 
 func onlyContains(err, sentinel error) bool {

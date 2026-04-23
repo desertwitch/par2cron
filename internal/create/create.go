@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -378,13 +380,13 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 		}
 		// par2cmdline -R will include .par2 in subdirs, so keep this consistent.
 		if job.par2Mode != schema.CreateRecursiveMode {
-			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension) {
+			if util.EndsWithFold(f, schema.Par2Extension) {
 				continue
 			}
-			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.LockExtension) {
+			if util.EndsWithFold(f, schema.Par2Extension+schema.LockExtension) {
 				continue
 			}
-			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.ManifestExtension) {
+			if util.EndsWithFold(f, schema.Par2Extension+schema.ManifestExtension) {
 				continue
 			}
 		}
@@ -621,6 +623,68 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 			return fmt.Errorf("failed to verify par2: %w", err)
 		}
 	}
+
+	return nil
+}
+
+func (prog *Service) packAsBundle(ctx context.Context, job *Job, mf *schema.Manifest) error {
+	logger := prog.creationLogger(ctx, job, job.par2Path)
+
+	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
+	if err != nil {
+		return fmt.Errorf("failed to find created files: %w", err)
+	}
+
+	p, err := prog.par2er.ParseFile(prog.fsys, job.par2Path, true)
+	if err != nil {
+		return fmt.Errorf("failed to parse index par2: %w", err)
+	}
+
+	logger.Debug("Parsed PAR2 index file", "sets", len(p.Sets))
+	if len(p.Sets) != 1 || p.Sets[0].MainPacket == nil {
+		return errors.New("failed to parse index par2: malformed file")
+	}
+
+	recoverySetID := p.Sets[0].MainPacket.SetID
+	logger.Debug("Parsed PAR2 main packet", "setID", recoverySetID)
+
+	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
+	bundleName := baseName + schema.BundleExtension + schema.Par2Extension
+	bundlePath := filepath.Join(job.workingDir, bundleName)
+
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	manifest := bundle.ManifestInput{
+		Name:  job.manifestName,
+		Bytes: manifestData,
+	}
+
+	if err := prog.bundler.Pack(prog.fsys, bundlePath, recoverySetID, manifest, files); err != nil {
+		return fmt.Errorf("failed to pack bundle: %w", err)
+	}
+
+	for _, file := range files {
+		if err := prog.fsys.Remove(file.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			logger := prog.creationLogger(ctx, job, file.Path)
+			logger.Warn("Failed to cleanup a file after bundling (needs manual deletion)", "error", err)
+		}
+	}
+
+	for _, path := range []string{job.manifestPath, job.lockPath} {
+		if err := prog.fsys.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			logger := prog.creationLogger(ctx, job, path)
+			logger.Warn("Failed to cleanup a file after bundling (needs manual deletion)", "error", err)
+		}
+	}
+
+	job.par2Name = bundleName
+	job.par2Path = bundlePath
+	job.manifestName = bundleName
+	job.manifestPath = bundlePath
+	job.lockPath = bundlePath
 
 	return nil
 }

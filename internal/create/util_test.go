@@ -3,6 +3,7 @@ package create
 import (
 	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/desertwitch/par2cron/internal/logging"
@@ -380,6 +381,54 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			par2Name:      ".test" + schema.Par2Extension,
 			markerPersist: true,
 			expected:      true,
+		},
+		{
+			name:         "uppercase par2 name detects plain existing",
+			existingFile: "/data/folder/test" + schema.Par2Extension,
+			par2Name:     "test" + strings.ToUpper(schema.Par2Extension),
+			expected:     true,
+		},
+		{
+			name:         "uppercase par2 name detects hidden existing",
+			existingFile: "/data/folder/.test" + schema.Par2Extension,
+			par2Name:     "test" + strings.ToUpper(schema.Par2Extension),
+			expected:     true,
+		},
+		{
+			name:         "uppercase par2 name detects bundle existing",
+			existingFile: "/data/folder/test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     "test" + strings.ToUpper(schema.Par2Extension),
+			expected:     true,
+		},
+		{
+			name:         "uppercase par2 name detects hidden bundle existing",
+			existingFile: "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     "test" + strings.ToUpper(schema.Par2Extension),
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects uppercase existing",
+			existingFile: "/data/folder/test" + strings.ToUpper(schema.Par2Extension),
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects hidden uppercase existing",
+			existingFile: "/data/folder/.test" + strings.ToUpper(schema.Par2Extension),
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects uppercase bundle existing",
+			existingFile: "/data/folder/test" + schema.BundleExtension + strings.ToUpper(schema.Par2Extension),
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects hidden uppercase bundle existing",
+			existingFile: "/data/folder/.test" + schema.BundleExtension + strings.ToUpper(schema.Par2Extension),
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
 		},
 		{
 			name:         "no par2 exists",

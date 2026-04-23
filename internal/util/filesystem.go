@@ -10,9 +10,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
@@ -252,4 +254,43 @@ func HasGlobSymlinks(fsys afero.Fs, workingDir string, pattern string) (string, 
 	}
 
 	return "", false
+}
+
+func FindBundleableFiles(fsys afero.Fs, par2Name string, workingDir string) ([]bundle.FileInput, error) {
+	entries, err := afero.ReadDir(fsys, workingDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	inputs := []bundle.FileInput{}
+
+	baseName := TrimSuffixFold(par2Name, schema.Par2Extension) + "."
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+
+		if !strings.HasPrefix(name, baseName) {
+			continue
+		}
+		if !IsPar2Index(name) && !IsPar2Volume(name) {
+			continue
+		}
+		if IsPar2Bundle(name) {
+			continue
+		}
+
+		inputs = append(inputs, bundle.FileInput{
+			Name: name,
+			Path: filepath.Join(workingDir, name),
+		})
+	}
+
+	if len(inputs) == 0 {
+		return nil, errors.New("no files to bundle")
+	}
+
+	return inputs, nil
 }

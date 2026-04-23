@@ -784,6 +784,82 @@ func Test_Service_packBundle_Success(t *testing.T) {
 	require.True(t, bundleExists)
 }
 
+// Expectation: The function should pack PAR2 files into a bundle and clean up originals.
+func Test_Service_packBundle_UpperCase_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension), []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension)+schema.ManifestExtension, []byte("mf"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension)+schema.LockExtension, []byte("lck"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+strings.ToUpper(schema.Par2Extension), []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+strings.ToUpper(schema.Par2Extension), []byte("vol2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	var packCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
+			require.Equal(t, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, bundlePath)
+			require.Equal(t, setID, recoverySetID)
+			require.NotEmpty(t, manifest.Bytes)
+			require.NotEmpty(t, files)
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
+
+	mf := &schema.Manifest{Name: "test" + strings.ToUpper(schema.Par2Extension)}
+
+	job := NewJob("/data/folder/test"+strings.ToUpper(schema.Par2Extension), Options{}, mf, false)
+
+	require.NoError(t, prog.packBundle(t.Context(), job))
+	require.True(t, packCalled)
+
+	// Original PAR2 files should be cleaned up.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension))
+	require.False(t, indexExists)
+
+	vol1Exists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+strings.ToUpper(schema.Par2Extension))
+	require.False(t, vol1Exists)
+
+	vol2Exists, _ := afero.Exists(fs, "/data/folder/test.vol01+02"+strings.ToUpper(schema.Par2Extension))
+	require.False(t, vol2Exists)
+
+	mfExists, _ := afero.Exists(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension)+schema.ManifestExtension)
+	require.False(t, mfExists)
+
+	lockExists, _ := afero.Exists(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension)+schema.LockExtension)
+	require.False(t, lockExists)
+
+	// Bundle should exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+}
+
 // Expectation: The function should return an error when no bundleable files are found.
 func Test_Service_packBundle_NoFilesFound_Error(t *testing.T) {
 	t.Parallel()
@@ -1747,281 +1823,6 @@ func Test_Service_unpackBundle_CleanupBundleFails_Success(t *testing.T) {
 	// Bundle should still exist since removal failed.
 	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
 	require.True(t, bundleExists)
-}
-
-// Expectation: The function should find only PAR2 index and volume files matching the base name.
-func Test_Service_findBundleableFiles_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("mf"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("lck"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+schema.Par2Extension, []byte("vol2"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/data/folder",
-		par2Name:   "test" + schema.Par2Extension,
-		par2Path:   "/data/folder/test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.NoError(t, err)
-	require.Len(t, files, 3)
-
-	names := make([]string, 0, len(files))
-	for _, f := range files {
-		names = append(names, f.Name)
-	}
-	require.Contains(t, names, "test"+schema.Par2Extension)
-	require.Contains(t, names, "test.vol00+01"+schema.Par2Extension)
-	require.Contains(t, names, "test.vol01+02"+schema.Par2Extension)
-}
-
-// Expectation: The function should not include files that do not match the base name prefix.
-func Test_Service_findBundleableFiles_IgnoresUnrelatedFiles_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/other"+schema.Par2Extension, []byte("other"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test1"+schema.Par2Extension, []byte("content"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("manifest"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("lock"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/data/folder",
-		par2Name:   "test" + schema.Par2Extension,
-		par2Path:   "/data/folder/test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.NoError(t, err)
-	require.Len(t, files, 2)
-
-	names := make([]string, 0, len(files))
-	for _, f := range files {
-		names = append(names, f.Name)
-	}
-	require.Contains(t, names, "test"+schema.Par2Extension)
-	require.Contains(t, names, "test.vol00+01"+schema.Par2Extension)
-	require.NotContains(t, names, "other"+schema.Par2Extension)
-	require.NotContains(t, names, "test1"+schema.Par2Extension)
-}
-
-// Expectation: The function should not include directories.
-func Test_Service_findBundleableFiles_IgnoresDirectories_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, fs.MkdirAll("/data/folder/test.subdir", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/data/folder",
-		par2Name:   "test" + schema.Par2Extension,
-		par2Path:   "/data/folder/test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.Equal(t, "test"+schema.Par2Extension, files[0].Name)
-}
-
-// Expectation: The function should not include files that already have the bundle extension.
-func Test_Service_findBundleableFiles_IgnoresBundleFiles_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/data/folder",
-		par2Name:   "test" + schema.Par2Extension,
-		par2Path:   "/data/folder/test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.NoError(t, err)
-	require.Len(t, files, 1)
-	require.Equal(t, "test"+schema.Par2Extension, files[0].Name)
-}
-
-// Expectation: The function should return an error when no PAR2 files match.
-func Test_Service_findBundleableFiles_NoMatches_Error(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/other.txt", []byte("content"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/data/folder",
-		par2Name:   "test" + schema.Par2Extension,
-		par2Path:   "/data/folder/test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.ErrorContains(t, err, "no files to bundle")
-	require.Nil(t, files)
-}
-
-// Expectation: The function should return correct file paths.
-func Test_Service_findBundleableFiles_CorrectPaths_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/data/folder",
-		par2Name:   "test" + schema.Par2Extension,
-		par2Path:   "/data/folder/test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.NoError(t, err)
-
-	for _, f := range files {
-		require.True(t, strings.HasPrefix(f.Path, "/data/folder/"))
-		require.Equal(t, filepath.Join("/data/folder", f.Name), f.Path)
-	}
-}
-
-// Expectation: The function should work with hidden file names (dot prefix).
-func Test_Service_findBundleableFiles_HiddenFiles_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/.test"+schema.Par2Extension, []byte("index"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/.test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("other"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/data/folder",
-		par2Name:   ".test" + schema.Par2Extension,
-		par2Path:   "/data/folder/.test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.NoError(t, err)
-	require.Len(t, files, 2)
-
-	names := make([]string, 0, len(files))
-	for _, f := range files {
-		names = append(names, f.Name)
-	}
-	require.Contains(t, names, ".test"+schema.Par2Extension)
-	require.Contains(t, names, ".test.vol00+01"+schema.Par2Extension)
-	require.NotContains(t, names, "test"+schema.Par2Extension)
-}
-
-// Expectation: The function should return an error when the working directory cannot be read.
-func Test_Service_findBundleableFiles_ReadDirFails_Error(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	job := &Job{
-		workingDir: "/missing",
-		par2Name:   "test" + schema.Par2Extension,
-		par2Path:   "/missing/test" + schema.Par2Extension,
-	}
-
-	files, err := prog.findBundleableFiles(job)
-	require.ErrorContains(t, err, "failed to read directory")
-	require.Nil(t, files)
 }
 
 // Expectation: The function should return true when all errors match the sentinel.

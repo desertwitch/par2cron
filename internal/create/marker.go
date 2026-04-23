@@ -134,7 +134,7 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 
 	if yamlConfig.Par2Name != nil {
 		name := *yamlConfig.Par2Name
-		if !strings.HasSuffix(strings.ToLower(name), schema.Par2Extension) {
+		if !util.EndsWithFold(name, schema.Par2Extension) {
 			name += schema.Par2Extension
 		}
 

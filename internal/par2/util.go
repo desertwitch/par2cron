@@ -142,6 +142,7 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 		files = append(files, *indexData)
 	}
 
+	// !! This function should be reworked not to glob + be case insensitive.
 	basePath := strings.TrimSuffix(indexFile, ".par2")
 	pattern := basePath + "*.par2"
 
@@ -149,6 +150,7 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 	if err != nil {
 		return nil, fmt.Errorf("failed to glob: %w", err)
 	}
+	// !! This function should be reworked not to glob + be case insensitive.
 
 	for _, match := range matches {
 		if match == indexFile {

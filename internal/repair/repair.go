@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/flags"
@@ -238,7 +237,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 }
 
 func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) {
-	if strings.Contains(filepath.Base(par2path), schema.BundleExtension) {
+	if util.IsPar2Bundle(par2path) {
 		return prog.processBundleManifest(ctx, par2path, opts)
 	}
 
