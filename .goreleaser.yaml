@@ -49,3 +49,17 @@ release:
     Most users will want the `linux_amd64` package (see installation instructions in `QUICKGUIDE`).  
     Do note that any release files are unattended builds and served without any warranties.
 
+changelog:
+  use: github
+  filters:
+    exclude:
+    - "^Merge"
+  groups:
+    - title: 'New features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 10
+    - title: 'Other work'
+      order: 999
