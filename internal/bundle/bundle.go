@@ -83,7 +83,6 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 		}
 
 		b.Index = reconstructIndex(manifest, files)
-		b.Index.Flags |= FlagIndexRebuilt
 		b.OpenError = fmt.Errorf("index reconstructed: %w", err)
 	}
 
@@ -93,6 +92,13 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 // Close closes the bundle file.
 func (b *Bundle) Close() error {
 	return b.f.Close() //nolint:wrapcheck
+}
+
+// IsRebuilt reports whether the bundle's index was reconstructed at some
+// point in the past. A rebuilt index may have an incomplete file entry
+// table, so callers should not assume all original entries are present.
+func (b *Bundle) IsRebuilt() bool {
+	return b.Index.Flags&FlagIndexRebuilt != 0
 }
 
 // Manifest reads and returns the manifest bytes, verified against the SHA256
@@ -132,7 +138,8 @@ func (b *Bundle) Validate(strict bool) error {
 // returns nil if the index was parsed and validated normally, or an error
 // describing why reconstruction from a scan was necessary. Beware it only
 // returns this as long as Update() has not written that reconstructed index
-// back to the bundle file, restoring it to one functionally correct state.
+// back to the bundle file, restoring it to one functionally correct state. If
+// you need to determine if a bundle was ever rebuilt, use IsRebuilt() instead.
 func (b *Bundle) ValidateIndex() error {
 	return b.OpenError
 }

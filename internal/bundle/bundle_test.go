@@ -400,6 +400,33 @@ func Test_Bundle_Close_Error(t *testing.T) {
 	require.ErrorContains(t, b.Close(), "close boom")
 }
 
+// Expectation: IsRebuilt should return false for a cleanly opened bundle.
+func Test_Bundle_IsRebuilt_False(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+
+	require.False(t, b.IsRebuilt())
+}
+
+// Expectation: IsRebuilt should return true after the index was reconstructed from corruption.
+func Test_Bundle_IsRebuilt_True(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	overwriteBundleBytes(t, fixture.fs, fixture.bundlePath, func(raw []byte) {
+		raw[0] ^= 0xFF
+	})
+
+	b, err := Open(fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, b.Close())
+	})
+
+	require.True(t, b.IsRebuilt())
+}
+
 // Expectation: Manifest should return the manifest bytes from a valid bundle.
 func Test_Bundle_Manifest_Success(t *testing.T) {
 	t.Parallel()

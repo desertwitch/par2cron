@@ -102,13 +102,13 @@ func WriteManifest(fsys afero.Fs, bundler schema.BundleHandler, path string, m *
 			return fmt.Errorf("failed to write: %w", err)
 		}
 	} else {
-		b, err := bundler.Open(fsys, path)
+		bun, err := bundler.Open(fsys, path)
 		if err != nil {
 			return fmt.Errorf("failed to open bundle: %w", err)
 		}
-		defer b.Close()
+		defer bun.Close()
 
-		if err := b.Update(data); err != nil {
+		if err := bun.Update(data); err != nil {
 			return fmt.Errorf("failed to update bundle: %w", err)
 		}
 	}

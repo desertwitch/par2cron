@@ -41,4 +41,5 @@ const (
 	PosKey  ctxKey = iota
 	MposKey ctxKey = iota
 	PrioKey ctxKey = iota
+	ModeKey ctxKey = iota
 )

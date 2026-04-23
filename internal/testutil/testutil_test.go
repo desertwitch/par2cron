@@ -812,3 +812,49 @@ func Test_MockBundle_ValidateIndex_WithFunc_Error(t *testing.T) {
 
 	require.ErrorIs(t, err, expectedErr)
 }
+
+// Expectation: The mock bundle should return nil when no IsRebuilt value is provided.
+func Test_MockBundle_IsRebuilt_NoValue_Success(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	require.False(t, b.IsRebuilt())
+}
+
+// Expectation: The mock bundle should return the value from the IsRebuilt value.
+func Test_MockBundle_IsRebuilt_WithValue_Error(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{
+		IsRebuiltValue: new(true),
+	}
+
+	require.True(t, b.IsRebuilt())
+}
+
+// Expectation: The mock bundle should return nil when no Unpack function is provided.
+func Test_MockBundle_Unpack_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	files, err := b.Unpack(afero.NewMemMapFs(), "/dest", true)
+	require.ErrorContains(t, err, "not implemented")
+	require.Nil(t, files)
+}
+
+// Expectation: The mock bundle should return the error from the Unpack function.
+func Test_MockBundle_Unpack_WithFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{
+		UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+			return []string{"a", "b"}, nil
+		},
+	}
+
+	files, err := b.Unpack(afero.NewMemMapFs(), "/dest", true)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+}

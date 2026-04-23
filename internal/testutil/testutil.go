@@ -201,7 +201,9 @@ func (m *MockBundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID
 // MockBundle is a mock implementation of schema.Bundle.
 type MockBundle struct {
 	CloseFunc         func() error
+	IsRebuiltValue    *bool
 	ManifestFunc      func() ([]byte, error)
+	UnpackFunc        func(fsys afero.Fs, destDir string, strict bool) ([]string, error)
 	UpdateFunc        func(manifest []byte) error
 	ValidateFunc      func(strict bool) error
 	ValidateIndexFunc func() error
@@ -245,4 +247,20 @@ func (m *MockBundle) ValidateIndex() error {
 	}
 
 	return nil
+}
+
+func (m *MockBundle) IsRebuilt() bool {
+	if m.IsRebuiltValue != nil {
+		return *m.IsRebuiltValue
+	}
+
+	return false
+}
+
+func (m *MockBundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+	if m.UnpackFunc != nil {
+		return m.UnpackFunc(fsys, destDir, strict)
+	}
+
+	return nil, errors.New("not implemented")
 }

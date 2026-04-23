@@ -318,22 +318,22 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
-	b, err := prog.bundler.Open(prog.fsys, bundlePath)
+	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
 		logger.Error("Failed to open bundle (will retry next run)", "error", err)
 
 		return nil, schema.ErrNonFatal
 	}
-	by, err := b.Manifest()
+	by, err := bun.Manifest()
 	if err != nil {
 		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
-		_ = b.Close()
+		_ = bun.Close()
 		unlock()
 
 		return nil, schema.ErrNonFatal
 	}
-	_ = b.Close()
+	_ = bun.Close()
 	unlock()
 
 	mf := &schema.Manifest{}
