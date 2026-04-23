@@ -263,6 +263,126 @@ func Test_Service_processMode_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// Expectation: Non-fatal enumeration errors should continue and return partial failure.
+func Test_Service_processMode_FailedToEnumerateSomeJobs_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	jobs, err := prog.processMode(
+		t.Context(),
+		[]string{"/data"},
+		Options{},
+		func(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
+			return []*Job{
+				{par2Path: "/data/test1" + schema.Par2Extension},
+				{par2Path: "/data/test2" + schema.Par2Extension},
+			}, errors.Join(schema.ErrNonFatal, errors.New("manifest read failed"))
+		},
+		func(ctx context.Context, job *Job) error {
+			return nil
+		},
+	)
+
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
+	require.ErrorContains(t, err, "failed to enumerate some jobs")
+	require.Equal(t, 2, jobs.Selected)
+	require.Equal(t, 2, jobs.Success)
+	require.Equal(t, 0, jobs.Error)
+}
+
+// Expectation: A failed job should be skipped and counted as a partial failure.
+func Test_Service_processMode_JobFailureSkipping_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	results, err := prog.processMode(
+		t.Context(),
+		[]string{"/data"},
+		Options{},
+		func(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
+			return []*Job{
+				{par2Path: "/data/test" + schema.Par2Extension},
+			}, nil
+		},
+		func(ctx context.Context, job *Job) error {
+			return errors.New("simulated job failure")
+		},
+	)
+
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
+	require.ErrorContains(t, err, "simulated job failure")
+	require.Equal(t, 1, results.Selected)
+	require.Equal(t, 0, results.Success)
+	require.Equal(t, 1, results.Error)
+	require.Contains(t, logBuf.String(), "Job failure (skipping)")
+}
+
+// Expectation: Mixed job outcomes should report one success and one partial failure.
+func Test_Service_processMode_OneSucceedsOneFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	call := 0
+	results, err := prog.processMode(
+		t.Context(),
+		[]string{"/data"},
+		Options{},
+		func(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
+			return []*Job{
+				{par2Path: "/data/test1" + schema.Par2Extension},
+				{par2Path: "/data/test2" + schema.Par2Extension},
+			}, nil
+		},
+		func(ctx context.Context, job *Job) error {
+			call++
+			if call == 1 {
+				return nil
+			}
+
+			return errors.New("second job failed")
+		},
+	)
+
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
+	require.ErrorContains(t, err, "second job failed")
+	require.Equal(t, 2, results.Selected)
+	require.Equal(t, 1, results.Success)
+	require.Equal(t, 1, results.Error)
+}
+
 // Expectation: The function should find PAR2 files with manifests and return them as jobs.
 func Test_Service_packEnumerate_Success(t *testing.T) {
 	t.Parallel()
@@ -391,6 +511,37 @@ func Test_Service_packEnumerate_InvalidManifest_Error(t *testing.T) {
 	jobs, err := prog.packEnumerate(t.Context(), "/data", Options{})
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Empty(t, jobs)
+}
+
+// Expectation: Fatal manifest-processing errors should stop enumeration.
+func Test_Service_packEnumerate_FailedToProcessManifest_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	par2Path := filepath.Join(rootDir, "test"+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2data"), 0o644))
+
+	mf := &schema.Manifest{Name: "test" + schema.Par2Extension}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, par2Path+schema.ManifestExtension, mfData, 0o644))
+	require.NoError(t, fs.MkdirAll(par2Path+schema.LockExtension, 0o755)) // as dir to fail
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	jobs, err := prog.packEnumerate(t.Context(), rootDir, Options{})
+	require.ErrorContains(t, err, "failed to process manifest")
+	require.Nil(t, jobs)
 }
 
 // Expectation: Elements in directories with an ignore file should be skipped.
@@ -1504,6 +1655,53 @@ func Test_Service_unpackBundle_NonCorruptError_Error(t *testing.T) {
 	// Unpacked files should be cleaned up on non-corrupt error.
 	fileExists, _ := afero.Exists(fs, unpackedFile)
 	require.False(t, fileExists)
+}
+
+// Expectation: Failed cleanup after unpack failure should be logged and not mask the unpack error.
+func Test_Service_unpackBundle_FailedToCleanupAfterFailure_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	cleanupPath := "/data/folder/cleanup" + schema.Par2Extension
+	require.NoError(t, afero.WriteFile(baseFs, cleanupPath, []byte("data"), 0o644))
+
+	fs := &testutil.FailingRemoveFs{Fs: baseFs, FailSuffix: "cleanup" + schema.Par2Extension}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	mockBundle := &testutil.MockBundle{
+		UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+			return []string{cleanupPath}, errors.New("I/O error")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	job := NewJob("/data/folder/test"+schema.BundleExtension+schema.Par2Extension, Options{Force: true}, nil, true)
+
+	require.ErrorContains(t, prog.unpackBundle(t.Context(), job), "failed to unpack bundle")
+	require.Contains(t, logBuf.String(), "Failed to cleanup a file after failure")
+
+	fileExists, _ := afero.Exists(fs, cleanupPath)
+	require.True(t, fileExists)
 }
 
 // Expectation: The function should warn but not error when bundle cleanup fails after unpacking.

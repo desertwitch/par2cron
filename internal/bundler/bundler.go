@@ -164,7 +164,7 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 		}
 		if err != nil {
 			logger := prog.bundleLogger(ctx, nil, par2path)
-			logger.Warn("A path was skipped due to FS error (will retry next run)", "error", err)
+			logger.Warn("A path was skipped due to FS error", "error", err)
 
 			return nil
 		}
@@ -314,7 +314,6 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
 
-	var partialErrors int
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("context error: %w", err)
@@ -345,9 +344,6 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to walk FS: %w", err)
-	}
-	if partialErrors > 0 {
-		return jobs, fmt.Errorf("%w: %d manifests failed to read", schema.ErrNonFatal, partialErrors)
 	}
 
 	return jobs, nil
