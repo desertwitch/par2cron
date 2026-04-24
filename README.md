@@ -736,8 +736,9 @@ the marker file approach (equals the process for new sets of protectable data).
 
 A par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in
-directories, which can be mitigated by using the `--hidden` argument with
-`create` (read more about this in the above section *State Management*).
+directories, which can be mitigated by using the `--bundle` or `--hidden`
+arguments with `create` (read more about this in the above section *State
+Management*).
 
 While the lockfile ensures multiple par2cron instances on the same computer
 do not collide, you need to ensure that shared (network) locations are only
