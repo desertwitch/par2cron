@@ -90,7 +90,7 @@ var (
 // Fuzz Test
 // ============================================================================
 
-func FuzzParse(f *testing.F) {
+func Fuzz_Parse(f *testing.F) {
 	// Synthetic PAR2 files constructed for testing
 	for _, seed := range syntheticSeeds {
 		f.Add(seed)

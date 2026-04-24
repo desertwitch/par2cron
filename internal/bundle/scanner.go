@@ -15,6 +15,9 @@ func Scan(r io.ReaderAt, size int64, checkMD5 bool) ([]FilePacket, *ManifestPack
 	var files []FilePacket
 	var manifest *ManifestPacket
 
+	const bufSize = 16 * 1024
+	buf := make([]byte, bufSize)
+
 loop:
 	for offset := int64(0); offset+commonHeaderSize <= size; {
 		ch, body, err := readAndValidatePacket(r, offset, size, checkMD5)
@@ -52,7 +55,7 @@ loop:
 		}
 
 		// Invalid packet, scan forward for next magic sequence.
-		found, err := findNextMagic(r, offset+1, size)
+		found, err := findNextMagic(r, offset+1, size, buf)
 		if err != nil {
 			break // No more magic sequences found.
 		}
@@ -65,15 +68,12 @@ loop:
 
 // findNextMagic scans r for the next occurrence of magic bytes starting at
 // from. Returns the offset of the match or an error if none is found.
-func findNextMagic(r io.ReaderAt, from, fileSize int64) (int64, error) {
-	const bufSize = 16 * 1024
-
-	buf := make([]byte, bufSize)
+func findNextMagic(r io.ReaderAt, from, fileSize int64, buf []byte) (int64, error) {
 	magicLen := int64(len(Magic))
 
 	for off := from; off+magicLen <= fileSize; {
 		// Read a chunk.
-		readLen := min(int64(bufSize), fileSize-off)
+		readLen := min(int64(len(buf)), fileSize-off)
 		n, err := r.ReadAt(buf[:readLen], off)
 		if n == 0 && err != nil {
 			return 0, fmt.Errorf("failed to io: %w", err)

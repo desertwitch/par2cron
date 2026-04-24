@@ -51,6 +51,7 @@ release:
 
 changelog:
   use: github
+  sort: asc
   filters:
     exclude:
     - "^Merge"

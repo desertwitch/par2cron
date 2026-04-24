@@ -16,9 +16,9 @@ $(BINARY): ## Builds the application
 	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -ldflags="-w -s -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION) -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
 
-benchmark: ## Runs the benchmark script
-	@$(MAKE) $(BINARY)
-	@/usr/bin/env bash ./benchmark.sh
+benchmark: ## Runs the benchmark suite
+	go test -bench=. -benchmem ./internal/bundle/
+	go test -bench=. -benchmem ./internal/par2/
 
 check: ## Runs all static analysis and tests on the application code
 	@$(MAKE) lint
@@ -50,7 +50,7 @@ test: ## Runs all written tests for and on the application code
 
 test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3min of fuzzing
 	go test -failfast ./internal/par2 ./internal/bundle
-	go test -run=^$$ -fuzz=FuzzParse -fuzztime=3m ./internal/par2
+	go test -run=^$$ -fuzz=Fuzz_Parse -fuzztime=3m ./internal/par2
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Open -fuzztime=3m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Scan -fuzztime=3m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Pack -fuzztime=3m ./internal/bundle
@@ -61,7 +61,7 @@ test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3min of fuzzing
 
 test-fuzz-long: ## Runs fuzz-related unit tests followed by 60min of fuzzing
 	go test -failfast ./internal/par2 ./internal/bundle
-	go test -run=^$$ -fuzz=FuzzParse -fuzztime=60m ./internal/par2
+	go test -run=^$$ -fuzz=Fuzz_Parse -fuzztime=60m ./internal/par2
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Open -fuzztime=60m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Scan -fuzztime=60m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Pack -fuzztime=60m ./internal/bundle

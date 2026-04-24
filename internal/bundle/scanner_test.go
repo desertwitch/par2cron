@@ -89,7 +89,8 @@ func Test_findNextMagic_Success(t *testing.T) {
 
 	data := append([]byte("prefix"), Magic[:]...)
 
-	offset, err := findNextMagic(bytes.NewReader(data), 0, int64(len(data)))
+	buf := make([]byte, 16*1024)
+	offset, err := findNextMagic(bytes.NewReader(data), 0, int64(len(data)), buf)
 
 	require.NoError(t, err)
 	require.Equal(t, int64(6), offset)
@@ -102,7 +103,8 @@ func Test_findNextMagic_CrossChunkBoundary_Success(t *testing.T) {
 	prefix := bytes.Repeat([]byte{'x'}, 16*1024-len(Magic)+1)
 	data := append(prefix, Magic[:]...) //nolint:gocritic
 
-	offset, err := findNextMagic(bytes.NewReader(data), 0, int64(len(data)))
+	buf := make([]byte, 16*1024)
+	offset, err := findNextMagic(bytes.NewReader(data), 0, int64(len(data)), buf)
 
 	require.NoError(t, err)
 	require.Equal(t, int64(len(prefix)), offset)
@@ -112,7 +114,8 @@ func Test_findNextMagic_CrossChunkBoundary_Success(t *testing.T) {
 func Test_findNextMagic_ReadError_Error(t *testing.T) {
 	t.Parallel()
 
-	_, err := findNextMagic(failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize)
+	buf := make([]byte, 16*1024)
+	_, err := findNextMagic(failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize, buf)
 
 	require.ErrorContains(t, err, "failed to io")
 	require.ErrorContains(t, err, "read boom")
@@ -122,7 +125,8 @@ func Test_findNextMagic_ReadError_Error(t *testing.T) {
 func Test_findNextMagic_NotFound_Error(t *testing.T) {
 	t.Parallel()
 
-	_, err := findNextMagic(bytes.NewReader([]byte("plain bytes")), 0, int64(len("plain bytes")))
+	buf := make([]byte, 16*1024)
+	_, err := findNextMagic(bytes.NewReader([]byte("plain bytes")), 0, int64(len("plain bytes")), buf)
 
 	require.ErrorIs(t, err, io.EOF)
 }
