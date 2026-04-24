@@ -63,6 +63,7 @@ func Test_IsPar2Volume_Table(t *testing.T) {
 		expect bool
 	}{
 		{"lowercase", "test.vol00+01.par2", true},
+		{"lowercase alt", "test.vol00-01.par2", true},
 		{"uppercase extension", "test.vol25+22.PAR2", true},
 		{"mixed case", "test.VOL00+01.Par2", true},
 		{"with directory", "/data/test.vol10+20.par2", true},
@@ -150,6 +151,7 @@ func Test_IsPar2SetMember_Table(t *testing.T) {
 		{"index->index", "test.par2", "test.par2", true},
 		{"index->bundle", "test.par2", "test.p2c.par2", true},
 		{"index->volume", "test.par2", "test.vol00+01.par2", true},
+		{"index->alt volume", "test.par2", "test.vol00-01.par2", true},
 		{"index->volume uppercase", "test.PAR2", "TEST.VOL00+01.PAR2", true},
 		{"index->wrong p2c volume", "test.par2", "test.p2c.vol10+20.par2", false},
 
@@ -185,6 +187,64 @@ func Test_IsPar2SetMember_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.Equal(t, tt.expect, IsPar2SetMember(tt.par2Name, tt.candidate))
+		})
+	}
+}
+
+// Expectation: The function should meet the table's expectations.
+func Test_isVolumeNameForRoot_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		fname  string
+		root   string
+		sep    byte
+		expect bool
+	}{
+		// valid plus-separated volumes
+		{"basic plus", "test.vol00+01.par2", "test", '+', true},
+		{"large numbers plus", "test.vol999+100.par2", "test", '+', true},
+		{"single digits plus", "test.vol0+1.par2", "test", '+', true},
+		{"leading zeros plus", "test.vol007+010.par2", "test", '+', true},
+		{"dotted root plus", "test.backup.vol00+01.par2", "test.backup", '+', true},
+
+		// valid minus-separated volumes
+		{"basic minus", "test.vol00-01.par2", "test", '-', true},
+		{"large numbers minus", "test.vol999-100.par2", "test", '-', true},
+		{"dotted root minus", "test.backup.vol05-10.par2", "test.backup", '-', true},
+
+		// separator mismatch
+		{"plus name minus sep", "test.vol00+01.par2", "test", '-', false},
+		{"minus name plus sep", "test.vol00-01.par2", "test", '+', false},
+
+		// wrong root
+		{"different root", "other.vol00+01.par2", "test", '+', false},
+		{"longer root", "testing.vol00+01.par2", "test", '+', false},
+		{"shorter root", "tes.vol00+01.par2", "test", '+', false},
+
+		// malformed mid section
+		{"no separator", "test.vol01.par2", "test", '+', false},
+		{"double separator", "test.vol01+02+03.par2", "test", '+', false},
+		{"leading separator", "test.vol+01.par2", "test", '+', false},
+		{"trailing separator", "test.vol01+.par2", "test", '+', false},
+		{"non-digit lhs", "test.volab+01.par2", "test", '+', false},
+		{"non-digit rhs", "test.vol01+ab.par2", "test", '+', false},
+		{"empty mid", "test.vol.par2", "test", '+', false},
+
+		// wrong extension
+		{"txt extension", "test.vol00+01.txt", "test", '+', false},
+		{"no extension", "test.vol00+01", "test", '+', false},
+
+		// not a volume at all
+		{"index file", "test.par2", "test", '+', false},
+		{"no vol prefix", "test.00+01.par2", "test", '+', false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expect, isVolumeNameForRoot(tt.fname, tt.root, tt.sep))
 		})
 	}
 }

@@ -23,25 +23,14 @@ func IsPar2Volume(path string) bool {
 	}
 
 	name := strings.ToLower(filepath.Base(path))
-	extLen := len(schema.Par2Extension)
-
-	// split "<stem>.par2"
-	stem := name[:len(name)-extLen]
-
-	// must contain ".vol" and have non-empty root before it
+	stem := name[:len(name)-len(schema.Par2Extension)]
 	vol := strings.LastIndex(stem, schema.Par2VolPrefix)
 	if vol <= 0 {
 		return false
 	}
+	root := stem[:vol]
 
-	// suffix after ".vol" must be "<start>+<count>" with digits only
-	mid := stem[vol+len(schema.Par2VolPrefix):]
-	plus := strings.IndexByte(mid, '+')
-	if plus <= 0 || plus >= len(mid)-1 || strings.IndexByte(mid[plus+1:], '+') != -1 {
-		return false
-	}
-
-	return isDigits(mid[:plus]) && isDigits(mid[plus+1:])
+	return isVolumeNameForRoot(name, root, '+') || isVolumeNameForRoot(name, root, '-')
 }
 
 func IsPar2Bundle(path string) bool {
@@ -54,7 +43,7 @@ func IsPar2Bundle(path string) bool {
 // Canonical members are:
 //   - <root>.par2
 //   - <root>.p2c.par2
-//   - <root>.vol<start>+<count>.par2 (strict numeric form)
+//   - <root>.vol<start><sep><count>.par2 (strict numeric form, <sep> is '+' or '-')
 //
 // If par2Name is a bundle (<root>.p2c.par2), matching is normalized to <root>.
 func IsPar2SetMember(par2Name, candidate string) bool {
@@ -76,18 +65,22 @@ func IsPar2SetMember(par2Name, candidate string) bool {
 		return true
 	}
 
-	prefix := root + schema.Par2VolPrefix // file.vol
+	return isVolumeNameForRoot(name, root, '+') || isVolumeNameForRoot(name, root, '-')
+}
+
+func isVolumeNameForRoot(name, root string, sep byte) bool {
+	prefix := root + schema.Par2VolPrefix // <root>.vol
 	if !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, schema.Par2Extension) {
 		return false
 	}
 
-	mid := name[len(prefix) : len(name)-len(schema.Par2Extension)]
-	plus := strings.IndexByte(mid, '+')
-	if plus <= 0 || plus >= len(mid)-1 || strings.IndexByte(mid[plus+1:], '+') != -1 {
+	tail := name[len(prefix) : len(name)-len(schema.Par2Extension)] // <start><sep><count>
+	pos := strings.IndexByte(tail, sep)
+	if pos <= 0 || pos >= len(tail)-1 || strings.IndexByte(tail[pos+1:], sep) != -1 {
 		return false
 	}
 
-	return isDigits(mid[:plus]) && isDigits(mid[plus+1:])
+	return isDigits(tail[:pos]) && isDigits(tail[pos+1:])
 }
 
 func isDigits(s string) bool {
