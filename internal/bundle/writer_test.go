@@ -60,6 +60,20 @@ func Test_Pack_Success(t *testing.T) {
 	require.Equal(t, Magic[:], raw[b.Index.ManifestPacketOffset:b.Index.ManifestPacketOffset+uint64(len(Magic))])
 }
 
+// Expectation: Pack should reject a manifest whose body exceeds the maximum packet body size.
+func Test_Pack_ManifestTooLarge_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{
+		Name:  "manifest.json",
+		Bytes: make([]byte, maxPacketBodyBytes),
+	}, nil)
+
+	require.ErrorContains(t, err, "manifest too large")
+}
+
 // Expectation: Pack should remove the bundle path again when a later write step fails.
 func Test_Pack_CleanupAfterFailure_Error(t *testing.T) {
 	t.Parallel()
@@ -336,6 +350,17 @@ func Test_Bundle_Update_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, newManifest, got)
 	require.Equal(t, dataHash(newManifest), b.Index.ManifestDataSHA256)
+}
+
+// Expectation: Update should reject a manifest whose body exceeds the maximum packet body size.
+func Test_Bundle_Update_ManifestTooLarge_Error(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+
+	err := b.Update(make([]byte, maxPacketBodyBytes))
+
+	require.ErrorContains(t, err, "manifest too large")
 }
 
 // Expectation: Update should return an error when truncating away the old manifest fails.

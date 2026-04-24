@@ -32,6 +32,12 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 		}
 	}()
 
+	mfb := uint64(manifestBodyPrefixSize) + padTo4(uint64(len(manifest.Name))) + padTo4(uint64(len(manifest.Bytes)))
+	if mfb > maxPacketBodyBytes {
+		return fmt.Errorf("manifest too large: %d bytes (max %d)",
+			len(manifest.Bytes), maxPacketBodyBytes)
+	}
+
 	f, err := fsys.Create(bundlePath)
 	if err != nil {
 		return fmt.Errorf("failed to create: %w", err)
@@ -114,6 +120,12 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 // longer be extractable from the bundle due to their lost metadata file packet.
 func (b *Bundle) Update(manifest []byte) error {
 	manifestPacketOffset := b.Index.ManifestPacketOffset
+
+	mfb := uint64(manifestBodyPrefixSize) + padTo4(uint64(len(b.Index.ManifestName))) + padTo4(uint64(len(manifest)))
+	if mfb > maxPacketBodyBytes {
+		return fmt.Errorf("manifest too large: %d bytes (max %d)",
+			len(manifest), maxPacketBodyBytes)
+	}
 
 	// Truncate the file to drop the old manifest packet.
 	if err := b.f.Truncate(int64(manifestPacketOffset)); err != nil { //nolint:gosec
