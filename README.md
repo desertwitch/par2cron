@@ -39,6 +39,7 @@
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
 - [State Management](#state-management)
+  - [Creation as Bundle](#creation-as-bundle)
 - [Creation Arguments](#creation-arguments)
 - [Creation Modes](#creation-modes)
   - [`folder` mode (default)](#folder-mode-default)
@@ -369,11 +370,47 @@ verification cycle. While the lockfile ensures multiple par2cron instances on
 the same computer do not collide, you need to ensure that shared locations are
 only ever accessed by one par2cron instance at a time (network/cloud drives).
 
-The `--hidden` argument of `create` can be useful to hide the PAR2 sets, if
-the amount of files is something that can be a bother for file organization.
+If the amount of files bothers you, you can use the `--bundle` argument of
+`create` to bundle all creation-related files into one single bundle file.
+The bundle file then contains both the PAR2 files, as well as the par2cron
+manifest, while remaining compatible with both par2cron and PAR2 software.
+
+The `--hidden` argument of `create` is an alternative, hiding PAR2 sets.
 If opting for this, it should be noted that some backup programs will not
 transfer hidden files (dotfiles) without being configured to do so, so you
 should consider this when moving around par2cron-protected directory trees.
+
+### Creation as Bundle
+
+By default, a par2cron-created PAR2 set consists of several files: the index
+file, one or more recovery volumes, a manifest (`*.par2.json`) and a lockfile
+(`*.par2.lock`). This can result in four or more files per protected directory.
+
+The `--bundle` flag on `create` (or `bundle: true` as marker directive) packs
+everything into a single `.p2c.par2` file instead. This bundle embeds the PAR2
+recovery data alongside par2cron's manifest, while remaining fully compatible
+with standard PAR2 software and par2cron's `verify` and `repair` operations.
+
+| Without `--bundle`         | With `--bundle`           |
+| :------------------------- | :------------------------ |
+| `Pictures.par2`            | `Pictures.p2c.par2`       |
+| `Pictures.vol00+01.par2`   |                           |
+| `Pictures.par2.json`       |                           |
+| `Pictures.par2.lock`       |                           |
+
+The bundle format uses application-specific packet types as permitted by the
+PAR2 specification, so PAR2 tools simply skip over par2cron's metadata packets
+while still reading the embedded recovery data normally. The format is designed
+to be resilient against corruption and self-healing without user interaction.
+
+Existing unbundled PAR2 sets can be converted after the fact using the `par2cron
+bundle pack` command. The reverse operation, `par2cron bundle unpack`, extracts
+the original individual files from a bundle. See `par2cron bundle --help` for
+details on either operation.
+
+> **Note:** Bundles embed the par2cron manifest alongside PAR2 data. If you
+> plan to distribute PAR2 sets to third parties, use the default unbundled
+> format instead or unpack your bundles prior to distribution.
 
 ## Creation Arguments
 
