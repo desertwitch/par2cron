@@ -644,7 +644,7 @@ hidden: true
 persist: true
 
 # Create only one single (PAR2-compatible) file per PAR2 set
-# Helps reduce filesystem clutter by embedding the manifest in the PAR2 set
+# Reduces filesystem clutter by embedding par2cron manifest in PAR2 set
 bundle: true
 ```
 
