@@ -398,7 +398,7 @@ with standard PAR2 software and par2cron's `verify` and `repair` operations.
 | `Pictures.par2.json`       |                           |
 | `Pictures.par2.lock`       |                           |
 
-The bundle format uses application-specific packet types as permitted by the
+The bundle format uses [application-specific packet types](/internal/bundle/_specification.txt) as permitted by the
 PAR2 specification, so PAR2 tools simply skip over par2cron's metadata packets
 while still reading the embedded recovery data normally. The format is designed
 to be resilient against corruption and self-healing without user interaction.
