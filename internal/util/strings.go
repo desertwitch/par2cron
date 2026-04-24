@@ -14,9 +14,7 @@ func IsPar2Index(path string) bool {
 		return false
 	}
 
-	lower := strings.ToLower(filepath.Base(path))
-
-	return !strings.Contains(lower, schema.Par2VolPrefix)
+	return !IsPar2Volume(path)
 }
 
 func IsPar2Volume(path string) bool {
@@ -24,9 +22,26 @@ func IsPar2Volume(path string) bool {
 		return false
 	}
 
-	lower := strings.ToLower(filepath.Base(path))
+	name := strings.ToLower(filepath.Base(path))
+	extLen := len(schema.Par2Extension)
 
-	return strings.Contains(lower, schema.Par2VolPrefix)
+	// split "<stem>.par2"
+	stem := name[:len(name)-extLen]
+
+	// must contain ".vol" and have non-empty root before it
+	vol := strings.LastIndex(stem, schema.Par2VolPrefix)
+	if vol <= 0 {
+		return false
+	}
+
+	// suffix after ".vol" must be "<start>+<count>" with digits only
+	mid := stem[vol+len(schema.Par2VolPrefix):]
+	plus := strings.IndexByte(mid, '+')
+	if plus <= 0 || plus >= len(mid)-1 || strings.IndexByte(mid[plus+1:], '+') != -1 {
+		return false
+	}
+
+	return isDigits(mid[:plus]) && isDigits(mid[plus+1:])
 }
 
 func IsPar2Bundle(path string) bool {

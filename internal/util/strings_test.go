@@ -33,6 +33,17 @@ func Test_IsPar2Index_Table(t *testing.T) {
 		{"par file (no 2)", "/data/test.par", false},
 		{"no extension", "/data/test", false},
 		{"empty string", "", false},
+
+		{"vol substring in stem is still index", "/data/test.volcano.par2", true},
+		{"vol substring in stem no dir is index", "test.volcano.par2", true},
+		{"p2c stem is index (not bundle suffix)", "/data/test.p2c_backup.par2", true},
+
+		{"malformed volume no plus is index", "/data/test.vol01.par2", true},
+		{"malformed volume non-digit rhs is index", "/data/test.vol01+ab.par2", true},
+		{"malformed volume non-digit lhs is index", "/data/test.volab+01.par2", true},
+		{"malformed volume double plus is index", "/data/test.vol01+02+03.par2", true},
+
+		{"canonical volume with p2c root is not index", "/data/test.p2c.vol01+02.par2", false},
 	}
 
 	for _, tt := range tests {
@@ -71,6 +82,17 @@ func Test_IsPar2Volume_Table(t *testing.T) {
 		{"vol dir with index file", "/data/.vol01/test.par2", false},
 		{"vol+digits dir with index file", "/data/vol00+01/test.PAR2", false},
 		{"dot vol dir with index file", "/mnt/.vol/archive.par2", false},
+
+		{"vol substring in stem (not volume)", "test.volcano.par2", false},
+		{"vol substring in stem with dir (not volume)", "/data/test.volcano.par2", false},
+		{"vol without count", "test.vol01.par2", false},
+		{"vol without start", "test.vol+01.par2", false},
+		{"vol trailing plus", "test.vol01+.par2", false},
+		{"vol non-digit start", "test.volab+01.par2", false},
+		{"vol non-digit count", "test.vol01+ab.par2", false},
+		{"vol extra plus", "test.vol01+02+03.par2", false},
+		{"p2c in stem then canonical vol", "test.p2c.vol01+02.par2", true},
+		{"p2c after vol marker (invalid)", "test.vol01+02.p2c.par2", false},
 	}
 
 	for _, tt := range tests {

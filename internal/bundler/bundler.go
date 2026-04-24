@@ -173,13 +173,13 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 		if !util.IsPar2Index(d.Name()) {
 			return nil
 		}
+		if util.IsPar2Bundle(par2path) {
+			return nil
+		}
 		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
 			logger := prog.bundleLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 
-			return nil
-		}
-		if util.IsPar2Bundle(par2path) {
 			return nil
 		}
 
