@@ -50,25 +50,25 @@ test: ## Runs all written tests for and on the application code
 
 test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3min of fuzzing
 	go test -failfast ./internal/par2 ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Parse -fuzztime=3m ./internal/par2
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Open -fuzztime=3m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Scan -fuzztime=3m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Pack -fuzztime=3m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Manifest -fuzztime=3m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Unpack -fuzztime=3m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Update -fuzztime=3m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Validate -fuzztime=3m ./internal/bundle
+	./scripts/golang-fuzz.sh Fuzz_Parse ./internal/par2 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Open ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Scan ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Pack ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Manifest ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Unpack ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Update ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Validate ./internal/bundle 3m
 
 test-fuzz-long: ## Runs fuzz-related unit tests followed by 60min of fuzzing
 	go test -failfast ./internal/par2 ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Parse -fuzztime=60m ./internal/par2
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Open -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Scan -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Pack -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Manifest -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Unpack -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Update -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Validate -fuzztime=60m ./internal/bundle
+	./scripts/golang-fuzz.sh Fuzz_Parse ./internal/par2 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Open ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Scan ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Pack ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Manifest ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Unpack ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Update ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Validate ./internal/bundle 60m
 
 test-coverage: ## Runs all coverage tests for and on the application code
 	@go test -failfast -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.tmp ./... && \
