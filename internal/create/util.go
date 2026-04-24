@@ -22,7 +22,6 @@ func (prog *Service) cleanupAfterFailure(ctx context.Context, job *Job) {
 		return
 	}
 
-	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension) + "."
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -30,10 +29,7 @@ func (prog *Service) cleanupAfterFailure(ctx context.Context, job *Job) {
 
 		name := entry.Name()
 
-		if !strings.HasPrefix(name, baseName) {
-			continue
-		}
-		if !util.IsPar2Index(name) && !util.IsPar2Volume(name) {
+		if !util.IsPar2SetMember(job.par2Name, name) {
 			continue
 		}
 

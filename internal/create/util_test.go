@@ -128,6 +128,81 @@ func Test_Service_cleanupAfterFailure_EdgeCases_Success(t *testing.T) {
 	require.True(t, info.IsDir())
 }
 
+// Expectation: Cleanup should not remove same-prefix but unrelated PAR2 files.
+func Test_Service_cleanupAfterFailure_DoesNotRemoveSamePrefixUnrelatedPar2_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("idx"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.backup"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("{}"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte(""), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	prog.cleanupAfterFailure(t.Context(), job)
+
+	// canonical members removed
+	exists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, exists)
+	exists, _ = afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
+	require.False(t, exists)
+	exists, _ = afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
+	require.False(t, exists)
+	exists, _ = afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension)
+	require.False(t, exists)
+
+	// unrelated same-prefix file kept
+	exists, _ = afero.Exists(fs, "/data/folder/test.backup"+schema.Par2Extension)
+	require.True(t, exists)
+}
+
+// Expectation: Cleanup should remove bundle output when the job itself is a bundle.
+func Test_Service_cleanupAfterFailure_BundleJob_RemovesBundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Name:     "test" + schema.BundleExtension + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.BundleExtension + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.BundleExtension + schema.Par2Extension,
+		manifestName: "test" + schema.BundleExtension + schema.Par2Extension,
+		manifestPath: "/data/folder/test" + schema.BundleExtension + schema.Par2Extension,
+	}
+
+	prog.cleanupAfterFailure(t.Context(), job)
+
+	exists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.False(t, exists)
+}
+
 // Expectation: Non-failing files should be removed regardless of failure.
 func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 	t.Parallel()

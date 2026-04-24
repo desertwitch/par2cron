@@ -10,7 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -264,7 +263,6 @@ func FindBundleableFiles(fsys afero.Fs, par2Name string, workingDir string) ([]b
 
 	inputs := []bundle.FileInput{}
 
-	baseName := TrimSuffixFold(par2Name, schema.Par2Extension) + "."
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -272,10 +270,7 @@ func FindBundleableFiles(fsys afero.Fs, par2Name string, workingDir string) ([]b
 
 		name := entry.Name()
 
-		if !strings.HasPrefix(name, baseName) {
-			continue
-		}
-		if !IsPar2Index(name) && !IsPar2Volume(name) {
+		if !IsPar2SetMember(par2Name, name) {
 			continue
 		}
 		if IsPar2Bundle(name) {

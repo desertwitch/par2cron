@@ -113,6 +113,95 @@ func Test_IsPar2Bundle_Table(t *testing.T) {
 	}
 }
 
+// Expectation: IsPar2SetMember should match only canonical members of one PAR2
+// set (index, bundle, strict volumes), case-insensitively.
+func Test_IsPar2SetMember_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		par2Name  string
+		candidate string
+		expect    bool
+	}{
+		// index anchor
+		{"index->index", "test.par2", "test.par2", true},
+		{"index->bundle", "test.par2", "test.p2c.par2", true},
+		{"index->volume", "test.par2", "test.vol00+01.par2", true},
+		{"index->volume uppercase", "test.PAR2", "TEST.VOL00+01.PAR2", true},
+		{"index->wrong p2c volume", "test.par2", "test.p2c.vol10+20.par2", false},
+
+		// bundle anchor should map to same root set
+		{"bundle->bundle", "test.p2c.par2", "test.p2c.par2", true},
+		{"bundle->index", "test.p2c.par2", "test.par2", true},
+		{"bundle->volume", "test.p2c.par2", "test.vol10+20.par2", true},
+		{"bundle->wrong p2c volume", "test.p2c.par2", "test.p2c.vol10+20.par2", false},
+
+		// dotted roots
+		{"dotted index", "test.backup.par2", "test.backup.par2", true},
+		{"dotted bundle", "test.backup.par2", "test.backup.p2c.par2", true},
+		{"dotted volume", "test.backup.par2", "test.backup.vol00+01.par2", true},
+		{"dotted mismatch sibling", "test.backup.par2", "test.other.par2", false},
+		{"short root not dotted set", "test.par2", "test.backup.par2", false},
+
+		// malformed / non-members
+		{"different base", "test.par2", "other.par2", false},
+		{"partial base", "test.par2", "testing.par2", false},
+		{"vol no plus", "test.par2", "test.vol01.par2", false},
+		{"vol double plus", "test.par2", "test.vol00+01+02.par2", false},
+		{"vol non-digit lhs", "test.par2", "test.volab+01.par2", false},
+		{"vol non-digit rhs", "test.par2", "test.vol01+ab.par2", false},
+		{"wrong extension", "test.par2", "test.vol00+01.txt", false},
+		{"empty candidate", "test.par2", "", false},
+
+		// dirs in inputs should not affect basename matching
+		{"par2Name dir with .vol segment", "/data/.vol01/test.par2", "test.par2", true},
+		{"candidate with dir", "test.par2", "/other/test.vol05+10.par2", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expect, IsPar2SetMember(tt.par2Name, tt.candidate))
+		})
+	}
+}
+
+// Expectation: The function should meet the table's expectations.
+func Test_isDigits_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		expect bool
+	}{
+		{"single digit", "0", true},
+		{"multiple digits", "12345", true},
+		{"leading zeros", "007", true},
+		{"all zeros", "000", true},
+		{"large number", "9999999", true},
+
+		{"empty string", "", false},
+		{"letters only", "abc", false},
+		{"mixed digits letters", "12ab", false},
+		{"digits then letter", "123a", false},
+		{"letter then digits", "a123", false},
+		{"space in digits", "1 2", false},
+		{"negative sign", "-1", false},
+		{"decimal point", "1.0", false},
+		{"plus sign", "+1", false},
+		{"unicode digit", "١٢٣", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.expect, isDigits(tt.input))
+		})
+	}
+}
+
 // Expectation: The function should meet the table's expectations.
 func Test_EndsWithFold_Table(t *testing.T) {
 	t.Parallel()
