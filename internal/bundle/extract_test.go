@@ -505,3 +505,13 @@ func Test_safePath_DotDot_Error(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "escapes destination directory")
 }
+
+// Expectation: safePath should reject an exact parent-directory relative path ("..").
+func Test_safePath_ExactDotDot_Error(t *testing.T) {
+	t.Parallel()
+
+	_, err := safePath("/dest", "..")
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "escapes destination directory")
+}
