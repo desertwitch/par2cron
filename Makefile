@@ -56,7 +56,7 @@ test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3min of fuzzing
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Pack -fuzztime=3m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Manifest -fuzztime=3m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Unpack -fuzztime=3m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_UpdateManifest -fuzztime=3m ./internal/bundle
+	go test -run=^$$ -fuzz=Fuzz_Bundle_Update -fuzztime=3m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Validate -fuzztime=3m ./internal/bundle
 
 test-fuzz-long: ## Runs fuzz-related unit tests followed by 60min of fuzzing
@@ -67,8 +67,8 @@ test-fuzz-long: ## Runs fuzz-related unit tests followed by 60min of fuzzing
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Pack -fuzztime=60m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Manifest -fuzztime=60m ./internal/bundle
 	go test -run=^$$ -fuzz=Fuzz_Bundle_Unpack -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_UpdateManifest -fuzztime=60m ./internal/bundle
-	go test -run=^$$ -fuzz=Fuzz_Bundle_Validate -fuzztime=3m ./internal/bundle
+	go test -run=^$$ -fuzz=Fuzz_Bundle_Update -fuzztime=60m ./internal/bundle
+	go test -run=^$$ -fuzz=Fuzz_Bundle_Validate -fuzztime=60m ./internal/bundle
 
 test-coverage: ## Runs all coverage tests for and on the application code
 	@go test -failfast -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.tmp ./... && \
