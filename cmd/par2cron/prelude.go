@@ -37,8 +37,7 @@ func runPrelude[A any, C configMergeable[A]](in *preludeInput[A, C]) (*preludeRe
 	hasExternalArgs := (in.DashAt != -1)
 
 	if hasExternalArgs && in.DashAt < 1 {
-		return nil, fmt.Errorf("%w: need at least one <dir> path before --",
-			schema.ErrExitBadInvocation)
+		return nil, errors.New("need at least one <dir> path before --")
 	}
 
 	var externalArgs []string
@@ -51,17 +50,15 @@ func runPrelude[A any, C configMergeable[A]](in *preludeInput[A, C]) (*preludeRe
 
 	if hasExternalArgs && len(externalArgs) > 0 {
 		if !strings.HasPrefix(externalArgs[0], "-") {
-			return nil, fmt.Errorf("%w: first argument after -- does not "+
-				"start with -, provide valid par2cmdline arguments after --",
-				schema.ErrExitBadInvocation)
+			return nil, errors.New("first argument after -- does not " +
+				"start with -, provide valid par2cmdline arguments after --")
 		}
 	}
 
 	if in.ConfigPath != "" {
 		cfg, err := parseConfigFile(in.FSys, in.ConfigPath)
 		if err != nil {
-			return nil, fmt.Errorf("%w: failed to parse --config file: %w",
-				schema.ErrExitBadInvocation, err)
+			return nil, fmt.Errorf("failed to parse --config file: %w", err)
 		}
 
 		section := in.ExtractSection(cfg)
@@ -80,35 +77,41 @@ func runPrelude[A any, C configMergeable[A]](in *preludeInput[A, C]) (*preludeRe
 		}
 	}
 
-	resolved := make([]string, len(pathArgs))
-	for i, p := range pathArgs {
-		abs, err := filepath.Abs(p)
-		if err != nil {
-			return nil, fmt.Errorf("%w: failed to convert relative path to absolute: %w",
-				schema.ErrExitBadInvocation, err)
-		}
-
-		resolved[i] = abs
-		if fi, err := in.FSys.Stat(abs); err != nil {
-			return nil, fmt.Errorf("%w: failed to access root directory: %w",
-				schema.ErrExitBadInvocation, err)
-		} else if !fi.IsDir() {
-			return nil, fmt.Errorf("%w: root directory is not a directory: %s",
-				schema.ErrExitBadInvocation, abs)
-		}
+	resolved, err := resolvePathArgs(in.FSys, pathArgs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve paths: %w", err)
 	}
 
 	if validator, ok := any(in.CommandOptions).(schema.OptionsValidatable); ok {
 		if err := validator.Validate(); err != nil {
 			if errors.Is(err, schema.ErrUnsupportedGlob) {
-				return nil, fmt.Errorf("%w: %w: cannot use deep globs (/, **) in recursive mode, "+
-					"use non-recursive modes with deep globs instead (see documentation)",
-					schema.ErrExitBadInvocation, err)
+				return nil, fmt.Errorf("%w: cannot use deep globs (/, **) in recursive mode, "+
+					"use non-recursive modes with deep globs instead (see documentation)", err)
 			}
 
-			return nil, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			return nil, fmt.Errorf("failed to validate options: %w", err)
 		}
 	}
 
 	return &preludeResult{ResolvedPaths: resolved}, nil
+}
+
+func resolvePathArgs(fsys afero.Fs, pathArgs []string) ([]string, error) {
+	resolved := make([]string, len(pathArgs))
+
+	for i, p := range pathArgs {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert path to absolute: %w", err)
+		}
+
+		resolved[i] = abs
+		if fi, err := fsys.Stat(abs); err != nil {
+			return nil, fmt.Errorf("failed to access root directory: %w", err)
+		} else if !fi.IsDir() {
+			return nil, fmt.Errorf("root directory is not a directory: %s", abs)
+		}
+	}
+
+	return resolved, nil
 }

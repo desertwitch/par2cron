@@ -42,6 +42,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/desertwitch/par2cron/internal/bundler"
 	"github.com/desertwitch/par2cron/internal/create"
 	"github.com/desertwitch/par2cron/internal/info"
 	"github.com/desertwitch/par2cron/internal/logging"
@@ -128,11 +129,126 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	verifyCmd := newVerifyCmd(ctx)
 	repairCmd := newRepairCmd(ctx)
 	infoCmd := newInfoCmd(ctx)
+	bundleCmd := newBundleCmd(ctx)
 	checkConfigCmd := newCheckConfigCmd(ctx)
 
-	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, checkConfigCmd)
+	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, bundleCmd, checkConfigCmd)
 
 	return rootCmd
+}
+
+func newBundleCmd(ctx context.Context) *cobra.Command {
+	bundleCmd := &cobra.Command{
+		Use:   bundleUsage,
+		Short: bundleHelpShort,
+		Long:  bundleHelpLong,
+	}
+
+	bundlePackCmd := newBundlePackCmd(ctx)
+	bundleUnpackCmd := newBundleUnpackCmd(ctx)
+
+	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd)
+
+	return bundleCmd
+}
+
+func newBundlePackCmd(ctx context.Context) *cobra.Command {
+	var bundlerOptions bundler.Options
+	var logSettings logging.Options
+	var resolvedPaths []string
+
+	fsys := afero.NewOsFs()
+
+	_ = logSettings.LogLevel.Set("info")
+	logSettings.Logout = os.Stderr
+	logSettings.Stdout = os.Stdout
+	logSettings.Stderr = os.Stderr
+
+	bundlePackCmd := &cobra.Command{
+		Use:   bundlePackUsage,
+		Short: bundlePackHelpShort,
+		Long:  bundlePackHelpLong,
+		Args:  wrapArgsError(cobra.MinimumNArgs(1)),
+		PreRunE: func(_ *cobra.Command, args []string) error {
+			resolved, err := resolvePathArgs(fsys, args)
+			if err != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
+			resolvedPaths = slices.Clone(resolved)
+
+			return nil
+		},
+		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "op_mode", "pack"))
+
+			ctx := context.WithValue(ctx, schema.OpModeKey, "pack")
+
+			result, err := prog.BundlerService.Pack(ctx, resolvedPaths, bundlerOptions)
+			logOperationResult(err, result, prog.log.With("op", "bundle", "op_mode", "pack"))
+			if err != nil {
+				return fmt.Errorf("bundle: pack: %w", err)
+			}
+
+			return nil
+		},
+	}
+	bundlePackCmd.Flags().BoolVar(&bundlerOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	bundlePackCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
+	bundlePackCmd.Flags().BoolVarP(&bundlerOptions.IncludeExternal, "include-external", "e", false, "include PAR2 sets without a par2cron manifest (and create one)")
+	bundlePackCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
+
+	return bundlePackCmd
+}
+
+func newBundleUnpackCmd(ctx context.Context) *cobra.Command {
+	var bundlerOptions bundler.Options
+	var logSettings logging.Options
+	var resolvedPaths []string
+
+	fsys := afero.NewOsFs()
+
+	_ = logSettings.LogLevel.Set("info")
+	logSettings.Logout = os.Stderr
+	logSettings.Stdout = os.Stdout
+	logSettings.Stderr = os.Stderr
+
+	bundleUnpackCmd := &cobra.Command{
+		Use:   bundleUnpackUsage,
+		Short: bundleUnpackHelpShort,
+		Long:  bundleUnpackHelpLong,
+		Args:  wrapArgsError(cobra.MinimumNArgs(1)),
+		PreRunE: func(_ *cobra.Command, args []string) error {
+			resolved, err := resolvePathArgs(fsys, args)
+			if err != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
+			resolvedPaths = slices.Clone(resolved)
+
+			return nil
+		},
+		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "op_mode", "unpack"))
+
+			ctx := context.WithValue(ctx, schema.OpModeKey, "unpack")
+
+			result, err := prog.BundlerService.Unpack(ctx, resolvedPaths, bundlerOptions)
+			logOperationResult(err, result, prog.log.With("op", "bundle", "op_mode", "unpack"))
+			if err != nil {
+				return fmt.Errorf("bundle: unpack: %w", err)
+			}
+
+			return nil
+		},
+	}
+	bundleUnpackCmd.Flags().BoolVar(&bundlerOptions.Force, "force", false, "proceed regardless of errors/corruption (use with care)")
+	bundleUnpackCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
+	bundleUnpackCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
+
+	return bundleUnpackCmd
 }
 
 func newCheckConfigCmd(_ context.Context) *cobra.Command {
@@ -196,7 +312,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 				VisitFlags:     cmd.Flags().Visit,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
 			resolvedPaths = slices.Clone(result.ResolvedPaths)
@@ -268,7 +384,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 				VisitFlags:     cmd.Flags().Visit,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
 			resolvedPaths = slices.Clone(result.ResolvedPaths)
@@ -337,7 +453,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 				VisitFlags:     cmd.Flags().Visit,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
 			resolvedPaths = slices.Clone(result.ResolvedPaths)
@@ -404,7 +520,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 				VisitFlags:     cmd.Flags().Visit,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
 
 			resolvedPaths = slices.Clone(result.ResolvedPaths)
@@ -435,24 +551,26 @@ type Program struct {
 	VerificationService *verify.Service
 	RepairService       *repair.Service
 	InfoService         *info.Service
+	BundlerService      *bundler.Service
 
 	log *logging.Logger
 }
 
 func NewProgram(
 	fsys afero.Fs,
-	ls logging.Options,
-	runner schema.CommandRunner,
-	bundler schema.BundleHandler,
-	par2er schema.Par2Handler,
+	o logging.Options,
+	r schema.CommandRunner,
+	b schema.BundleHandler,
+	p schema.Par2Handler,
 ) *Program {
-	log := logging.NewLogger(ls)
+	log := logging.NewLogger(o)
 
 	return &Program{
-		CreationService:     create.NewService(fsys, log, runner, bundler, par2er),
-		VerificationService: verify.NewService(fsys, log, runner, bundler),
-		RepairService:       repair.NewService(fsys, log, runner, bundler),
-		InfoService:         info.NewService(fsys, log, runner, bundler),
+		CreationService:     create.NewService(fsys, log, r, b, p),
+		VerificationService: verify.NewService(fsys, log, r, b),
+		RepairService:       repair.NewService(fsys, log, r, b),
+		InfoService:         info.NewService(fsys, log, r, b),
+		BundlerService:      bundler.NewService(fsys, log, b, p),
 
 		log: log,
 	}

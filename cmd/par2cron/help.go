@@ -156,3 +156,55 @@ Analyze a 14-day cycle with 4-hour weekly runs:
 
 Output results as JSON (stdout/standard output):
   par2cron info --json /mnt/storage`
+
+const bundleUsage = "bundle"
+
+const bundleHelpShort = "Commands for interacting with par2cron's bundle format"
+
+const bundleHelpLong = `Commands for interacting with par2cron's bundle format
+
+By default par2cron creates its application-specific files
+next to each respective PAR2 set. This results in at least
+4 files per PAR2 set, which some people may find unwieldy.
+
+Bundle files offer an alternative, a format where par2cron
+files and PAR2 set are bundled into one single file, which
+in turn is compatible with both par2cron and PAR2 software.
+
+The bundle format itself acts as a mere container for PAR2
+data and was designed compliant to the PAR2 specification.
+It is resilient against most corruption, able to self-heal
+without user interaction upon detecting corrupted metadata.
+
+Normally bundle files are packed during "create" operations
+where --bundle was given or set as a marker directive. Some
+situations may require to pack existing PAR2 sets or unpack
+existing par2cron bundles, which these commands offer to do.`
+
+const bundlePackUsage = "pack [flags] <dir>... "
+
+const bundlePackHelpShort = "Packs all existing PAR2 sets of a folder into bundles"
+
+const bundlePackHelpLong = `Packs all existing PAR2 sets of a folder into bundles
+
+Walks the given directories and replaces existing PAR2 sets
+with a single bundle file. This can be helpful for switching
+already created PAR2 sets to the bundle format introduced in
+later releases of par2cron. For new sets, the create command
+should be used with --bundle or respective marker directives.`
+
+const bundleUnpackUsage = "unpack [flags] <dir>... "
+
+const bundleUnpackHelpShort = "Unpacks all existing bundles of a folder into PAR2 sets"
+
+const bundleUnpackHelpLong = `Unpacks all existing bundles of a folder into PAR2 sets
+
+Walks the given directories and unpacks existing bundles into
+their original files, meaning separation of PAR2 sets and the
+par2cron application-specific files (manifest, lockfile). This
+can be helpful for returning bundles to the default PAR2 format.
+
+By default bundles will only unpack when it can be guaranteed
+that all original files can be replicated and are not corrupted.
+In some cases it may be needed to unpack corrupted bundles, this
+is achievable (as a last resort) by using the --force argument.`

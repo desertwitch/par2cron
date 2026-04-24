@@ -56,7 +56,7 @@ func Test_runPrelude_DashAtZero_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorContains(t, err, "need at least one <dir> path before --")
 	require.Nil(t, result)
 }
@@ -382,7 +382,7 @@ func Test_runPrelude_PathNotExist_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to access root directory")
 	require.Nil(t, result)
 }
@@ -404,7 +404,7 @@ func Test_runPrelude_PathNotDirectory_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorContains(t, err, "not a directory")
 	require.Nil(t, result)
 }
@@ -426,7 +426,7 @@ func Test_runPrelude_SecondPathNotExist_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to access root directory")
 	require.Nil(t, result)
 }
@@ -473,7 +473,7 @@ func Test_runPrelude_ConfigFileNotFound_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to parse --config file")
 	require.Nil(t, result)
 }
@@ -497,7 +497,7 @@ func Test_runPrelude_ConfigParseError_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorContains(t, err, "failed to parse --config file")
 	require.Nil(t, result)
 }
@@ -525,7 +525,7 @@ func Test_runPrelude_ConfigFileValidationFails_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.Nil(t, result)
 }
 
@@ -705,7 +705,7 @@ func Test_runPrelude_ConfigMergeCausesValidateError_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
 	require.Nil(t, result)
 }
@@ -771,7 +771,7 @@ func Test_runPrelude_ValidateUnsupportedGlob_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.ErrorIs(t, err, schema.ErrUnsupportedGlob)
 	require.ErrorContains(t, err, "cannot use deep glob")
 	require.Nil(t, result)
@@ -798,7 +798,7 @@ func Test_runPrelude_ValidateGenericError_Error(t *testing.T) {
 		VisitFlags:     noVisitFlags,
 	})
 
-	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Error(t, err)
 	require.NotContains(t, err.Error(), "cannot use deep glob")
 	require.Nil(t, result)
 }
@@ -997,4 +997,147 @@ func Test_runPrelude_InfoType_Success(t *testing.T) {
 	require.NotNil(t, result)
 	require.True(t, opts.IncludeExternal)
 	require.True(t, logs.WantJSON)
+}
+
+// Expectation: A single valid directory should be resolved to its absolute path.
+func Test_resolvePathArgs_SingleDir_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	resolved, err := resolvePathArgs(fs, []string{"/data"})
+
+	require.NoError(t, err)
+	require.Len(t, resolved, 1)
+	require.True(t, filepath.IsAbs(resolved[0]))
+}
+
+// Expectation: Multiple valid directories should all be resolved.
+func Test_resolvePathArgs_MultipleDirs_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, fs.MkdirAll("/backup", 0o755))
+	require.NoError(t, fs.MkdirAll("/archive", 0o755))
+
+	resolved, err := resolvePathArgs(fs, []string{"/data", "/backup", "/archive"})
+
+	require.NoError(t, err)
+	require.Len(t, resolved, 3)
+	for _, p := range resolved {
+		require.True(t, filepath.IsAbs(p))
+	}
+}
+
+// Expectation: An empty slice should return an empty result without error.
+func Test_resolvePathArgs_EmptySlice_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	resolved, err := resolvePathArgs(fs, []string{})
+
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	require.Empty(t, resolved)
+}
+
+// Expectation: A nonexistent path should return an error.
+func Test_resolvePathArgs_PathNotExist_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	resolved, err := resolvePathArgs(fs, []string{"/nonexistent"})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to access root directory")
+	require.Nil(t, resolved)
+}
+
+// Expectation: A path that is a file (not a directory) should return an error.
+func Test_resolvePathArgs_NotADirectory_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/notadir", []byte("content"), 0o644))
+
+	resolved, err := resolvePathArgs(fs, []string{"/notadir"})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "not a directory")
+	require.Nil(t, resolved)
+}
+
+// Expectation: First path valid, second nonexistent should fail on the second path.
+func Test_resolvePathArgs_SecondPathNotExist_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	resolved, err := resolvePathArgs(fs, []string{"/data", "/nonexistent"})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "failed to access root directory")
+	require.Nil(t, resolved)
+}
+
+// Expectation: First path valid, second is a file should fail on the second path.
+func Test_resolvePathArgs_SecondPathNotDir_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/afile", []byte("content"), 0o644))
+
+	resolved, err := resolvePathArgs(fs, []string{"/data", "/afile"})
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "not a directory")
+	require.Nil(t, resolved)
+}
+
+// Expectation: Resolved paths should preserve order of input.
+func Test_resolvePathArgs_PreservesOrder_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/alpha", 0o755))
+	require.NoError(t, fs.MkdirAll("/beta", 0o755))
+	require.NoError(t, fs.MkdirAll("/gamma", 0o755))
+
+	resolved, err := resolvePathArgs(fs, []string{"/gamma", "/alpha", "/beta"})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"/gamma", "/alpha", "/beta"}, resolved)
+}
+
+// Expectation: A nil slice should return an empty result without error.
+func Test_resolvePathArgs_NilSlice_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	resolved, err := resolvePathArgs(fs, nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	require.Empty(t, resolved)
+}
+
+// Expectation: Nested directories should be resolved correctly.
+func Test_resolvePathArgs_NestedDir_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/subdir/deep", 0o755))
+
+	resolved, err := resolvePathArgs(fs, []string{"/data/subdir/deep"})
+
+	require.NoError(t, err)
+	require.Len(t, resolved, 1)
+	require.Equal(t, "/data/subdir/deep", resolved[0])
 }

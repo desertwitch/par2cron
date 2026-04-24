@@ -215,6 +215,122 @@ TESTNAME="verify dir1 clean after repair"
 assert_exit_zero "$BIN" verify "$DIR1" -- -vv
 
 # ---------------------------------------------------------------------------
+echo "==> Test: bundle pack then verify"
+DIR=$(mktest)
+touch "$DIR/_par2cron"
+echo "hello world" > "$DIR/testfile.txt"
+"$BIN" create "$DIR" -- -vv
+
+TESTNAME="bundle pack succeeds"
+assert_exit_zero "$BIN" bundle pack "$DIR"
+
+for f in "$DIR"/*.par2; do
+    case "$f" in
+        *.p2c.par2) ;;
+        *) fail "expected only bundle files after pack, found: $f" ;;
+    esac
+done
+pass "only bundle files remain after pack"
+
+TESTNAME="verify after pack succeeds"
+assert_exit_zero "$BIN" verify "$DIR" -- -vv
+
+# ---------------------------------------------------------------------------
+echo "==> Test: bundle pack then unpack then verify"
+DIR=$(mktest)
+touch "$DIR/_par2cron"
+echo "hello world" > "$DIR/testfile.txt"
+"$BIN" create "$DIR" -- -vv
+
+TESTNAME="bundle pack succeeds"
+assert_exit_zero "$BIN" bundle pack "$DIR"
+
+for f in "$DIR"/*.par2; do
+    case "$f" in
+        *.p2c.par2) ;;
+        *) fail "expected only bundle files after pack, found: $f" ;;
+    esac
+done
+pass "only bundle files remain after pack"
+
+TESTNAME="bundle unpack succeeds"
+assert_exit_zero "$BIN" bundle unpack "$DIR"
+
+if ls "$DIR"/*.p2c.par2 >/dev/null 2>&1; then
+    fail "expected bundle files to be gone after unpack"
+else
+    pass "bundle files removed after unpack"
+fi
+assert_glob_not_empty "$DIR/*.par2" "par2 files restored after unpack"
+
+TESTNAME="verify after pack/unpack succeeds"
+assert_exit_zero "$BIN" verify "$DIR" -- -vv
+
+# ---------------------------------------------------------------------------
+echo "==> Test: bundle pack then repair"
+DIR=$(mktest)
+touch "$DIR/_par2cron"
+echo "hello world" > "$DIR/testfile.txt"
+"$BIN" create "$DIR" -- -vv
+
+TESTNAME="bundle pack succeeds"
+assert_exit_zero "$BIN" bundle pack "$DIR"
+
+for f in "$DIR"/*.par2; do
+    case "$f" in
+        *.p2c.par2) ;;
+        *) fail "expected only bundle files after pack, found: $f" ;;
+    esac
+done
+pass "only bundle files remain after pack"
+
+echo "yello world" > "$DIR/testfile.txt"
+
+TESTNAME="verify detects corruption after pack"
+assert_exit_nonzero "$BIN" verify "$DIR" -- -vv
+
+TESTNAME="repair after pack succeeds"
+assert_exit_zero "$BIN" repair "$DIR" -- -vv
+assert_file_content "$DIR/testfile.txt" "hello world" "repair restores original content after pack"
+
+# ---------------------------------------------------------------------------
+echo "==> Test: bundle pack then unpack then repair"
+DIR=$(mktest)
+touch "$DIR/_par2cron"
+echo "hello world" > "$DIR/testfile.txt"
+"$BIN" create "$DIR" -- -vv
+
+TESTNAME="bundle pack succeeds"
+assert_exit_zero "$BIN" bundle pack "$DIR"
+
+for f in "$DIR"/*.par2; do
+    case "$f" in
+        *.p2c.par2) ;;
+        *) fail "expected only bundle files after pack, found: $f" ;;
+    esac
+done
+pass "only bundle files remain after pack"
+
+TESTNAME="bundle unpack succeeds"
+assert_exit_zero "$BIN" bundle unpack "$DIR"
+
+if ls "$DIR"/*.p2c.par2 >/dev/null 2>&1; then
+    fail "expected bundle files to be gone after unpack"
+else
+    pass "bundle files removed after unpack"
+fi
+assert_glob_not_empty "$DIR/*.par2" "par2 files restored after unpack"
+
+echo "yello world" > "$DIR/testfile.txt"
+
+TESTNAME="verify detects corruption after pack/unpack"
+assert_exit_nonzero "$BIN" verify "$DIR" -- -vv
+
+TESTNAME="repair after pack/unpack succeeds"
+assert_exit_zero "$BIN" repair "$DIR" -- -vv
+assert_file_content "$DIR/testfile.txt" "hello world" "repair restores original content after pack/unpack"
+
+# ---------------------------------------------------------------------------
 echo ""
 echo "==========================================="
 echo "  Results: $PASS passed, $FAIL failed"

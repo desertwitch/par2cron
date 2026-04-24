@@ -178,6 +178,192 @@ func Test_NewRootCmd_HasCheckConfigCommand_Success(t *testing.T) {
 	require.Equal(t, "check-config", checkConfigCmd.Name())
 }
 
+// Expectation: The root command should have a "check-config" subcommand.
+func Test_NewRootCmd_HasBundleCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	bundleCmd, _, err := cmd.Find([]string{"bundle"})
+
+	require.NoError(t, err)
+	require.NotNil(t, bundleCmd)
+	require.Equal(t, "bundle", bundleCmd.Name())
+}
+
+// Expectation: The bundle command should have a "pack" subcommand.
+func Test_NewBundleCmd_HasPackCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleCmd(t.Context())
+
+	bundleCmd, _, err := cmd.Find([]string{"pack"})
+
+	require.NoError(t, err)
+	require.NotNil(t, bundleCmd)
+	require.Equal(t, "pack", bundleCmd.Name())
+}
+
+// Expectation: The bundle command should have a "unpack" subcommand.
+func Test_NewBundleCmd_HasUnpackCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleCmd(t.Context())
+
+	bundleCmd, _, err := cmd.Find([]string{"unpack"})
+
+	require.NoError(t, err)
+	require.NotNil(t, bundleCmd)
+	require.Equal(t, "unpack", bundleCmd.Name())
+}
+
+// Expectation: The "bundle pack" command should have flags.
+func Test_NewBundlePackCmd_DefaultArgs_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundlePackCmd(t.Context())
+
+	require.NotNil(t, cmd)
+	require.Equal(t, "pack", cmd.Name())
+	require.True(t, cmd.HasFlags())
+}
+
+// Expectation: The "bundle pack" command should have a "skip-not-created" flag.
+func Test_NewBundlePackCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundlePackCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("skip-not-created")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.DefValue)
+}
+
+// Expectation: The "bundle pack" command should have a "json" flag.
+func Test_NewBundlePackCmd_HasJsonFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundlePackCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("json")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.Value.String())
+}
+
+// Expectation: The "bundle pack" command should have an "include-external" flag.
+func Test_NewBundlePackCmd_HasIncludeExternalFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundlePackCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("include-external")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.Value.String())
+}
+
+// Expectation: The "bundle pack" command should have a "log-level" flag.
+func Test_NewBundlePackCmd_HasLogLevelFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundlePackCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("log-level")
+	flagval := flag.Value
+
+	require.NotNil(t, flag)
+	require.Equal(t, "level", flag.Value.Type())
+	require.Equal(t, "info", flag.DefValue)
+
+	logflag, ok := flagval.(*flags.LogLevel)
+	require.True(t, ok)
+	require.Equal(t, slog.LevelInfo, logflag.Value)
+}
+
+// Expectation: The "bundle pack" command cannot run without arguments.
+func Test_NewBundlePackCmd_RequiresArgs_Error(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundlePackCmd(t.Context())
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+}
+
+// Expectation: The "bundle unpack" command should have flags.
+func Test_NewBundleUnpackCmd_DefaultArgs_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleUnpackCmd(t.Context())
+
+	require.NotNil(t, cmd)
+	require.Equal(t, "unpack", cmd.Name())
+	require.True(t, cmd.HasFlags())
+}
+
+// Expectation: The "bundle unpack" command should have a "force" flag.
+func Test_NewBundleUnpackCmd_HasForceFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleUnpackCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("force")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.DefValue)
+}
+
+// Expectation: The "bundle unpack" command should have a "json" flag.
+func Test_NewBundleUnpackCmd_HasJsonFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleUnpackCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("json")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.Value.String())
+}
+
+// Expectation: The "bundle unpack" command should have a "log-level" flag.
+func Test_NewBundleUnpackCmd_HasLogLevelFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleUnpackCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("log-level")
+	flagval := flag.Value
+
+	require.NotNil(t, flag)
+	require.Equal(t, "level", flag.Value.Type())
+	require.Equal(t, "info", flag.DefValue)
+
+	logflag, ok := flagval.(*flags.LogLevel)
+	require.True(t, ok)
+	require.Equal(t, slog.LevelInfo, logflag.Value)
+}
+
+// Expectation: The "bundle unpack" command cannot run without arguments.
+func Test_NewBundleUnpackCmd_RequiresArgs_Error(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleUnpackCmd(t.Context())
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
+}
+
 // Expectation: The "create" command should have flags.
 func Test_NewCreateCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()

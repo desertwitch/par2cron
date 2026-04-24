@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -249,4 +250,150 @@ func Test_Integration_Cron_Complex_Success(t *testing.T) {
 	verifyCmd = newRootCmd(t.Context())
 	verifyCmd.SetArgs([]string{"verify", dir1, "--", "-v"})
 	require.NoError(t, verifyCmd.Execute())
+}
+
+// Expectation: The "verify" command should verify a packed PAR2 set without error.
+//
+//nolint:paralleltest
+func Test_Integration_BundlePack_Verify_Success(t *testing.T) {
+	dir := setupTestDir(t)
+
+	createCmd := newRootCmd(t.Context())
+	createCmd.SetArgs([]string{"create", dir})
+	require.NoError(t, createCmd.Execute())
+
+	bundlePackCmd := newRootCmd(t.Context())
+	bundlePackCmd.SetArgs([]string{"bundle", "pack", dir})
+	require.NoError(t, bundlePackCmd.Execute())
+
+	par2Files, err := filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	for _, f := range par2Files {
+		require.True(t, util.IsPar2Bundle(f), "expected only bundle files after pack, found: %s", f)
+	}
+
+	verifyCmd := newRootCmd(t.Context())
+	verifyCmd.SetArgs([]string{"verify", dir})
+	require.NoError(t, verifyCmd.Execute())
+}
+
+// Expectation: The "verify" command should verify a packed then unpacked PAR2 set without error.
+//
+//nolint:paralleltest
+func Test_Integration_BundlePackUnpack_Verify_Success(t *testing.T) {
+	dir := setupTestDir(t)
+
+	createCmd := newRootCmd(t.Context())
+	createCmd.SetArgs([]string{"create", dir})
+	require.NoError(t, createCmd.Execute())
+
+	bundlePackCmd := newRootCmd(t.Context())
+	bundlePackCmd.SetArgs([]string{"bundle", "pack", dir})
+	require.NoError(t, bundlePackCmd.Execute())
+
+	par2Files, err := filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	for _, f := range par2Files {
+		require.True(t, util.IsPar2Bundle(f), "expected only bundle files after pack, found: %s", f)
+	}
+
+	bundleUnpackCmd := newRootCmd(t.Context())
+	bundleUnpackCmd.SetArgs([]string{"bundle", "unpack", dir})
+	require.NoError(t, bundleUnpackCmd.Execute())
+
+	matches, err := filepath.Glob(filepath.Join(dir, "*.p2c.par2"))
+	require.NoError(t, err)
+	require.Empty(t, matches, "expected bundle files to be gone after unpack")
+
+	par2Files, err = filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	require.NotEmpty(t, par2Files, "expected original par2 files to be restored after unpack")
+
+	verifyCmd := newRootCmd(t.Context())
+	verifyCmd.SetArgs([]string{"verify", dir})
+	require.NoError(t, verifyCmd.Execute())
+}
+
+// Expectation: The "repair" command should restore a corrupted file after a pack cycle.
+//
+//nolint:paralleltest
+func Test_Integration_BundlePack_Repair_Success(t *testing.T) {
+	dir := setupTestDir(t)
+
+	createCmd := newRootCmd(t.Context())
+	createCmd.SetArgs([]string{"create", dir})
+	require.NoError(t, createCmd.Execute())
+
+	bundlePackCmd := newRootCmd(t.Context())
+	bundlePackCmd.SetArgs([]string{"bundle", "pack", dir})
+	require.NoError(t, bundlePackCmd.Execute())
+
+	par2Files, err := filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	for _, f := range par2Files {
+		require.True(t, util.IsPar2Bundle(f), "expected only bundle files after pack, found: %s", f)
+	}
+
+	dataFile := filepath.Join(dir, "testfile.txt")
+	require.NoError(t, os.WriteFile(dataFile, []byte("yello world\n"), 0o600))
+
+	verifyCmd := newRootCmd(t.Context())
+	verifyCmd.SetArgs([]string{"verify", dir})
+	require.ErrorIs(t, verifyCmd.Execute(), schema.ErrExitRepairable)
+
+	repairCmd := newRootCmd(t.Context())
+	repairCmd.SetArgs([]string{"repair", dir})
+	require.NoError(t, repairCmd.Execute())
+
+	restored, err := os.ReadFile(dataFile)
+	require.NoError(t, err)
+	require.Equal(t, "hello world\n", string(restored))
+}
+
+// Expectation: The "repair" command should restore a corrupted file after a pack/unpack cycle.
+//
+//nolint:paralleltest
+func Test_Integration_BundlePackUnpack_Repair_Success(t *testing.T) {
+	dir := setupTestDir(t)
+
+	createCmd := newRootCmd(t.Context())
+	createCmd.SetArgs([]string{"create", dir})
+	require.NoError(t, createCmd.Execute())
+
+	bundlePackCmd := newRootCmd(t.Context())
+	bundlePackCmd.SetArgs([]string{"bundle", "pack", dir})
+	require.NoError(t, bundlePackCmd.Execute())
+
+	par2Files, err := filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	for _, f := range par2Files {
+		require.True(t, util.IsPar2Bundle(f), "expected only bundle files after pack, found: %s", f)
+	}
+
+	bundleUnpackCmd := newRootCmd(t.Context())
+	bundleUnpackCmd.SetArgs([]string{"bundle", "unpack", dir})
+	require.NoError(t, bundleUnpackCmd.Execute())
+
+	matches, err := filepath.Glob(filepath.Join(dir, "*.p2c.par2"))
+	require.NoError(t, err)
+	require.Empty(t, matches, "expected bundle files to be gone after unpack")
+
+	par2Files, err = filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	require.NotEmpty(t, par2Files, "expected original par2 files to be restored after unpack")
+
+	dataFile := filepath.Join(dir, "testfile.txt")
+	require.NoError(t, os.WriteFile(dataFile, []byte("yello world\n"), 0o600))
+
+	verifyCmd := newRootCmd(t.Context())
+	verifyCmd.SetArgs([]string{"verify", dir})
+	require.ErrorIs(t, verifyCmd.Execute(), schema.ErrExitRepairable)
+
+	repairCmd := newRootCmd(t.Context())
+	repairCmd.SetArgs([]string{"repair", dir})
+	require.NoError(t, repairCmd.Execute())
+
+	restored, err := os.ReadFile(dataFile)
+	require.NoError(t, err)
+	require.Equal(t, "hello world\n", string(restored))
 }
