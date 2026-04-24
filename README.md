@@ -640,7 +640,6 @@ verify: true
 hidden: true
 
 # Do not delete this marker file after PAR2 set creation
-# If set, no warnings will be raised about existing PAR2 sets
 # Allows re-use of marker file for growing folders (e.g. in nested mode)
 persist: true
 

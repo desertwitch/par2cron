@@ -119,7 +119,7 @@ For full override control, you can put YAML directives inside the marker file:
   verify: true          # Verify PAR2 set as part of creation
   hidden: true          # Create PAR2 set as hidden (dotfiles)
   persist: true         # Do not delete marker file after creation
-  bundle: true          # Create only one file (manifest in PAR2 set)
+  bundle: true          # Create only one file (embed manifest in PAR2)
 
 All directives are optional - only specify what you need to override.
 Refer to "Creation Glob Patterns" in documentation for supported patterns.

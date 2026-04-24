@@ -56,10 +56,15 @@ create:
   # Default: false
   hidden: false
 
-  # bundle: Bundle created PAR2 set files and par2cron-specific files
-  # Only a single (PAR2-compatible) file is created for each created PAR2 set
-  # Helps reduce filesystem clutter by embedding the manifest in the PAR2 set
-  # Changeable as needed for individual sets using the marker configuration
+  # bundle: Combine all PAR2 set files into a single bundle file per
+  # created PAR2 set, instead of creating separate files for the PAR2
+  # data and par2cron-specific files (such as manifest and lockfile)
+  # May help to reduce filesystem clutter (one file instead of four)
+  # Changeable as needed for individual sets using marker directives
+  #
+  # The bundle format is fully compatible with standard PAR2 tools &
+  # can self-heal its own metadata when detecting corrupted sections
+  # Bundles have their par2cron manifest embedded with the PAR2 data
   #
   # Default: false
   bundle: false
