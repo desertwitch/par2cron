@@ -30,9 +30,7 @@ func IsPar2Volume(path string) bool {
 }
 
 func IsPar2Bundle(path string) bool {
-	lower := strings.ToLower(filepath.Base(path))
-
-	return strings.Contains(lower, schema.BundleExtension)
+	return EndsWithFold(path, schema.BundleExtension+schema.Par2Extension)
 }
 
 func EndsWithFold(s, suffix string) bool {

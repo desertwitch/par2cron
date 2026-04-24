@@ -95,6 +95,7 @@ func Test_IsPar2Bundle_Table(t *testing.T) {
 		{"with directory", "/data/folder/test" + schema.BundleExtension + schema.Par2Extension, true},
 		{"hidden file", ".test" + schema.BundleExtension + schema.Par2Extension, true},
 		{"hidden file with directory", "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension, true},
+		{"misleading name", "x" + schema.BundleExtension + "backup" + schema.Par2Extension, false},
 
 		{"plain par2 index", "test" + schema.Par2Extension, false},
 		{"plain par2 volume", "test.vol00+01" + schema.Par2Extension, false},

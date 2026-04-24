@@ -476,6 +476,26 @@ func Test_safePath_Valid(t *testing.T) {
 	require.Equal(t, filepath.Join("/dest", "subdir/file.txt"), path)
 }
 
+// Expectation: safePath should accept misleading relative names.
+func Test_safePath_MisleadingName_Valid(t *testing.T) {
+	t.Parallel()
+
+	path, err := safePath("/dest", "subdir/..file.txt")
+
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join("/dest", "subdir/..file.txt"), path)
+}
+
+// Expectation: safePath should reject parent traversal.
+func Test_safePath_ParentTraversal_Error(t *testing.T) {
+	t.Parallel()
+
+	_, err := safePath("/dest", "../outside.txt")
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "escapes destination directory")
+}
+
 // Expectation: safePath should reject parent-directory traversal.
 func Test_safePath_DotDot_Error(t *testing.T) {
 	t.Parallel()

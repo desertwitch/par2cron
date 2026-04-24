@@ -133,7 +133,7 @@ func safePath(destDir, name string) (string, error) {
 		return "", fmt.Errorf("invalid path %q: %w", name, err)
 	}
 
-	if strings.HasPrefix(rel, "..") {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("invalid path %q: escapes destination directory", name)
 	}
 
