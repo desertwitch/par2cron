@@ -35,6 +35,7 @@
   - [`par2cron verify`](#par2cron-verify)
   - [`par2cron repair`](#par2cron-repair)
   - [`par2cron info`](#par2cron-info)
+  - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron check-config`](#par2cron-check-config)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
@@ -289,6 +290,21 @@ Flags:
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
+### `par2cron bundle`
+```
+Commands for interacting with par2cron's bundle format
+
+Usage:
+  par2cron bundle [command]
+
+Available Commands:
+  pack        Packs all existing PAR2 sets of a folder into bundles
+  unpack      Unpacks all existing bundles of a folder into PAR2 sets
+
+Flags:
+  -h, --help   help for bundle
+```
+
 ### `par2cron check-config`
 ```
 Validates the syntax of a par2cron YAML configuration
@@ -410,7 +426,7 @@ details on either operation.
 
 > **Note:** Bundles embed the par2cron manifest alongside PAR2 data. If you
 > plan to distribute PAR2 sets to third parties, use the default unbundled
-> format instead or unpack your bundles prior to distribution.
+> format instead or unpack your bundles prior to such distribution.
 
 ## Creation Arguments
 
