@@ -86,7 +86,8 @@ func isKnownPacketType(t [16]byte) bool {
 
 // packetMD5 computes md5(recovery_set_id || packet_type || body).
 func packetMD5(recoverySetID [16]byte, packetType [16]byte, body []byte) [16]byte {
-	input := make([]byte, 0, len(recoverySetID)+len(packetType)+len(body))
+	totalLen := uint64(len(recoverySetID)) + uint64(len(packetType)) + uint64(len(body))
+	input := make([]byte, 0, totalLen)
 
 	input = append(input, recoverySetID[:]...)
 	input = append(input, packetType[:]...)
