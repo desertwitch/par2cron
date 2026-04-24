@@ -166,4 +166,6 @@ Explanation of the generated files:
   |-- Pictures.par2.json      # par2cron manifest
   +-- Pictures.par2.lock      # par2cron lockfile
 
-If the amount of visible files bothers you, switch on --hidden creation.
+If the amount of visible files bothers you, you can use the --bundle argument
+during creation (available as default or as marker directive) or alternatively
+switch on --hidden creation (available as default or as marker directive).
