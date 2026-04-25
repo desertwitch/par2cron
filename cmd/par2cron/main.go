@@ -334,7 +334,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 	}
 	createCmd.Flags().BoolVar(&createOptions.HideFiles, "hidden", false, "create PAR2 sets and related files as hidden (dotfiles)")
 	createCmd.Flags().BoolVar(&logSettings.WantJSON, "json", false, "output structured logs in JSON format")
-	createCmd.Flags().BoolVarP(&createOptions.Bundle, "bundle", "b", false, "bundle created files into one single file")
+	createCmd.Flags().BoolVarP(&createOptions.Bundle, "bundle", "b", false, "bundle created PAR2 sets into one single file")
 	createCmd.Flags().BoolVarP(&createOptions.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of creation")
 	createCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	createCmd.Flags().StringVarP(&createOptions.Par2Glob, "glob", "g", "*", "PAR2 set default glob (files to include)")

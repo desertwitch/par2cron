@@ -180,6 +180,7 @@ Run for around 1 hour (as soft limit), hide created files:
   par2cron create -d 1h --hidden /mnt/storage
 
 Flags:
+  -b, --bundle              bundle created PAR2 sets into one single file
   -c, --config string       path to a par2cron YAML configuration file
   -d, --duration duration   time budget per run (best effort/soft limit)
   -g, --glob string         PAR2 set default glob (files to include) (default "*")
