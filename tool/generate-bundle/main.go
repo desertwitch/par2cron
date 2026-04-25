@@ -96,7 +96,7 @@ func (s *Service) Run(opts Options) (string, error) {
 	}
 
 	outPath := filepath.Join(opts.Dir, opts.Out)
-	if err := s.fsys.MkdirAll(filepath.Dir(outPath), 0o755); err != nil { //nolint:mnd
+	if err := s.fsys.MkdirAll(filepath.Dir(outPath), 0o777); err != nil { //nolint:mnd
 		return "", fmt.Errorf("fs error: %w", err)
 	}
 
