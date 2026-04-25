@@ -173,7 +173,7 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 		if !util.IsPar2Index(d.Name()) {
 			return nil
 		}
-		if util.IsPar2Bundle(par2path) {
+		if util.IsPar2Bundle(d.Name()) {
 			return nil
 		}
 		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
@@ -361,7 +361,7 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 		if !util.IsPar2Index(d.Name()) {
 			return nil
 		}
-		if !util.IsPar2Bundle(par2path) {
+		if !util.IsPar2Bundle(d.Name()) {
 			return nil
 		}
 		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
