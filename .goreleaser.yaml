@@ -60,10 +60,10 @@ changelog:
     - "^Merge"
   groups:
     - title: 'New features'
-      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?feat[\(:]'
       order: 0
     - title: 'Bug fixes'
-      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      regexp: '^.*?fix[\(:]'
       order: 10
     - title: 'Other work'
       order: 999
