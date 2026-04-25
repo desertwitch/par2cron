@@ -45,6 +45,7 @@ signs:
   - artifacts: checksum
 
 release:
+  draft: true
   footer: |
     Most users will want the `linux_amd64` package (see installation instructions in `QUICKGUIDE`).  
     Do note that any release files are unattended builds and served without any warranties.
