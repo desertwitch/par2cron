@@ -326,9 +326,9 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	}
 	by, err := bun.Manifest()
 	if err != nil {
-		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 		_ = bun.Close()
 		unlock()
+		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 
 		return nil, schema.ErrNonFatal
 	}
