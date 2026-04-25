@@ -8,7 +8,7 @@ VERSION := $(shell \
   if [ -n "$$tag" ]; then echo $$tag | sed 's/^v//'; \
   else git rev-parse --short=7 HEAD; fi)
 
-.PHONY: all $(BINARY) benchmark check clean debug help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
+.PHONY: all $(BINARY) benchmark check clean debug generate help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
@@ -16,9 +16,9 @@ $(BINARY): ## Builds the application
 	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -ldflags="-w -s -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION) -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
 
-benchmark: ## Runs the benchmark script
-	@$(MAKE) $(BINARY)
-	@/usr/bin/env bash ./benchmark.sh
+benchmark: ## Runs the benchmark suite
+	go test -bench=. -benchmem ./internal/bundle/
+	go test -bench=. -benchmem ./internal/par2/
 
 check: ## Runs all static analysis and tests on the application code
 	@$(MAKE) lint
@@ -30,6 +30,9 @@ clean: ## Returns the application build stage to its original state (deleting fi
 debug: ## Builds the application in debug mode (with symbols, race checks, ...)
 	CGO_ENABLED=1 GOFLAGS="-mod=vendor" go build -ldflags="-X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)-DBG" -trimpath -race -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
+
+generate: ## Re-generate the static files that are used in tests
+	@go generate ./...
 
 help: ## Shows all build related commands of the Makefile
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -46,12 +49,26 @@ test: ## Runs all written tests for and on the application code
 	@go test -failfast -race -covermode=atomic ./...
 
 test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3min of fuzzing
-	@go test -failfast ./internal/par2
-	@go test -fuzz=FuzzParse -fuzztime=3m ./internal/par2
+	go test -failfast ./internal/par2 ./internal/bundle
+	./scripts/golang-fuzz.sh Fuzz_Parse ./internal/par2 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Open ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Scan ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Pack ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Manifest ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Unpack ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Update ./internal/bundle 3m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Validate ./internal/bundle 3m
 
 test-fuzz-long: ## Runs fuzz-related unit tests followed by 60min of fuzzing
-	@go test -failfast ./internal/par2
-	@go test -fuzz=FuzzParse -fuzztime=60m ./internal/par2
+	go test -failfast ./internal/par2 ./internal/bundle
+	./scripts/golang-fuzz.sh Fuzz_Parse ./internal/par2 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Open ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Scan ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Pack ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Manifest ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Unpack ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Update ./internal/bundle 60m
+	./scripts/golang-fuzz.sh Fuzz_Bundle_Validate ./internal/bundle 60m
 
 test-coverage: ## Runs all coverage tests for and on the application code
 	@go test -failfast -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.tmp ./... && \

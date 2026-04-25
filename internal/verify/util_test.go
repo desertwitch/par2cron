@@ -8,6 +8,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ func Test_Service_Stats_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	timeA := time.Now().Add(-5 * time.Minute)
 	timeB := time.Now().Add(-10 * time.Minute)
@@ -94,7 +95,7 @@ func Test_Service_Stats_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	js := prog.Stats([]*Job{})
 
@@ -122,7 +123,7 @@ func Test_Service_Stats_WithUnknownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	jobs := []*Job{
 		{manifest: nil},
@@ -157,7 +158,7 @@ func Test_Service_Stats_IdentifyLargestDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
 
 	job1 := &Job{
 		par2Path: "/data/job1" + schema.Par2Extension,

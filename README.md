@@ -35,10 +35,12 @@
   - [`par2cron verify`](#par2cron-verify)
   - [`par2cron repair`](#par2cron-repair)
   - [`par2cron info`](#par2cron-info)
+  - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron check-config`](#par2cron-check-config)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
 - [State Management](#state-management)
+  - [Creation as Bundle](#creation-as-bundle)
 - [Creation Arguments](#creation-arguments)
 - [Creation Modes](#creation-modes)
   - [`folder` mode (default)](#folder-mode-default)
@@ -178,6 +180,7 @@ Run for around 1 hour (as soft limit), hide created files:
   par2cron create -d 1h --hidden /mnt/storage
 
 Flags:
+  -b, --bundle              bundle created PAR2 sets into one single file
   -c, --config string       path to a par2cron YAML configuration file
   -d, --duration duration   time budget per run (best effort/soft limit)
   -g, --glob string         PAR2 set default glob (files to include) (default "*")
@@ -288,6 +291,21 @@ Flags:
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
+### `par2cron bundle`
+```
+Commands for interacting with par2cron's bundle format
+
+Usage:
+  par2cron bundle [command]
+
+Available Commands:
+  pack        Packs all existing PAR2 sets of a folder into bundles
+  unpack      Unpacks all existing bundles of a folder into PAR2 sets
+
+Flags:
+  -h, --help   help for bundle
+```
+
 ### `par2cron check-config`
 ```
 Validates the syntax of a par2cron YAML configuration
@@ -369,11 +387,47 @@ verification cycle. While the lockfile ensures multiple par2cron instances on
 the same computer do not collide, you need to ensure that shared locations are
 only ever accessed by one par2cron instance at a time (network/cloud drives).
 
-The `--hidden` argument of `create` can be useful to hide the PAR2 sets, if
-the amount of files is something that can be a bother for file organization.
+If the amount of files bothers you, you can use the `--bundle` argument of
+`create` to bundle all creation-related files into one single bundle file.
+The bundle file then contains both the PAR2 files, as well as the par2cron
+manifest, while remaining compatible with both par2cron and PAR2 software.
+
+The `--hidden` argument of `create` is an alternative, hiding PAR2 sets.
 If opting for this, it should be noted that some backup programs will not
 transfer hidden files (dotfiles) without being configured to do so, so you
 should consider this when moving around par2cron-protected directory trees.
+
+### Creation as Bundle
+
+By default, a par2cron-created PAR2 set consists of several files: the index
+file, one or more recovery volumes, a manifest (`*.par2.json`) and a lockfile
+(`*.par2.lock`). This can result in four or more files per protected directory.
+
+The `--bundle` flag on `create` (or `bundle: true` as marker directive) packs
+everything into a single `.p2c.par2` file instead. This bundle embeds the PAR2
+recovery data alongside par2cron's manifest, while remaining fully compatible
+with standard PAR2 software and par2cron's `verify` and `repair` operations.
+
+| Without `--bundle`         | With `--bundle`           |
+| :------------------------- | :------------------------ |
+| `Pictures.par2`            | `Pictures.p2c.par2`       |
+| `Pictures.vol00+01.par2`   |                           |
+| `Pictures.par2.json`       |                           |
+| `Pictures.par2.lock`       |                           |
+
+The bundle format uses [application-specific packet types](/internal/bundle/_specification.txt) as permitted by the
+PAR2 specification, so PAR2 tools simply skip over par2cron's metadata packets
+while still reading the embedded recovery data normally. The format is designed
+to be resilient against corruption and self-healing without user interaction.
+
+Existing unbundled PAR2 sets can be converted after the fact using the `par2cron
+bundle pack` command. The reverse operation, `par2cron bundle unpack`, extracts
+the original individual files from a bundle. See `par2cron bundle --help` for
+details on either operation.
+
+> **Note:** Bundles embed the par2cron manifest alongside PAR2 data. If you
+> plan to distribute PAR2 sets to third parties, use the default unbundled
+> format instead or unpack your bundles prior to such distribution.
 
 ## Creation Arguments
 
@@ -640,9 +694,12 @@ verify: true
 hidden: true
 
 # Do not delete this marker file after PAR2 set creation
-# If set, no warnings will be raised about existing PAR2 sets
 # Allows re-use of marker file for growing folders (e.g. in nested mode)
 persist: true
+
+# Create only one single (PAR2-compatible) file per PAR2 set
+# Reduces filesystem clutter by embedding par2cron manifest in PAR2 set
+bundle: true
 ```
 
 The directives are designed to be easy to remember, although for the rare case
@@ -680,8 +737,9 @@ the marker file approach (equals the process for new sets of protectable data).
 
 A par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in
-directories, which can be mitigated by using the `--hidden` argument with
-`create` (read more about this in the above section *State Management*).
+directories, which can be mitigated by using the `--bundle` or `--hidden`
+arguments with `create` (read more about this in the above section *State
+Management*).
 
 While the lockfile ensures multiple par2cron instances on the same computer
 do not collide, you need to ensure that shared (network) locations are only

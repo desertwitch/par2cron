@@ -119,6 +119,7 @@ For full override control, you can put YAML directives inside the marker file:
   verify: true          # Verify PAR2 set as part of creation
   hidden: true          # Create PAR2 set as hidden (dotfiles)
   persist: true         # Do not delete marker file after creation
+  bundle: true          # Create only one file (embed manifest in PAR2)
 
 All directives are optional - only specify what you need to override.
 Refer to "Creation Glob Patterns" in documentation for supported patterns.
@@ -165,4 +166,6 @@ Explanation of the generated files:
   |-- Pictures.par2.json      # par2cron manifest
   +-- Pictures.par2.lock      # par2cron lockfile
 
-If the amount of visible files bothers you, switch on --hidden creation.
+If the amount of visible files bothers you, you can use the --bundle argument
+during creation (available as default or as marker directive) or alternatively
+switch on --hidden creation (available as default or as marker directive).

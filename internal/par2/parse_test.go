@@ -28,6 +28,7 @@ var (
 		{"testdata/simple_multipar.par2", []string{"test.txt"}},
 		{"testdata/simple_quickpar.par2", []string{"test.txt"}},
 		{"testdata/simple_par2cmdlineturbo.par2", []string{"test.txt"}},
+		{"testdata/simple_parpar.par2", []string{"file1.bin", "file2.bin", "file3.bin"}},
 		{"testdata/recursive_par2cmdline.par2", []string{"shallow.txt", "test/test.txt"}},
 		{"testdata/recursive_multipar.par2", []string{"Update_English.txt", "tool/ReadMe.txt"}},
 		{"testdata/recursive_par2cmdlineturbo.par2", []string{"dir/test.txt", "test.txt"}},
@@ -89,7 +90,7 @@ var (
 // Fuzz Test
 // ============================================================================
 
-func FuzzParse(f *testing.F) {
+func Fuzz_Parse(f *testing.F) {
 	// Synthetic PAR2 files constructed for testing
 	for _, seed := range syntheticSeeds {
 		f.Add(seed)

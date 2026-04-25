@@ -2,6 +2,7 @@ package create
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -43,6 +45,7 @@ type Options struct {
 	Par2Verify  bool
 	MaxDuration flags.Duration
 	HideFiles   bool
+	Bundle      bool
 }
 
 func (o *Options) SetPar2Args(args []string) {
@@ -66,12 +69,14 @@ func (o *Options) Validate() error {
 type Service struct {
 	fsys afero.Fs
 
-	log    *logging.Logger
-	runner schema.CommandRunner
-	walker schema.FilesystemWalker
+	log     *logging.Logger
+	runner  schema.CommandRunner
+	walker  schema.FilesystemWalker
+	bundler schema.BundleHandler
+	par2er  schema.Par2Handler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, par2er schema.Par2Handler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -80,10 +85,12 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 
 	return &Service{
-		fsys:   fsys,
-		log:    log.With("op", "create"),
-		runner: runner,
-		walker: walker,
+		fsys:    fsys,
+		log:     log.With("op", "create"),
+		runner:  runner,
+		walker:  walker,
+		bundler: bundler,
+		par2er:  par2er,
 	}
 }
 
@@ -101,6 +108,7 @@ type Job struct {
 	lockPath      string
 	manifestName  string
 	manifestPath  string
+	asBundle      bool
 }
 
 func NewJob(markerPath string, cfg MarkerConfig) *Job {
@@ -112,6 +120,7 @@ func NewJob(markerPath string, cfg MarkerConfig) *Job {
 	}
 	cj.hiddenFiles = *cfg.HideFiles
 	cj.markerPersist = *cfg.PersistMarker
+	cj.asBundle = *cfg.Bundle
 
 	cj.par2Mode = cfg.Par2Mode.Value
 	cj.par2Args = slices.Clone(*cfg.Par2Args)
@@ -371,13 +380,13 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 		}
 		// par2cmdline -R will include .par2 in subdirs, so keep this consistent.
 		if job.par2Mode != schema.CreateRecursiveMode {
-			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension) {
+			if util.EndsWithFold(f, schema.Par2Extension) {
 				continue
 			}
-			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.LockExtension) {
+			if util.EndsWithFold(f, schema.Par2Extension+schema.LockExtension) {
 				continue
 			}
-			if strings.HasSuffix(strings.ToLower(f), schema.Par2Extension+schema.ManifestExtension) {
+			if util.EndsWithFold(f, schema.Par2Extension+schema.ManifestExtension) {
 				continue
 			}
 		}
@@ -434,15 +443,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 }
 
 func (prog *Service) createCombined(ctx context.Context, job *Job, elements []schema.FsElement) error {
-	logger := prog.creationLogger(ctx, job, job.par2Path)
-
-	if _, err := util.LstatIfPossible(prog.fsys, job.par2Path); err == nil {
-		if job.markerPersist {
-			logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
-		} else {
-			logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-		}
-
+	if prog.par2AlreadyExists(ctx, job) {
 		return nil
 	}
 
@@ -450,6 +451,7 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 		return err
 	}
 
+	logger := prog.creationLogger(ctx, job, job.par2Path)
 	logger.Info("Succeeded to create PAR2")
 
 	return nil
@@ -480,15 +482,8 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 		ctx := context.WithValue(ctx, schema.MposKey, mpos)
 
 		j := newNestedModeJob(*job, dir)
-		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
-		if _, err := util.LstatIfPossible(prog.fsys, j.par2Path); err == nil {
-			if job.markerPersist {
-				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
-			} else {
-				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-			}
-
+		if prog.par2AlreadyExists(ctx, &j) {
 			continue
 		}
 
@@ -498,6 +493,7 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 			continue
 		}
 
+		logger := prog.creationLogger(ctx, &j, j.par2Path)
 		logger.Info("Succeeded to create PAR2")
 	}
 
@@ -521,15 +517,8 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 
 		j := newFileModeJob(*job, f.Path)
 		je := []schema.FsElement{elements[i]}
-		logger := prog.creationLogger(ctx, &j, j.par2Path)
 
-		if _, err := util.LstatIfPossible(prog.fsys, j.par2Path); err == nil {
-			if job.markerPersist {
-				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
-			} else {
-				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-			}
-
+		if prog.par2AlreadyExists(ctx, &j) {
 			continue
 		}
 
@@ -539,6 +528,7 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 			continue
 		}
 
+		logger := prog.creationLogger(ctx, &j, j.par2Path)
 		logger.Info("Succeeded to create PAR2")
 	}
 
@@ -607,15 +597,25 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		logger.Warn("Failed to hash PAR2 for par2cron manifest (will retry on verify)", "error", err)
 	} else {
 		mf.SHA256 = sha256hash
-		if err := util.WriteManifest(prog.fsys, job.manifestPath, mf); err != nil {
+	}
+
+	if job.asBundle {
+		if err := prog.packAsBundle(ctx, job, mf); err != nil {
+			needsCleanup = true
+			logger.Error("Failed to bundle created PAR2 files (will retry next run)", "error", err)
+
+			return fmt.Errorf("failed to bundle: %w", err)
+		}
+	} else {
+		if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, mf, false); err != nil {
 			logger := prog.creationLogger(ctx, job, job.manifestPath)
 			logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
 		}
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.log, prog.runner)
-		vj := verify.NewJob(job.par2Path, verify.Options{}, mf)
+		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
+		vj := verify.NewJob(job.par2Path, verify.Options{}, mf, job.asBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {
 			needsCleanup = true
@@ -627,77 +627,64 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 	return nil
 }
 
-func (prog *Service) cleanupAfterFailure(ctx context.Context, job *Job) {
-	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
-	if err != nil {
-		logger := prog.creationLogger(ctx, job, job.workingDir)
-		logger.Warn("Failed to read directory for cleanup (needs manual deletion)", "error", err)
+func (prog *Service) packAsBundle(ctx context.Context, job *Job, mf *schema.Manifest) error {
+	logger := prog.creationLogger(ctx, job, job.par2Path)
 
-		return
+	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
+	if err != nil {
+		return fmt.Errorf("failed to find created files: %w", err)
 	}
 
-	baseName := strings.TrimSuffix(job.par2Name, schema.Par2Extension) + "."
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
+	p, err := prog.par2er.ParseFile(prog.fsys, job.par2Path, true)
+	if err != nil {
+		return fmt.Errorf("failed to parse index par2: %w", err)
+	}
 
-		name := entry.Name()
+	logger.Debug("Parsed PAR2 index file", "sets", len(p.Sets))
+	if len(p.Sets) != 1 || p.Sets[0].MainPacket == nil {
+		return errors.New("failed to parse index par2: malformed file")
+	}
 
-		if !strings.HasPrefix(name, baseName) {
-			continue
-		}
-		if !util.IsPar2Index(name) && !util.IsPar2Volume(name) {
-			continue
-		}
+	recoverySetID := p.Sets[0].MainPacket.SetID
+	logger.Debug("Parsed PAR2 main packet", "setID", recoverySetID)
 
-		path := filepath.Join(job.workingDir, name)
+	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
+	bundleName := baseName + schema.BundleExtension + schema.Par2Extension
+	bundlePath := filepath.Join(job.workingDir, bundleName)
+
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %w", err)
+	}
+
+	manifest := bundle.ManifestInput{
+		Name:  job.manifestName,
+		Bytes: manifestData,
+	}
+
+	if err := prog.bundler.Pack(prog.fsys, bundlePath, recoverySetID, manifest, files); err != nil {
+		return fmt.Errorf("failed to pack bundle: %w", err)
+	}
+
+	for _, file := range files {
+		if err := prog.fsys.Remove(file.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			logger := prog.creationLogger(ctx, job, file.Path)
+			logger.Warn("Failed to cleanup a file after bundling (needs manual deletion)", "error", err)
+		}
+	}
+
+	for _, path := range []string{job.manifestPath, job.lockPath} {
 		if err := prog.fsys.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			logger := prog.creationLogger(ctx, job, path)
-			logger.Warn("Failed to cleanup a file after failure (needs manual deletion)", "error", err)
+			logger.Warn("Failed to cleanup a file after bundling (needs manual deletion)", "error", err)
 		}
 	}
 
-	for _, f := range []string{job.manifestPath, job.lockPath} {
-		if err := prog.fsys.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			logger := prog.creationLogger(ctx, job, f)
-			logger.Warn("Failed to cleanup a file after failure (needs manual deletion)", "error", err)
-		}
-	}
-}
-
-func (prog *Service) considerRecursive(opts *Options) error {
-	if opts.Par2Mode.Value != schema.CreateRecursiveMode && slices.Contains(opts.Par2Args, "-R") {
-		prog.log.Error(
-			"par2 default argument -R needs par2cron default --mode recursive (perhaps you meant -r, for redundancy?)",
-			"error", errWrongModeArgument,
-			"mode", opts.Par2Mode.Value,
-			"args", opts.Par2Args,
-		)
-
-		return errWrongModeArgument
-	}
-
-	if opts.Par2Mode.Value == schema.CreateRecursiveMode && !slices.Contains(opts.Par2Args, "-R") {
-		before := slices.Clone(opts.Par2Args)
-		opts.Par2Args = append(opts.Par2Args, "-R")
-
-		prog.log.Info(
-			"Adding -R to par2 default arguments (due to --mode recursive)",
-			"mode", opts.Par2Mode.Value,
-			"args-before", before,
-			"args-after", opts.Par2Args,
-		)
-	}
+	job.par2Name = bundleName
+	job.par2Path = bundlePath
+	job.manifestName = bundleName
+	job.manifestPath = bundlePath
+	job.lockPath = bundlePath
 
 	return nil
-}
-
-func getPaths(files []schema.FsElement) []string {
-	paths := make([]string, len(files))
-	for i, f := range files {
-		paths[i] = f.Path
-	}
-
-	return paths
 }

@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/bundle"
+	"github.com/desertwitch/par2cron/internal/par2"
+	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
 
@@ -158,4 +161,106 @@ func CreateExitError(t *testing.T, ctx context.Context, code int) error {
 	cmd.WaitDelay = 5 * time.Second //nolint:mnd
 
 	return cmd.Run()
+}
+
+// MockPar2Handler is a mock implementation of schema.Par2Handler.
+type MockPar2Handler struct {
+	ParseFileFunc func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error)
+}
+
+func (m *MockPar2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+	if m.ParseFileFunc != nil {
+		return m.ParseFileFunc(fsys, path, panicAsErr)
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+// MockBundleHandler is a mock implementation of schema.BundleHandler.
+type MockBundleHandler struct {
+	OpenFunc func(fsys afero.Fs, bundlePath string) (schema.Bundle, error)
+	PackFunc func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
+}
+
+func (m *MockBundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+	if m.OpenFunc != nil {
+		return m.OpenFunc(fsys, bundlePath)
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+	if m.PackFunc != nil {
+		return m.PackFunc(fsys, bundlePath, recoverySetID, manifest, files)
+	}
+
+	return errors.New("not implemented")
+}
+
+// MockBundle is a mock implementation of schema.Bundle.
+type MockBundle struct {
+	CloseFunc         func() error
+	IsRebuiltValue    *bool
+	ManifestFunc      func() ([]byte, error)
+	UnpackFunc        func(fsys afero.Fs, destDir string, strict bool) ([]string, error)
+	UpdateFunc        func(manifest []byte) error
+	ValidateFunc      func(strict bool) error
+	ValidateIndexFunc func() error
+}
+
+func (m *MockBundle) Close() error {
+	if m.CloseFunc != nil {
+		return m.CloseFunc()
+	}
+
+	return nil
+}
+
+func (m *MockBundle) Manifest() ([]byte, error) {
+	if m.ManifestFunc != nil {
+		return m.ManifestFunc()
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundle) Update(manifest []byte) error {
+	if m.UpdateFunc != nil {
+		return m.UpdateFunc(manifest)
+	}
+
+	return errors.New("not implemented")
+}
+
+func (m *MockBundle) Validate(strict bool) error {
+	if m.ValidateFunc != nil {
+		return m.ValidateFunc(strict)
+	}
+
+	return nil
+}
+
+func (m *MockBundle) ValidateIndex() error {
+	if m.ValidateIndexFunc != nil {
+		return m.ValidateIndexFunc()
+	}
+
+	return nil
+}
+
+func (m *MockBundle) IsRebuilt() bool {
+	if m.IsRebuiltValue != nil {
+		return *m.IsRebuiltValue
+	}
+
+	return false
+}
+
+func (m *MockBundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+	if m.UnpackFunc != nil {
+		return m.UnpackFunc(fsys, destDir, strict)
+	}
+
+	return nil, errors.New("not implemented")
 }

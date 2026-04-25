@@ -1,0 +1,120 @@
+name: bundle-tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-verify-multipar-latest:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.1
+          cache: false
+
+      - name: Verify generated bundles with MultiPar
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/bundle-windows-verify-multipar-latest.ps1
+
+  windows-repair-multipar-latest:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.1
+          cache: false
+
+      - name: Repair using generated bundles with MultiPar
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/bundle-windows-repair-multipar-latest.ps1
+
+  windows-verify-par2cmdline-latest:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.1
+          cache: false
+
+      - name: Verify generated bundles with par2cmdline
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/bundle-windows-verify-par2cmdline-latest.ps1
+
+  windows-repair-par2cmdline-latest:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.1
+          cache: false
+
+      - name: Repair using generated bundles with par2cmdline
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/bundle-windows-repair-par2cmdline-latest.ps1
+
+  linux-verify-par2cmdline-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.1
+          cache: false
+
+      - name: Verify generated bundles with par2cmdline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/bundle-linux-verify-par2cmdline-latest.sh
+
+  linux-repair-par2cmdline-latest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.1
+          cache: false
+
+      - name: Repair using generated bundles with par2cmdline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/bundle-linux-repair-par2cmdline-latest.sh

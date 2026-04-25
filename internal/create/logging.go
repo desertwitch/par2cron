@@ -28,8 +28,10 @@ func (prog *Service) creationLogger(ctx context.Context, job *Job, path any) *lo
 			"args", job.par2Args,
 			"glob", job.par2Glob,
 			"mode", job.par2Mode,
+			"bundle", job.asBundle,
 			"hidden", job.hiddenFiles,
-			"verify", job.par2Verify)
+			"verify", job.par2Verify,
+			"persist", job.markerPersist)
 	}
 
 	return prog.log.With(logElems...)

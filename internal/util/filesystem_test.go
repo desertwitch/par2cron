@@ -2,9 +2,11 @@ package util
 
 import (
 	"encoding/json"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -130,7 +132,7 @@ func Test_WriteManifest_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
-	err := WriteManifest(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf)
+	err := WriteManifest(fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
 
 	require.NoError(t, err)
 
@@ -151,7 +153,7 @@ func Test_WriteManifest_UpdatesManifestVersion_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.ManifestVersion = "0" // simulate old version
 
-	err := WriteManifest(fsys, "/data/test"+schema.ManifestExtension, mf)
+	err := WriteManifest(fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
 	require.NoError(t, err)
 
 	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
@@ -172,7 +174,7 @@ func Test_WriteManifest_UpdatesProgramVersion_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.ProgramVersion = "0.0.0" // simulate old version
 
-	err := WriteManifest(fsys, "/data/test"+schema.ManifestExtension, mf)
+	err := WriteManifest(fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
 	require.NoError(t, err)
 
 	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
@@ -194,12 +196,233 @@ func Test_WriteManifest_WriteFails_Error(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
-	err := WriteManifest(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf)
+	err := WriteManifest(fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
 
 	require.ErrorContains(t, err, "failed to write")
 
 	exists, _ := afero.Exists(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension)
 	require.False(t, exists)
+}
+
+// Expectation: The manifest should be written into the bundle via Open and Update.
+func Test_WriteManifest_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.SHA256 = "abc123"
+
+	var updateCalled bool
+	var capturedData []byte
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			updateCalled = true
+			capturedData = data
+
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, bundlePath)
+
+			return mockBundle, nil
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+
+	require.NoError(t, err)
+	require.True(t, updateCalled)
+
+	var written schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedData, &written))
+	require.Equal(t, "abc123", written.SHA256)
+	require.Equal(t, schema.ProgramVersion, written.ProgramVersion)
+	require.Equal(t, schema.ManifestVersion, written.ManifestVersion)
+}
+
+// Expectation: The manifest version should be updated to current schema version when writing to a bundle.
+func Test_WriteManifest_Bundle_UpdatesVersions_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.ProgramVersion = "0.0.0"
+	mf.ManifestVersion = "0"
+
+	var capturedData []byte
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			capturedData = data
+
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+	require.NoError(t, err)
+
+	var written schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedData, &written))
+	require.Equal(t, schema.ProgramVersion, written.ProgramVersion)
+	require.Equal(t, schema.ManifestVersion, written.ManifestVersion)
+}
+
+// Expectation: An error should be returned when the bundle cannot be opened.
+func Test_WriteManifest_Bundle_OpenFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return nil, errors.New("corrupt bundle")
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+
+	require.ErrorContains(t, err, "failed to open bundle")
+}
+
+// Expectation: An error should be returned when the bundle update fails.
+func Test_WriteManifest_Bundle_UpdateFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			return errors.New("write failed")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+
+	require.ErrorContains(t, err, "failed to update bundle")
+}
+
+// Expectation: Close should be called even when Update succeeds.
+func Test_WriteManifest_Bundle_CloseCalled_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	var closeCalled bool
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			closeCalled = true
+
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	require.NoError(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+	require.True(t, closeCalled)
+}
+
+// Expectation: Close should be called even when Update fails.
+func Test_WriteManifest_Bundle_CloseCalledOnUpdateFailure_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	var closeCalled bool
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error {
+			return errors.New("update failed")
+		},
+		CloseFunc: func() error {
+			closeCalled = true
+
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	require.Error(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+	require.True(t, closeCalled)
+}
+
+// Expectation: No standalone file should be written to disk when writing to a bundle.
+func Test_WriteManifest_Bundle_NoStandaloneFile_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+
+	mockBundle := &testutil.MockBundle{
+		UpdateFunc: func(data []byte) error { return nil },
+		CloseFunc:  func() error { return nil },
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	require.NoError(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+
+	// No file should be written to disk - the manifest lives inside the bundle.
+	entries, err := afero.ReadDir(fs, "/data")
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }
 
 // Expectation: The walker should visit all files and directories.
@@ -849,4 +1072,176 @@ func Test_HasGlobSymlinks_OsFs_HasLstat_Table(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Expectation: The function should find only PAR2 index and volume files matching the base name.
+func Test_FindBundleableFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("mf"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("lck"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+schema.Par2Extension, []byte("vol2"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+	require.Len(t, files, 3)
+
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	require.Contains(t, names, "test"+schema.Par2Extension)
+	require.Contains(t, names, "test.vol00+01"+schema.Par2Extension)
+	require.Contains(t, names, "test.vol01+02"+schema.Par2Extension)
+}
+
+// Expectation: The function should find only PAR2 index and volume files matching the base name.
+func Test_FindBundleableFiles_UpperCase_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension), []byte("index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension)+schema.ManifestExtension, []byte("mf"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+strings.ToUpper(schema.Par2Extension)+schema.LockExtension, []byte("lck"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+strings.ToUpper(schema.Par2Extension), []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+strings.ToUpper(schema.Par2Extension), []byte("vol2"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+	require.Len(t, files, 3)
+
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	require.Contains(t, names, "test"+strings.ToUpper(schema.Par2Extension))
+	require.Contains(t, names, "test.vol00+01"+strings.ToUpper(schema.Par2Extension))
+	require.Contains(t, names, "test.vol01+02"+strings.ToUpper(schema.Par2Extension))
+}
+
+// Expectation: The function should not include files that do not match the base name prefix.
+func Test_FindBundleableFiles_IgnoresUnrelatedFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/other"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test1"+schema.Par2Extension, []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("manifest"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("lock"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	require.Contains(t, names, "test"+schema.Par2Extension)
+	require.Contains(t, names, "test.vol00+01"+schema.Par2Extension)
+	require.NotContains(t, names, "other"+schema.Par2Extension)
+	require.NotContains(t, names, "test1"+schema.Par2Extension)
+}
+
+// Expectation: The function should not include directories.
+func Test_FindBundleableFiles_IgnoresDirectories_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/test.subdir", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, "test"+schema.Par2Extension, files[0].Name)
+}
+
+// Expectation: The function should not include files that already have the bundle extension.
+func Test_FindBundleableFiles_IgnoresBundleFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	require.Equal(t, "test"+schema.Par2Extension, files[0].Name)
+}
+
+// Expectation: The function should return an error when no PAR2 files match.
+func Test_FindBundleableFiles_NoMatches_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/other.txt", []byte("content"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.ErrorContains(t, err, "no files to bundle")
+	require.Nil(t, files)
+}
+
+// Expectation: The function should return correct file paths.
+func Test_FindBundleableFiles_CorrectPaths_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+
+	for _, f := range files {
+		require.True(t, strings.HasPrefix(f.Path, "/data/folder/"))
+		require.Equal(t, filepath.Join("/data/folder", f.Name), f.Path)
+	}
+}
+
+// Expectation: The function should work with hidden file names (dot prefix).
+func Test_FindBundleableFiles_HiddenFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/.test"+schema.Par2Extension, []byte("index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/.test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("other"), 0o644))
+
+	files, err := FindBundleableFiles(fs, ".test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	require.Contains(t, names, ".test"+schema.Par2Extension)
+	require.Contains(t, names, ".test.vol00+01"+schema.Par2Extension)
+	require.NotContains(t, names, "test"+schema.Par2Extension)
+}
+
+// Expectation: The function should return an error when the working directory cannot be read.
+func Test_FindBundleableFiles_ReadDirFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/missing")
+	require.ErrorContains(t, err, "failed to read directory")
+	require.Nil(t, files)
 }

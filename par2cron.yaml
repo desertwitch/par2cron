@@ -56,6 +56,19 @@ create:
   # Default: false
   hidden: false
 
+  # bundle: Combine all PAR2 set files into a single bundle file per
+  # created PAR2 set, instead of creating separate files for the PAR2
+  # data and par2cron-specific files (such as manifest and lockfile)
+  # May help to reduce filesystem clutter (one file instead of four)
+  # Changeable as needed for individual sets using marker directives
+  #
+  # The bundle format is fully compatible with standard PAR2 tools &
+  # can self-heal its own metadata when detecting corrupted sections
+  # Bundles have their par2cron manifest embedded with the PAR2 data
+  #
+  # Default: false
+  bundle: false
+
   # log-level: Minimum level of emitted logs
   #
   # Options: "debug", "info", "warn", "error"

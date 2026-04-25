@@ -4,6 +4,7 @@ linters:
   disable:
     - depguard
     - dupl
+    - err113
     - exhaustruct
     - gochecknoglobals
     - noinlineerr
@@ -45,6 +46,7 @@ linters:
       - path: _test\.go
         linters:
           - dupl
+          - dogsled
           - err113
           - funlen
           - gosmopolitan

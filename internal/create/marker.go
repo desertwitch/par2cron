@@ -25,6 +25,7 @@ type MarkerConfig struct {
 	Par2Verify    *bool             `yaml:"verify"`
 	HideFiles     *bool             `yaml:"hidden"`
 	PersistMarker *bool             `yaml:"persist"`
+	Bundle        *bool             `yaml:"bundle"`
 }
 
 func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
@@ -36,6 +37,7 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	par2Mode := opts.Par2Mode
 	par2Verify := opts.Par2Verify
 	hideFiles := opts.HideFiles
+	asBundle := opts.Bundle
 	persistMarker := false
 
 	cfg.Par2Name = &par2Name
@@ -44,6 +46,7 @@ func NewMarkerConfig(markerPath string, opts Options) *MarkerConfig {
 	cfg.Par2Mode = &par2Mode
 	cfg.Par2Verify = &par2Verify
 	cfg.HideFiles = &hideFiles
+	cfg.Bundle = &asBundle
 	cfg.PersistMarker = &persistMarker
 
 	return cfg
@@ -131,7 +134,7 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 
 	if yamlConfig.Par2Name != nil {
 		name := *yamlConfig.Par2Name
-		if !strings.HasSuffix(strings.ToLower(name), schema.Par2Extension) {
+		if !util.EndsWithFold(name, schema.Par2Extension) {
 			name += schema.Par2Extension
 		}
 
@@ -181,6 +184,13 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 		logger.Debug("Parsed setting from marker file contents")
 
 		cfg.PersistMarker = yamlConfig.PersistMarker
+	}
+
+	if yamlConfig.Bundle != nil {
+		logger := prog.markerLogger(markerPath, "bundle", *yamlConfig.Bundle)
+		logger.Debug("Parsed setting from marker file contents")
+
+		cfg.Bundle = yamlConfig.Bundle
 	}
 
 	return nil

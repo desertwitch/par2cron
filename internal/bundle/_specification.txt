@@ -1,0 +1,139 @@
+PAR2CRON APPLICATION BUNDLE SPECIFICATION
+extending on Parity Volume Set Specification 2.0
+making use of the "Application-Specific Packet Type"
+
+Specification version: 1.0
+Last updated: 18.04.2026 (desertwitch)
+
+This specification may not be modified while advertised under the same or an
+ambiguous similar name without agreement of the par2cron project maintainers
+
+PURPOSE AND TARGET:
+
+A "bundle" should provide the par2cron application with a means to pack
+one or multiple PAR2 files plus its own application-specific data as one
+single "bundle" file, fully compatible both to any PAR2 software and the
+par2cron application. The par2cron-specific data is effectively embedded
+into existing PAR2 files, with the option to unpack any bundle back into
+one manifest JSON file for par2cron and each of them original PAR2 files
+
+GENERAL RULES AND CONVENTIONS:
+
+File Format:
+- Bundle files must end with ".p2c.par2" as suffix
+- Everything must be little endian, 4-byte aligned
+- Strings are expected as UTF-8 (except in raw_stream)
+- String length fields reflect actual len(str) without padding
+  A filename "par2cron.file" would have a value 13 length field
+
+Parsing:
+- Readers should parse all spec versions (warn if not)
+- Unknown flags should be ignored by reading programs
+- If version is unreadable, expect latest spec version
+- If in doubt the PAR 2.0 specification is the ultimate deciding factor
+
+Index and Ordering:
+- Index packet file entries are lexicographically sorted (by filename)
+- Ensure that index packet is updated when updating the manifest packet
+- No data should ever follow the manifest packet, writers will truncate
+
+Raw Stream Restrictions:
+- raw_stream must be unmodified PAR2 file/packet stream bytes
+- raw_stream sha256 is strictly for informing users when unpacking
+- raw_stream corruption is responsibility of downstream PAR2 reader
+- raw_stream is never dropped due to detected hash mismatch/corruption
+
+Error Recovery:
+- Unpacking programs should still unpack any bundled but corrupted file
+- Unpacking must inform a bundle may be incomplete on index rebuilt flag
+- A corrupted index packet can be derived (appropriate flag must be set)
+- A corrupted manifest packet can be overwritten (with a fresh manifest)
+- A corrupted file packet can remain unhandled (but may hinder unpacking)
+
+╔══════════════════════════════════════════════════════════╗
+║ COMMON PACKET HEADER (according to PAR2 specification)   ║
+║                                                          ║
+║  magic             [8]byte   "PAR2\0PKT"                 ║
+║  packet_length     u64       total packet size in bytes  ║
+║  packet_md5        [16]byte  md5 of bytes from           ║
+║                              recovery_set_id to end      ║
+║                              of packet body              ║
+║  recovery_set_id   [16]byte  copied from source PAR2     ║
+║  packet_type       [16]byte  type id (see table below)   ║
+║                                                          ║
+║  (type-specific fields start at offset 64)               ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ APP-SPECIFIC PACKET TYPES                                ║
+║                                                          ║
+║  Index     [16]byte  "P2C BundleIndx\0\0"                ║
+║  File      [16]byte  "P2C BundleFile\0\0"                ║
+║  Manifest  [16]byte  "P2C BundleMfst\0\0"                ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ BUNDLE FILE FORMAT ORDER                                 ║
+║                                                          ║
+║  [INDEX PACKET]                                          ║
+║  repeat for each bundled PAR2 file:                      ║
+║    [FILE PACKET]                                         ║
+║    [raw PAR2 file/packet stream bytes]                   ║
+║    [0..3 zero bytes padding, normally none*]             ║
+║  [MANIFEST PACKET]                                       ║
+║                                                          ║
+║  *: PAR2 packet streams are themselves 4-byte aligned    ║
+╠══════════════════════════════════════════════════════════╣
+║ INDEX PACKET                                             ║
+║                                                          ║
+║   [common header, 64 bytes]                              ║
+║   version                  u64                           ║
+║   flags                    u64                           ║
+║     bit0 = index rebuilt                                 ║
+║                                                          ║
+║   manifest_packet_offset   u64                           ║
+║   manifest_data_offset     u64                           ║
+║   manifest_data_length     u64                           ║
+║   manifest_data_sha256     [32]byte                      ║
+║   manifest_name_len        u64                           ║
+║   manifest_name            [name_len]byte padded to 4    ║
+║                                                          ║
+║   file_entry_count         u64                           ║
+║   file_entries[]:                                        ║
+║     packet_offset          u64   (file packet offset)    ║
+║     data_offset            u64   (raw stream offset)     ║
+║     data_length            u64   (raw stream length)     ║
+║     data_sha256            [32]byte                      ║
+║     name_len               u64                           ║
+║     name                   [name_len]byte padded to 4    ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ FILE PACKET                                              ║
+║                                                          ║
+║   [common header, 64 bytes]                              ║
+║   data_length              u64   (raw stream length)     ║
+║   data_sha256              [32]byte                      ║
+║   name_len                 u64                           ║
+║   name                     [name_len]byte padded to 4    ║
+║                                                          ║
+║   ── packet boundary ──  (raw stream following packet)   ║
+║                                                          ║
+║   (raw stream offset       = file packet offset +        ║
+║                                  file packet length)     ║
+║                                                          ║
+║   raw_stream               [data_length]byte             ║
+║   raw_pad                  [0..3]byte zero pad to 4      ║
+║                                                          ║
+╠══════════════════════════════════════════════════════════╣
+║ MANIFEST PACKET                                          ║
+║                                                          ║
+║   [common header, 64 bytes]                              ║
+║   data_length              u64                           ║
+║   data_sha256              [32]byte                      ║
+║   name_len                 u64                           ║
+║   name                     [name_len]byte padded to 4    ║
+║                                                          ║
+║   json_data                [data_length]byte             ║
+║   json_pad                 [0..3]byte zero pad to 4      ║
+║                                                          ║
+╚══════════════════════════════════════════════════════════╝
+
+END OF SPECIFICATION

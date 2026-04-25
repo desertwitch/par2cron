@@ -13,10 +13,13 @@ import (
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -73,6 +76,7 @@ func Test_NewJob_Success(t *testing.T) {
 		Par2Verify:    new(true),
 		HideFiles:     new(false),
 		PersistMarker: new(false),
+		Bundle:        new(false),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -90,6 +94,7 @@ func Test_NewJob_Success(t *testing.T) {
 	require.True(t, job.par2Verify)
 	require.False(t, job.hiddenFiles)
 	require.False(t, job.markerPersist)
+	require.False(t, job.asBundle)
 }
 
 // Expectation: The correct paths should be derived from the [createConfig].
@@ -104,6 +109,7 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 		Par2Verify:    new(true),
 		HideFiles:     new(true),
 		PersistMarker: new(true),
+		Bundle:        new(true),
 	}
 
 	job := NewJob("/data/folder/_par2cron", cfg)
@@ -121,6 +127,7 @@ func Test_NewJob_HideFiles_Success(t *testing.T) {
 	require.True(t, job.par2Verify)
 	require.True(t, job.hiddenFiles)
 	require.True(t, job.markerPersist)
+	require.True(t, job.asBundle)
 }
 
 // Expectation: The relevant fields should be changed for file mode, others not.
@@ -272,7 +279,7 @@ func Test_Service_Create_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -316,7 +323,7 @@ func Test_Service_Create_MultiRoot_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data", "/data2"}, args)
@@ -352,7 +359,7 @@ func Test_Service_Create_FileLocked_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -388,7 +395,7 @@ func Test_Service_Create_Generic_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -433,7 +440,7 @@ func Test_Service_Create_MultipleJobs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -478,7 +485,7 @@ func Test_Service_Create_MultipleJobs_OneFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -521,7 +528,7 @@ func Test_Service_Create_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -560,7 +567,7 @@ func Test_Service_Create_MultipleJobs_EnumerationFails_NoOtherJobs_Error(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -587,7 +594,7 @@ func Test_Service_Create_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -614,7 +621,7 @@ func Test_Service_Create_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	_, err := prog.Create(ctx, []string{"/data"}, args)
@@ -655,7 +662,7 @@ func Test_Service_Create_DurationExceeded_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
 
@@ -702,7 +709,7 @@ func Test_Service_Create_DurationNotExceeded_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10s"))
 
@@ -745,7 +752,7 @@ func Test_Service_Create_DurationExceeded_WithPriorError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
 
@@ -791,7 +798,7 @@ func Test_Service_Create_NoDuration_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
@@ -818,7 +825,7 @@ func Test_Service_Create_RecursiveArgWithoutRecursiveMode_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10", "-R"}, Par2Glob: "*"}
 	require.NoError(t, args.Par2Mode.Set(schema.CreateFileMode))
@@ -848,7 +855,7 @@ func Test_Service_Enumerate_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -876,7 +883,7 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -906,7 +913,7 @@ func Test_Service_Enumerate_IgnoreFileAll_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -934,7 +941,7 @@ func Test_Service_Enumerate_PartialError_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 	args := Options{Par2Args: []string{"-r10"}}
 
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -960,7 +967,7 @@ func Test_Service_Enumerate_NoMarkers_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -987,7 +994,7 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	_, err := prog.Enumerate(ctx, "/data", args)
@@ -1022,7 +1029,7 @@ func Test_Service_createPar2_FolderMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1071,7 +1078,7 @@ func Test_Service_createPar2_FolderMode_PersistMarker_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:    "/data/folder",
@@ -1127,7 +1134,7 @@ func Test_Service_createPar2_FolderMode_DeepGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1180,7 +1187,7 @@ func Test_Service_createPar2_FolderMode_NoFilesToProtect_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1229,7 +1236,7 @@ func Test_Service_createPar2_FolderMode_CreateFailure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1281,7 +1288,7 @@ func Test_Service_createPar2_NestedMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1337,7 +1344,7 @@ func Test_Service_createPar2_NestedMode_ShallowGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1391,7 +1398,7 @@ func Test_Service_createPar2_NestedMode_PersistMarker_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:    "/data/folder",
@@ -1449,7 +1456,7 @@ func Test_Service_createPar2_NestedMode_DeepGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1513,7 +1520,7 @@ func Test_Service_createPar2_NestedMode_DeeplyNested_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1563,7 +1570,7 @@ func Test_Service_createPar2_NestedMode_NoFilesToProtect_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1613,7 +1620,7 @@ func Test_Service_createPar2_NestedMode_CreateFailure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1662,7 +1669,7 @@ func Test_Service_createPar2_FileMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1717,7 +1724,7 @@ func Test_Service_createPar2_FileMode_DeepGlob_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1771,7 +1778,7 @@ func Test_Service_createPar2_FileMode_NoFilesToProtect_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1820,7 +1827,7 @@ func Test_Service_createPar2_FileMode_CreateFailure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1870,7 +1877,7 @@ func Test_Service_createPar2_CannotRemoveMarker_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1914,7 +1921,7 @@ func Test_Service_findElementsToProtect_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -1955,7 +1962,7 @@ func Test_Service_findElementsToProtect_DeepGlobRelativeName_FolderMode_Success(
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2002,7 +2009,7 @@ func Test_Service_findElementsToProtect_DeepGlobRelativeName_FileMode_Success(t 
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2052,7 +2059,7 @@ func Test_Service_findElementsToProtect_RecursiveMode_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2119,7 +2126,7 @@ func Test_Service_findElementsToProtect_RecursiveMode_NoDeepRecursion_Success(t 
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2337,7 +2344,7 @@ func Test_Service_findElementsToProtect_GlobMetacharsInWorkingDirPath_Table(t *t
 			}
 			_ = ls.LogLevel.Set("info")
 
-			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 			files, err := prog.findElementsToProtect(t.Context(), &tt.job)
 			require.NoError(t, err)
@@ -2375,7 +2382,7 @@ func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2411,7 +2418,7 @@ func Test_Service_findElementsToProtect_DeepGlobInRecursiveMode_Error(t *testing
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir: "/data/folder",
@@ -2449,7 +2456,7 @@ func Test_Service_findElementsToProtect_SymlinkInGlobPrefix_Error(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir: workingDir,
@@ -2488,7 +2495,7 @@ func Test_Service_findElementsToProtect_SymlinkInGlobResults_Success(t *testing.
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir: workingDir,
@@ -2533,7 +2540,7 @@ func Test_Service_findElementsToProtect_SymlinkDir_NoFollow_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(afero.NewOsFs(), logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir: workingDir,
@@ -2582,7 +2589,7 @@ func Test_Service_createCombined_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2626,7 +2633,7 @@ func Test_Service_createCombined_AlreadyExists_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2677,7 +2684,7 @@ func Test_Service_createNested_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2737,7 +2744,7 @@ func Test_Service_createNested_Grouping_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2810,7 +2817,7 @@ func Test_Service_createNested_DeepNesting_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2885,7 +2892,7 @@ func Test_Service_createNested_FirstFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2930,7 +2937,7 @@ func Test_Service_createNested_AlreadyExists_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -2973,7 +2980,7 @@ func Test_Service_createNested_CtxCancel_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3022,7 +3029,7 @@ func Test_Service_createIndividual_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3079,7 +3086,7 @@ func Test_Service_createIndividual_FirstFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3124,7 +3131,7 @@ func Test_Service_createIndividual_AlreadyExists_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3167,7 +3174,7 @@ func Test_Service_createIndividual_CtxCancel_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3214,7 +3221,7 @@ func Test_Service_runCreate_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3276,7 +3283,7 @@ func Test_Service_runCreate_PostVerification_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3341,7 +3348,7 @@ func Test_Service_runCreate_PostVerification_Failure_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3402,7 +3409,7 @@ func Test_Service_runCreate_CorrectArgs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3469,7 +3476,7 @@ func Test_Service_runCreate_CorrectArgs_RecursiveMode_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3532,7 +3539,7 @@ func Test_Service_runCreate_ManifestUnmarshal_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3613,7 +3620,7 @@ func Test_Service_runCreate_ManifestContainsRelativePaths_Success(t *testing.T) 
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder2",
@@ -3667,7 +3674,7 @@ func Test_Service_runCreate_Par2Fails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3722,7 +3729,7 @@ func Test_Service_runCreate_ManifestWriteFails_Success(t *testing.T) {
 			return nil
 		},
 	}
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 	job := &Job{
 		workingDir:   "/data/folder",
 		markerPath:   "/data/folder/_par2cron",
@@ -3776,7 +3783,7 @@ func Test_Service_runCreate_CtxCancel_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -3799,17 +3806,13 @@ func Test_Service_runCreate_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
-// Expectation: All relevant files should be removed, but others not.
-func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
+// Expectation: The function should run the creation and pack the result as a bundle.
+func Test_Service_runCreate_Bundle_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+schema.Par2Extension, []byte("vol"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/existing"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -3819,11 +3822,48 @@ func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+
+			return nil
+		},
+	}
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	var packCalled bool
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
+
+			require.Equal(t, setID, recoverySetID)
+			require.NotEmpty(t, manifest.Bytes)
+			require.NotEmpty(t, files)
+
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, par2er)
 
 	job := &Job{
 		workingDir:   "/data/folder",
 		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
 		par2Name:     "test" + schema.Par2Extension,
 		par2Path:     "/data/folder/test" + schema.Par2Extension,
 		par2Args:     []string{"-r10"},
@@ -3831,98 +3871,43 @@ func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
 		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
 		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
 	}
 
-	prog.cleanupAfterFailure(t.Context(), job)
-
-	for _, tt := range []struct {
-		path   string
-		exists bool
-	}{
-		{"/data/folder/test" + schema.Par2Extension, false},
-		{"/data/folder/test" + schema.Par2Extension + schema.ManifestExtension, false},
-		{"/data/folder/test" + schema.Par2Extension + schema.LockExtension, false},
-		{"/data/folder/test.vol01+02" + schema.Par2Extension, false},
-		{"/data/folder/existing" + schema.Par2Extension, true},
-	} {
-		exists, _ := afero.Exists(fs, tt.path)
-		require.Equal(t, tt.exists, exists, tt.path)
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
+
+	require.NoError(t, prog.runCreate(t.Context(), job, files))
+	require.True(t, packCalled)
+
+	// Original PAR2 files should be cleaned up.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, indexExists)
+
+	volExists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
+	require.False(t, volExists)
+
+	// Bundle should exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+
+	// Job fields should have been updated to point to the bundle.
+	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.par2Name)
+	require.Equal(t, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, job.par2Path)
+
+	// No standalone manifest file should exist (it's inside the bundle).
+	manifestExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
+	require.False(t, manifestExists)
 }
 
-// Expectation: Cleanup should not touch unrelated files or directories.
-func Test_Service_cleanupAfterFailure_EdgeCases_Success(t *testing.T) {
+// Expectation: The function should return an error when bundling fails after successful PAR2 creation.
+func Test_Service_runCreate_Bundle_PackFails_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, fs.MkdirAll("/data/folder/test", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test2"+schema.Par2Extension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.txt", []byte("text"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/unrelated.vol01+02"+schema.Par2Extension, []byte("vol"), 0o644))
-
-	var logBuf testutil.SafeBuffer
-
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
-
-	job := &Job{
-		workingDir:   "/data/folder",
-		markerPath:   "/data/folder/_par2cron",
-		par2Name:     "test" + schema.Par2Extension,
-		par2Path:     "/data/folder/test" + schema.Par2Extension,
-		par2Args:     []string{"-r10"},
-		par2Glob:     "*",
-		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
-		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
-		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
-	}
-
-	prog.cleanupAfterFailure(t.Context(), job)
-
-	for _, tt := range []struct {
-		path   string
-		exists bool
-	}{
-		{"/data/folder/test" + schema.Par2Extension, false},
-		{"/data/folder/test" + schema.Par2Extension + schema.ManifestExtension, false},
-		{"/data/folder/test" + schema.Par2Extension + schema.LockExtension, false},
-		{"/data/folder/test2" + schema.Par2Extension, true},
-		{"/data/folder/test.txt", true},
-		{"/data/folder/unrelated.vol01+02" + schema.Par2Extension, true},
-	} {
-		exists, _ := afero.Exists(fs, tt.path)
-		require.Equal(t, tt.exists, exists, tt.path)
-	}
-
-	// Subdirectory with a prefix-matching name should not be removed.
-	info, err := fs.Stat("/data/folder/test")
-	require.NoError(t, err)
-	require.True(t, info.IsDir())
-}
-
-// Expectation: Non-failing files should be removed regardless of failure.
-func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
-	t.Parallel()
-
-	fs := &testutil.FailingRemoveFs{Fs: afero.NewMemMapFs(), FailSuffix: schema.LockExtension}
-
-	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("par2"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+schema.Par2Extension, []byte("vol"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/folder/existing"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -3932,11 +3917,39 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+
+			return nil
+		},
+	}
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			return errors.New("disk full")
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, par2er)
 
 	job := &Job{
 		workingDir:   "/data/folder",
 		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
 		par2Name:     "test" + schema.Par2Extension,
 		par2Path:     "/data/folder/test" + schema.Par2Extension,
 		par2Args:     []string{"-r10"},
@@ -3944,32 +3957,42 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
 		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
 		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
 	}
 
-	prog.cleanupAfterFailure(t.Context(), job)
-
-	for _, tt := range []struct {
-		path   string
-		exists bool
-	}{
-		{"/data/folder/test" + schema.Par2Extension, false},
-		{"/data/folder/test" + schema.Par2Extension + schema.ManifestExtension, false},
-		{"/data/folder/test" + schema.Par2Extension + schema.LockExtension, true},
-		{"/data/folder/test.vol01+02" + schema.Par2Extension, false},
-		{"/data/folder/existing" + schema.Par2Extension, true},
-	} {
-		exists, _ := afero.Exists(fs, tt.path)
-		require.Equal(t, tt.exists, exists, tt.path)
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
-	require.Contains(t, logBuf.String(), "Failed to cleanup a file after failure")
+	err := prog.runCreate(t.Context(), job, files)
+	require.ErrorContains(t, err, "failed to bundle")
+	require.Contains(t, logBuf.String(), "Failed to bundle created PAR2 files")
+
+	// PAR2 files should be cleaned up by the deferred cleanupAfterFailure.
+	par2Exists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, par2Exists)
+
+	volExists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
+	require.False(t, volExists)
+
+	// No bundle should exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.False(t, bundleExists)
+
+	// No standalone manifest should exist.
+	manifestExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
+	require.False(t, manifestExists)
 }
 
-// Expectation: An error should be returned when -R is in args but mode is not recursive.
-func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.T) {
+// Expectation: The function should pack PAR2 files into a bundle and clean up originals.
+func Test_Service_packAsBundle_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+schema.Par2Extension, []byte("vol2"), 0o644))
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -3979,24 +4002,87 @@ func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 
-	opts := &Options{
-		Par2Args: []string{"-r10", "-R"},
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{
+						MainPacket: &par2.MainPacket{
+							SetID: setID,
+						},
+					},
+				},
+			}, nil
+		},
 	}
-	require.NoError(t, opts.Par2Mode.Set(schema.CreateFileMode))
 
-	err := prog.considerRecursive(opts)
+	var packCalled bool
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
 
-	require.ErrorIs(t, err, errWrongModeArgument)
-	require.Contains(t, logBuf.String(), "par2 default argument -R needs par2cron default --mode recursive")
+			require.Equal(t, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, bundlePath)
+			require.Equal(t, setID, recoverySetID)
+			require.Equal(t, "test"+schema.Par2Extension+schema.ManifestExtension, manifest.Name)
+			require.NotEmpty(t, manifest.Bytes)
+			require.NotEmpty(t, files)
+
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+	require.True(t, packCalled)
+
+	// Original PAR2 files should be cleaned up.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, indexExists)
+
+	vol1Exists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
+	require.False(t, vol1Exists)
+
+	vol2Exists, _ := afero.Exists(fs, "/data/folder/test.vol01+02"+schema.Par2Extension)
+	require.False(t, vol2Exists)
+
+	// Bundle should exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+
+	// Job fields should be updated to point to the bundle.
+	require.Equal(t, "test"+schema.BundleExtension+schema.Par2Extension, job.par2Name)
+	require.Equal(t, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, job.par2Path)
 }
 
-// Expectation: The -R argument should be added when mode is recursive but -R is not in args.
-func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T) {
+// Expectation: The file list and manifest bytes passed to Pack should be correct and complete.
+func Test_Service_packAsBundle_CorrectFilesAndManifest_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol01+02"+schema.Par2Extension, []byte("vol2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/other"+schema.Par2Extension, []byte("unrelated"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -4006,25 +4092,86 @@ func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T)
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 
-	opts := &Options{
-		Par2Args: []string{"-r10", "-n3"},
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
 	}
-	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
 
-	err := prog.considerRecursive(opts)
+	var capturedFiles []bundle.FileInput
+	var capturedManifest bundle.ManifestInput
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			capturedFiles = files
+			capturedManifest = manifest
 
-	require.NoError(t, err)
-	require.Contains(t, opts.Par2Args, "-R")
-	require.Contains(t, logBuf.String(), "Adding -R to par2 default arguments (due to --mode recursive)")
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	mf.Creation.Mode = schema.CreateFolderMode
+	mf.Creation.Glob = "*.txt"
+	mf.Creation.Args = []string{"-r10", "-n5"}
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+
+	// Only PAR2 index and volume files for "test" should be included, not unrelated files.
+	require.Len(t, capturedFiles, 3)
+
+	fileNames := make([]string, 0, len(capturedFiles))
+	for _, f := range capturedFiles {
+		fileNames = append(fileNames, f.Name)
+		require.Equal(t, filepath.Join("/data/folder", f.Name), f.Path)
+	}
+	require.Contains(t, fileNames, "test"+schema.Par2Extension)
+	require.Contains(t, fileNames, "test.vol00+01"+schema.Par2Extension)
+	require.Contains(t, fileNames, "test.vol01+02"+schema.Par2Extension)
+	require.NotContains(t, fileNames, "other"+schema.Par2Extension)
+	require.NotContains(t, fileNames, "file.txt")
+
+	// Manifest name should match the job's manifest name.
+	require.Equal(t, "test"+schema.Par2Extension+schema.ManifestExtension, capturedManifest.Name)
+
+	// Manifest bytes should be valid JSON that unmarshals to the original manifest.
+	var unmarshaled schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedManifest.Bytes, &unmarshaled))
+	require.Equal(t, "test"+schema.Par2Extension, unmarshaled.Name)
+	require.Equal(t, schema.CreateFolderMode, unmarshaled.Creation.Mode)
+	require.Equal(t, "*.txt", unmarshaled.Creation.Glob)
+	require.Equal(t, []string{"-r10", "-n5"}, unmarshaled.Creation.Args)
+	require.Equal(t, schema.ProgramVersion, unmarshaled.ProgramVersion)
+	require.Equal(t, schema.ManifestVersion, unmarshaled.ManifestVersion)
 }
 
-// Expectation: No changes should be made when mode is recursive and -R is already present.
-func Test_Service_considerRecursive_RecursiveModeWithRArg_Success(t *testing.T) {
+// Expectation: The function should return an error when no bundleable files are found.
+func Test_Service_packAsBundle_NoFilesFound_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/unrelated.txt", []byte("content"), 0o644))
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -4032,28 +4179,33 @@ func Test_Service_considerRecursive_RecursiveModeWithRArg_Success(t *testing.T) 
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
-	_ = ls.LogLevel.Set("debug")
+	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
 
-	opts := &Options{
-		Par2Args: []string{"-r10", "-R"},
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
 	}
-	require.NoError(t, opts.Par2Mode.Set(schema.CreateRecursiveMode))
 
-	err := prog.considerRecursive(opts)
-
-	require.NoError(t, err)
-	require.Len(t, opts.Par2Args, 2)
-	require.Equal(t, "-r10", opts.Par2Args[0])
-	require.Equal(t, "-R", opts.Par2Args[1])
+	require.ErrorContains(t, prog.packAsBundle(t.Context(), job, mf), "no files to bundle")
 }
 
-// Expectation: No changes should be made when mode is file and -R is not present.
-func Test_Service_considerRecursive_FileModeWithoutRArg_Success(t *testing.T) {
+// Expectation: The function should return an error when the PAR2 index file cannot be parsed.
+func Test_Service_packAsBundle_ParseFileFails_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -4061,27 +4213,39 @@ func Test_Service_considerRecursive_FileModeWithoutRArg_Success(t *testing.T) {
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
-	_ = ls.LogLevel.Set("debug")
+	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
-
-	opts := &Options{
-		Par2Args: []string{"-r10", "-n3"},
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return nil, errors.New("parse error")
+		},
 	}
-	require.NoError(t, opts.Par2Mode.Set(schema.CreateFileMode))
 
-	err := prog.considerRecursive(opts)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &testutil.MockBundleHandler{}, par2er)
 
-	require.NoError(t, err)
-	require.Len(t, opts.Par2Args, 2)
-	require.NotContains(t, opts.Par2Args, "-R")
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.ErrorContains(t, prog.packAsBundle(t.Context(), job, mf), "failed to parse index par2")
 }
 
-// Expectation: No changes should be made when mode is folder and -R is not present.
-func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) {
+// Expectation: The function should return an error when the PAR2 file has no sets.
+func Test_Service_packAsBundle_NoSets_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -4089,18 +4253,507 @@ func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) 
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 	}
-	_ = ls.LogLevel.Set("debug")
+	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
-
-	opts := &Options{
-		Par2Args: []string{"-r10", "-n3"},
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{Sets: []par2.Set{}}, nil
+		},
 	}
-	require.NoError(t, opts.Par2Mode.Set(schema.CreateFolderMode))
 
-	err := prog.considerRecursive(opts)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &testutil.MockBundleHandler{}, par2er)
 
-	require.NoError(t, err)
-	require.Len(t, opts.Par2Args, 2)
-	require.NotContains(t, opts.Par2Args, "-R")
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.ErrorContains(t, prog.packAsBundle(t.Context(), job, mf), "malformed file")
+}
+
+// Expectation: The function should return an error when the PAR2 file has a nil main packet.
+func Test_Service_packAsBundle_NilMainPacket_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: nil},
+				},
+			}, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &testutil.MockBundleHandler{}, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.ErrorContains(t, prog.packAsBundle(t.Context(), job, mf), "malformed file")
+}
+
+// Expectation: The function should return an error when the PAR2 file has multiple sets.
+func Test_Service_packAsBundle_MultipleSets_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{}},
+					{MainPacket: &par2.MainPacket{}},
+				},
+			}, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &testutil.MockBundleHandler{}, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.ErrorContains(t, prog.packAsBundle(t.Context(), job, mf), "malformed file")
+}
+
+// Expectation: The function should return an error when the bundler Pack fails.
+func Test_Service_packAsBundle_PackFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			return errors.New("pack failed")
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.ErrorContains(t, prog.packAsBundle(t.Context(), job, mf), "failed to pack bundle")
+}
+
+// Expectation: The manifest data passed to Pack should be valid JSON of the manifest.
+func Test_Service_packAsBundle_ManifestContents_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	var capturedManifest bundle.ManifestInput
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			capturedManifest = manifest
+
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	mf.Creation.Mode = schema.CreateFolderMode
+	mf.Creation.Glob = "*.txt"
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+
+	require.Equal(t, "test"+schema.Par2Extension+schema.ManifestExtension, capturedManifest.Name)
+
+	var unmarshaled schema.Manifest
+	require.NoError(t, json.Unmarshal(capturedManifest.Bytes, &unmarshaled))
+	require.Equal(t, schema.CreateFolderMode, unmarshaled.Creation.Mode)
+	require.Equal(t, "*.txt", unmarshaled.Creation.Glob)
+}
+
+// Expectation: Hidden files should produce a bundle with the dot prefix in its name.
+func Test_Service_packAsBundle_HideFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/.test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/.test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	var capturedBundlePath string
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			capturedBundlePath = bundlePath
+
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest(".test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     ".test" + schema.Par2Extension,
+		par2Path:     "/data/folder/.test" + schema.Par2Extension,
+		lockPath:     "/data/folder/.test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: ".test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/.test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+		hiddenFiles:  true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+
+	require.Equal(t, "/data/folder/.test"+schema.BundleExtension+schema.Par2Extension, capturedBundlePath)
+	require.Equal(t, ".test"+schema.BundleExtension+schema.Par2Extension, job.par2Name)
+}
+
+// Expectation: The function should warn but not error when cleanup of a PAR2 file fails after bundling.
+func Test_Service_packAsBundle_CleanupPar2FileFails_Success(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+
+	fs := &testutil.FailingRemoveFs{Fs: baseFs, FailSuffix: "test.vol00+01" + schema.Par2Extension}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			require.NoError(t, afero.WriteFile(baseFs, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+	require.Contains(t, logBuf.String(), "Failed to cleanup a file after bundling")
+
+	// The volume file that failed to remove should still exist.
+	volExists, _ := afero.Exists(fs, "/data/folder/test.vol00+01"+schema.Par2Extension)
+	require.True(t, volExists)
+
+	// The index file that succeeded removal should be gone.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, indexExists)
+
+	// Bundle should still exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+}
+
+// Expectation: The function should warn but not error when cleanup of the manifest file fails after bundling.
+func Test_Service_packAsBundle_CleanupManifestFails_Success(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension, []byte("{}"), 0o644))
+
+	fs := &testutil.FailingRemoveFs{Fs: baseFs, FailSuffix: schema.ManifestExtension}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			require.NoError(t, afero.WriteFile(baseFs, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+	require.Contains(t, logBuf.String(), "Failed to cleanup a file after bundling")
+
+	// The manifest file that failed to remove should still exist.
+	manifestExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.ManifestExtension)
+	require.True(t, manifestExists)
+
+	// The PAR2 index that succeeded removal should be gone.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, indexExists)
+
+	// Bundle should still exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
+}
+
+// Expectation: The function should warn but not error when cleanup of the lock file fails after bundling.
+func Test_Service_packAsBundle_CleanupLockFails_Success(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension, []byte("lock"), 0o644))
+
+	fs := &testutil.FailingRemoveFs{Fs: baseFs, FailSuffix: schema.LockExtension}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	setID := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: setID}},
+				},
+			}, nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			require.NoError(t, afero.WriteFile(baseFs, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+		asBundle:     true,
+	}
+
+	require.NoError(t, prog.packAsBundle(t.Context(), job, mf))
+	require.Contains(t, logBuf.String(), "Failed to cleanup a file after bundling")
+
+	// The lock file that failed to remove should still exist.
+	lockExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension+schema.LockExtension)
+	require.True(t, lockExists)
+
+	// The PAR2 index that succeeded removal should be gone.
+	indexExists, _ := afero.Exists(fs, "/data/folder/test"+schema.Par2Extension)
+	require.False(t, indexExists)
+
+	// Bundle should still exist.
+	bundleExists, _ := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.True(t, bundleExists)
 }

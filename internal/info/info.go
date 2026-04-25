@@ -28,12 +28,13 @@ type Options struct {
 type Service struct {
 	fsys afero.Fs
 
-	log    *logging.Logger
-	runner schema.CommandRunner
-	walker schema.FilesystemWalker
+	log     *logging.Logger
+	runner  schema.CommandRunner
+	walker  schema.FilesystemWalker
+	bundler schema.BundleHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -42,10 +43,11 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 
 	return &Service{
-		fsys:   fsys,
-		log:    log,
-		runner: runner,
-		walker: walker,
+		fsys:    fsys,
+		log:     log,
+		runner:  runner,
+		walker:  walker,
+		bundler: bundler,
 	}
 }
 
@@ -63,7 +65,7 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 
 	now := time.Now()
 
-	vs := verify.NewService(prog.fsys, prog.log, prog.runner)
+	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
 	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
 	jobs := []*verify.Job{}

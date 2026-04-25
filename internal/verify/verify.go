@@ -48,20 +48,29 @@ type Job struct {
 	manifestPath string
 	lockPath     string
 
+	isBundle bool
 	manifest *schema.Manifest
 }
 
-func NewJob(par2Path string, opts Options, mf *schema.Manifest) *Job {
+func NewJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *Job {
 	vj := &Job{}
 
 	vj.workingDir = filepath.Dir(par2Path)
 	vj.par2Name = filepath.Base(par2Path)
 	vj.par2Path = par2Path
 	vj.par2Args = slices.Clone(opts.Par2Args)
-	vj.manifestName = vj.par2Name + schema.ManifestExtension
-	vj.manifestPath = vj.par2Path + schema.ManifestExtension
-	vj.lockPath = vj.par2Path + schema.LockExtension
 
+	if !isBundle {
+		vj.manifestName = vj.par2Name + schema.ManifestExtension
+		vj.manifestPath = vj.par2Path + schema.ManifestExtension
+		vj.lockPath = vj.par2Path + schema.LockExtension
+	} else {
+		vj.manifestName = vj.par2Name
+		vj.manifestPath = vj.par2Path
+		vj.lockPath = vj.par2Path
+	}
+
+	vj.isBundle = isBundle
 	vj.manifest = mf
 
 	return vj
@@ -70,12 +79,13 @@ func NewJob(par2Path string, opts Options, mf *schema.Manifest) *Job {
 type Service struct {
 	fsys afero.Fs
 
-	log    *logging.Logger
-	runner schema.CommandRunner
-	walker schema.FilesystemWalker
+	log     *logging.Logger
+	runner  schema.CommandRunner
+	walker  schema.FilesystemWalker
+	bundler schema.BundleHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -84,10 +94,11 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner)
 	}
 
 	return &Service{
-		fsys:   fsys,
-		log:    log.With("op", "verify"),
-		runner: runner,
-		walker: walker,
+		fsys:    fsys,
+		log:     log.With("op", "verify"),
+		runner:  runner,
+		walker:  walker,
+		bundler: bundler,
 	}
 }
 
@@ -256,6 +267,10 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 }
 
 func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) { //nolint:funcorder
+	if util.IsPar2Bundle(par2path) {
+		return prog.processBundleManifest(ctx, par2path, opts)
+	}
+
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.verificationLogger(ctx, nil, manifestPath)
 
@@ -266,7 +281,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 			return nil, schema.ErrSilentSkip
 		}
 
-		job := NewJob(par2path, opts, nil)
+		job := NewJob(par2path, opts, nil, false)
 
 		logger := prog.verificationLogger(ctx, job, manifestPath)
 		logger.Debug("Failed to find par2cron manifest (resetting manifest)", "error", err)
@@ -301,7 +316,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 			return nil, schema.ErrSilentSkip
 		}
 
-		job := NewJob(par2path, opts, nil)
+		job := NewJob(par2path, opts, nil, false)
 
 		logger := prog.verificationLogger(ctx, job, manifestPath)
 		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
@@ -315,7 +330,69 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 		return nil, schema.ErrSilentSkip
 	}
 
-	job := NewJob(par2path, opts, mf)
+	job := NewJob(par2path, opts, mf, false)
+
+	return job, nil
+}
+
+func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*Job, error) { //nolint:funcorder
+	logger := prog.verificationLogger(ctx, nil, bundlePath)
+
+	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
+	if err != nil {
+		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger.Debug("Bundle is locked by another instance (will retry next run)")
+
+			return nil, schema.ErrSilentSkip
+		}
+
+		return nil, fmt.Errorf("failed to lock: %w", err)
+	}
+	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	if err != nil {
+		unlock()
+		logger.Error("Failed to open bundle (will retry next run)", "error", err)
+
+		return nil, schema.ErrNonFatal
+	}
+	by, err := bun.Manifest()
+	if err != nil {
+		job := NewJob(bundlePath, opts, nil, true)
+
+		logger := prog.verificationLogger(ctx, job, bundlePath)
+		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
+
+		_ = bun.Close()
+		unlock()
+
+		return job, nil
+	}
+	_ = bun.Close()
+	unlock()
+
+	mf := &schema.Manifest{}
+	if err := json.Unmarshal(by, mf); err != nil {
+		if opts.SkipNotCreated {
+			logger.Debug("No unmarshalable manifest (skipping; --skip-not-created)")
+
+			return nil, schema.ErrSilentSkip
+		}
+
+		job := NewJob(bundlePath, opts, nil, true)
+
+		logger := prog.verificationLogger(ctx, job, bundlePath)
+		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
+
+		return job, nil
+	}
+
+	if opts.SkipNotCreated && mf.Creation == nil {
+		logger.Debug("No creation manifest (skipping; --skip-not-created)")
+
+		return nil, schema.ErrSilentSkip
+	}
+
+	job := NewJob(bundlePath, opts, mf, true)
 
 	return job, nil
 }
@@ -331,25 +408,29 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 		defer unlock()
 	}
 
-	par2Hash, err := util.HashFile(prog.fsys, job.par2Path)
-	if err != nil {
-		logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
+	var sha256hash string
+	if !job.isBundle {
+		hash, err := util.HashFile(prog.fsys, job.par2Path)
+		if err != nil {
+			logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
 
-		return fmt.Errorf("failed to hash par2: %w", err)
-	}
+			return fmt.Errorf("failed to hash par2: %w", err)
+		}
+		sha256hash = hash
 
-	if job.manifest != nil && par2Hash != job.manifest.SHA256 {
-		logger.Warn("PAR2 has changed (manifest out of date; resetting manifest)",
-			"currentHash", par2Hash,
-			"manifestHash", job.manifest.SHA256,
-		)
+		if job.manifest != nil && sha256hash != job.manifest.SHA256 {
+			logger.Warn("PAR2 has changed (manifest out of date; resetting manifest)",
+				"currentHash", sha256hash,
+				"manifestHash", job.manifest.SHA256,
+			)
 
-		job.manifest = nil
+			job.manifest = nil
+		}
 	}
 
 	if job.manifest == nil {
 		job.manifest = schema.NewManifest(job.par2Name)
-		job.manifest.SHA256 = par2Hash
+		job.manifest.SHA256 = sha256hash
 	}
 
 	if job.manifest.Verification == nil {
@@ -366,7 +447,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	cmdArgs = append(cmdArgs, job.par2Path)
 
 	job.manifest.Verification.Time = time.Now()
-	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
+	err := prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
 	job.manifest.Verification.Duration = time.Since(job.manifest.Verification.Time)
 
 	if err := prog.parseExitCode(job, err); err != nil {
@@ -388,7 +469,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	// 	}, prog.verificationLogger(ctx, job, nil))
 	// }
 
-	if err := util.WriteManifest(prog.fsys, job.manifestPath, job.manifest); err != nil {
+	if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
 		logger := prog.verificationLogger(ctx, job, job.manifestPath)
 		logger.Error("Failed to write par2cron manifest", "error", err)
 

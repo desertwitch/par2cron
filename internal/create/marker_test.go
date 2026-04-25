@@ -10,6 +10,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -33,6 +34,7 @@ func Test_NewMarkerConfig_Success(t *testing.T) {
 	require.False(t, *cfg.Par2Verify)
 	require.False(t, *cfg.HideFiles)
 	require.False(t, *cfg.PersistMarker)
+	require.False(t, *cfg.Bundle)
 }
 
 // Expectation: Validation should pass when mode is recursive with a shallow glob.
@@ -105,7 +107,7 @@ mode: "recursive"`
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
@@ -132,7 +134,7 @@ glob: "**/*.mp4"`
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{}}
 	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
@@ -157,7 +159,7 @@ func Test_Service_parseMarkerFile_ValidMarker_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
@@ -180,7 +182,8 @@ glob: "*.txt"
 mode: "file"
 verify: true
 hidden: true
-persist: true`
+persist: true
+bundle: true`
 	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(yamlContent), 0o644))
 
 	var logBuf testutil.SafeBuffer
@@ -191,7 +194,7 @@ persist: true`
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
@@ -205,6 +208,7 @@ persist: true`
 	require.True(t, *cfg.Par2Verify)
 	require.True(t, *cfg.HideFiles)
 	require.True(t, *cfg.PersistMarker)
+	require.True(t, *cfg.Bundle)
 }
 
 // Expectation: The YAML configuration should reject an unknown mode.
@@ -227,7 +231,7 @@ mode: "filez"`
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	cfg, err := prog.parseMarkerFile("/data/folder/_par2cron", args)
@@ -250,7 +254,7 @@ func Test_Service_parseMarkerFile_NotExist_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	args := Options{Par2Args: []string{"-r10"}}
 	cfg, err := prog.parseMarkerFile("/data/folder/"+createMarkerPathPrefix, args)
@@ -273,7 +277,7 @@ func Test_Service_parseMarkerFilename_NoSuffix_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Name: new("test" + schema.Par2Extension),
@@ -300,7 +304,7 @@ func Test_Service_parseMarkerFilename_WithFlags_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Name: new("test" + schema.Par2Extension),
@@ -332,7 +336,7 @@ func Test_Service_parseMarkerFilename_WithDuplicateFlags_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Name: new("test" + schema.Par2Extension),
@@ -365,7 +369,7 @@ func Test_Service_parseMarkerContent_FailedToRead_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Name: new("test" + schema.Par2Extension),
@@ -394,7 +398,7 @@ func Test_Service_parseMarkerContent_InvalidYAML_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Name: new("test" + schema.Par2Extension),
@@ -424,7 +428,7 @@ func Test_Service_parseMarkerContent_NameWithoutExtension_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Name: new("test" + schema.Par2Extension),
@@ -452,7 +456,7 @@ func Test_Service_modifyOrAddArgument_ReplaceSpaceSeparated_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r 10", "-n3"},
@@ -479,7 +483,7 @@ func Test_Service_modifyOrAddArgument_ReplaceEqualSeparated_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r=10", "-n3"},
@@ -506,7 +510,7 @@ func Test_Service_modifyOrAddArgument_ReplaceNoSpace_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r10", "-n3"},
@@ -533,7 +537,7 @@ func Test_Service_modifyOrAddArgument_ReplaceNoValue_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-q", "-n3"},
@@ -560,7 +564,7 @@ func Test_Service_modifyOrAddArgument_AddNewElement_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-n3"},
@@ -587,7 +591,7 @@ func Test_Service_modifyOrAddArgument_ReplaceNextElement_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r", "10", "-n3"},
@@ -615,7 +619,7 @@ func Test_Service_considerRecursiveMarker_HasRArgButNotRecursiveMode_Success(t *
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r10", "-R"},
@@ -643,7 +647,7 @@ func Test_Service_considerRecursiveMarker_RecursiveModeButNoRArg_Success(t *test
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r10", "-n3"},
@@ -675,7 +679,7 @@ func Test_Service_considerRecursiveMarker_RecursiveModeWithRArg_Success(t *testi
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r10", "-R"},
@@ -705,7 +709,7 @@ func Test_Service_considerRecursiveMarker_FileModeWithoutRArg_Success(t *testing
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 
 	cfg := &MarkerConfig{
 		Par2Args: &[]string{"-r10", "-n3"},

@@ -29,8 +29,7 @@ func HighestError(errs []error) error {
 func AsExitCode(err error) *int {
 	var exitCode int
 
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		exitCode = exitErr.ExitCode()
 
 		return &exitCode

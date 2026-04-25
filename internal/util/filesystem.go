@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/bmatcuk/doublestar/v4"
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 )
@@ -85,7 +86,7 @@ func HashFile(fsys afero.Fs, filePath string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
+func WriteManifest(fsys afero.Fs, bundler schema.BundleHandler, path string, m *schema.Manifest, isBundle bool) error {
 	// Update versions here, as we un- and re-marshalled to a possibly
 	// new manifest format (adding new fields and dropping old fields).
 	m.ProgramVersion = schema.ProgramVersion
@@ -96,13 +97,27 @@ func WriteManifest(fsys afero.Fs, path string, m *schema.Manifest) error {
 		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
-	err = afero.WriteFile(fsys, path, data, UmaskFilePerm)
-	if err != nil {
-		return fmt.Errorf("failed to write: %w", err)
+	if !isBundle {
+		err = afero.WriteFile(fsys, path, data, UmaskFilePerm)
+		if err != nil {
+			return fmt.Errorf("failed to write: %w", err)
+		}
+	} else {
+		bun, err := bundler.Open(fsys, path)
+		if err != nil {
+			return fmt.Errorf("failed to open bundle: %w", err)
+		}
+		defer bun.Close()
+
+		if err := bun.Update(data); err != nil {
+			return fmt.Errorf("failed to update bundle: %w", err)
+		}
 	}
 
 	return nil
 }
+
+var _ schema.FilesystemWalker = (*AferoWalker)(nil)
 
 // AferoWalker is an adapter to turn the [afero.Walk] into a [filepath.WalkDir] signature.
 type AferoWalker struct {
@@ -123,6 +138,8 @@ func (w AferoWalker) WalkDir(root string, fn fs.WalkDirFunc) error {
 		return fn(path, entry, err)
 	})
 }
+
+var _ schema.FilesystemWalker = (*OSWalker)(nil)
 
 // OSWalker is a wrapper structure for the native [filepath.WalkDir] function.
 type OSWalker struct{}
@@ -236,4 +253,39 @@ func HasGlobSymlinks(fsys afero.Fs, workingDir string, pattern string) (string, 
 	}
 
 	return "", false
+}
+
+func FindBundleableFiles(fsys afero.Fs, par2Name string, workingDir string) ([]bundle.FileInput, error) {
+	entries, err := afero.ReadDir(fsys, workingDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	inputs := []bundle.FileInput{}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+
+		if !IsPar2SetMember(par2Name, name) {
+			continue
+		}
+		if IsPar2Bundle(name) {
+			continue
+		}
+
+		inputs = append(inputs, bundle.FileInput{
+			Name: name,
+			Path: filepath.Join(workingDir, name),
+		})
+	}
+
+	if len(inputs) == 0 {
+		return nil, errors.New("no files to bundle")
+	}
+
+	return inputs, nil
 }

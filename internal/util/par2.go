@@ -19,9 +19,7 @@ type Par2ToManifestOptions struct {
 func Par2ToManifest(fsys afero.Fs, o Par2ToManifestOptions, log *logging.Logger) {
 	set, err := par2.ParseFileSet(fsys, o.Path, true)
 	if err != nil {
-		var pe *par2.ParserPanicError
-
-		if errors.As(err, &pe) {
+		if pe, ok := errors.AsType[*par2.ParserPanicError](err); ok {
 			log.Warn("Panic while parsing PAR2 set for par2cron manifest (report to developers)",
 				"panic", pe.Value, "stack", string(pe.Stack))
 		} else {

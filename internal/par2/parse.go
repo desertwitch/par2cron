@@ -358,7 +358,7 @@ func seekToNextPacket(r io.ReadSeeker) error {
 
 		n, readErr := r.Read(buf) // Read [recoverBufferSize] (or less)
 
-		if n >= magicLen {
+		if n > 0 {
 			idx := bytes.Index(buf[:n], packetMagic) // Find magic sequence
 			if idx != -1 {
 				// Found it, now jump to the offset it was found at.
@@ -372,7 +372,7 @@ func seekToNextPacket(r io.ReadSeeker) error {
 			if readErr == nil {
 				// In case the buffer is cut-off in the middle of a magic sequence,
 				// seek back one magic sequence so the next buffer fill includes it.
-				backtrack := int64(magicLen - 1) // Max amount that could be useless
+				backtrack := int64(min(n-1, magicLen-1)) // Max amount that could be useless
 				if _, err = r.Seek(-backtrack, io.SeekCurrent); err != nil {
 					return fmt.Errorf("failed to seek: %w", err)
 				}
