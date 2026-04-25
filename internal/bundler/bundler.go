@@ -391,7 +391,7 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 		for _, path := range cleanupPaths {
 			if err := prog.fsys.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				logger := prog.bundleLogger(ctx, job, path)
-				logger.Warn("Failed to cleanup a file after failure (needs manual removal)", "error", err)
+				logger.Warn("Failed to cleanup a file after failure (needs manual deletion)", "error", err)
 			}
 		}
 	}()

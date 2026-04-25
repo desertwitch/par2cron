@@ -54,7 +54,7 @@ func (p *backupPurger) Purge() error {
 			}
 			if valid {
 				if err := p.fsys.Remove(f); err != nil {
-					p.log.Warn("Failed to purge backup file (needs manual removal)",
+					p.log.Warn("Failed to purge backup file (needs manual deletion)",
 						"path", f, "error", err)
 
 					continue
