@@ -48,7 +48,7 @@ release:
   draft: true
   footer: |
     Most users will want the `linux_amd64` package (see installation instructions in `QUICKGUIDE`).  
-    Do note that any release files are unattended builds and served without any warranties.
+    <img alt="Release footer" src="https://raw.githubusercontent.com/desertwitch/par2cron/refs/heads/main/assets/release_footer.png" width="400">
 
 changelog:
   use: github
