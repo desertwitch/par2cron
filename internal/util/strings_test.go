@@ -1,11 +1,9 @@
 package util
 
 import (
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -113,15 +111,17 @@ func Test_IsPar2Bundle_Table(t *testing.T) {
 		input  string
 		expect bool
 	}{
-		{"lowercase bundle", "test" + schema.BundleExtension + schema.Par2Extension, true},
-		{"uppercase par2", "test" + schema.BundleExtension + strings.ToUpper(schema.Par2Extension), true},
-		{"with directory", "/data/folder/test" + schema.BundleExtension + schema.Par2Extension, true},
-		{"hidden file", ".test" + schema.BundleExtension + schema.Par2Extension, true},
-		{"hidden file with directory", "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension, true},
-		{"misleading name", "x" + schema.BundleExtension + "backup" + schema.Par2Extension, false},
+		{"lowercase bundle", "test.p2c.par2", true},
+		{"uppercase par2", "test.p2c.PAR2", true},
+		{"with directory", "/data/folder/test.p2c.par2", true},
+		{"hidden file", ".test.p2c.par2", true},
+		{"hidden file with directory", "/data/folder/.test.p2c.par2", true},
+		{"misleading name", "x.p2cbackup.par2", false},
 
-		{"plain par2 index", "test" + schema.Par2Extension, false},
-		{"plain par2 volume", "test.vol00+01" + schema.Par2Extension, false},
+		{"plain par2 index", "test.par2", false},
+		{"plain par2 volume", "test.vol00+01.par2", false},
+		{"misleading par2 volume", "test.p2c.vol00+01.par2", false},
+		{"misleading par2 bundle", "test.vol00+01.p2c.par2", true},
 		{"txt file", "test.txt", false},
 		{"no extension", "test", false},
 		{"empty string", "", false},
