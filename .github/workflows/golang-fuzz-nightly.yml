@@ -54,6 +54,9 @@ jobs:
       - name: Install 32-bit libraries
         run: sudo apt-get update && sudo apt-get install -y gcc-multilib
 
+      - name: Install par2cmdline
+        run: sudo apt-get update && sudo apt-get install -y par2
+
       - name: Clean the environment
         run: make clean
 
