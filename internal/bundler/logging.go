@@ -10,8 +10,8 @@ import (
 func (prog *Service) bundleLogger(ctx context.Context, job *Job, path any) *logging.Logger {
 	logElems := []any{}
 
-	if ctx.Value(schema.OpModeKey) != nil {
-		logElems = append(logElems, "op_mode", ctx.Value(schema.OpModeKey))
+	if ctx.Value(schema.ModeKey) != nil {
+		logElems = append(logElems, "mode", ctx.Value(schema.ModeKey))
 	}
 
 	if path != nil {

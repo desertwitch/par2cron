@@ -181,12 +181,12 @@ func newBundlePackCmd(ctx context.Context) *cobra.Command {
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
-			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "op_mode", "pack"))
+			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "pack"))
 
-			ctx := context.WithValue(ctx, schema.OpModeKey, "pack")
+			ctx := context.WithValue(ctx, schema.ModeKey, "pack")
 
 			result, err := prog.BundlerService.Pack(ctx, resolvedPaths, bundlerOptions)
-			logOperationResult(err, result, prog.log.With("op", "bundle", "op_mode", "pack"))
+			logOperationResult(err, result, prog.log.With("op", "bundle", "mode", "pack"))
 			if err != nil {
 				return fmt.Errorf("bundle: pack: %w", err)
 			}
@@ -231,12 +231,12 @@ func newBundleUnpackCmd(ctx context.Context) *cobra.Command {
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
-			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "op_mode", "unpack"))
+			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "unpack"))
 
-			ctx := context.WithValue(ctx, schema.OpModeKey, "unpack")
+			ctx := context.WithValue(ctx, schema.ModeKey, "unpack")
 
 			result, err := prog.BundlerService.Unpack(ctx, resolvedPaths, bundlerOptions)
-			logOperationResult(err, result, prog.log.With("op", "bundle", "op_mode", "unpack"))
+			logOperationResult(err, result, prog.log.With("op", "bundle", "mode", "unpack"))
 			if err != nil {
 				return fmt.Errorf("bundle: unpack: %w", err)
 			}

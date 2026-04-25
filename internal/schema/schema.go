@@ -38,8 +38,8 @@ const (
 type ctxKey int
 
 const (
-	PosKey    ctxKey = iota
-	MposKey   ctxKey = iota
-	PrioKey   ctxKey = iota
-	OpModeKey ctxKey = iota
+	PosKey  ctxKey = iota
+	MposKey ctxKey = iota
+	PrioKey ctxKey = iota
+	ModeKey ctxKey = iota
 )
