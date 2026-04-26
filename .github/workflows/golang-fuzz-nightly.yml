@@ -3,72 +3,78 @@ on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
-
 permissions:
   contents: read
 
 jobs:
-  golang-64bit:
-    name: test-fuzz-60min-amd64
+  unit-tests:
+    name: fuzz-unit-tests
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, 386]
     steps:
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          go-version: 1.26.1
+          go-version-file: 'go.mod'
           cache: false
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install par2cmdline
-        run: sudo apt-get update && sudo apt-get install -y par2
-
-      - name: Clean the environment
-        run: make clean
-
-      - name: Run Go fuzz tests (60min per unit)
-        run: make test-fuzz-long
-
-      - name: Archive the testdata folder
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: par2-testdata-amd64
-          path: internal/par2/testdata/
-          retention-days: 3
-
-  golang-32bit:
-    name: test-fuzz-60min-386
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.26.1
-          cache: false
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install 32-bit libraries
-        run: sudo apt-get update && sudo apt-get install -y gcc-multilib
-
-      - name: Install par2cmdline
-        run: sudo apt-get update && sudo apt-get install -y par2
-
-      - name: Clean the environment
-        run: make clean
-
-      - name: Run Go fuzz tests (60min per unit)
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y par2
+          ${{ matrix.goarch == '386' && 'sudo apt-get install -y gcc-multilib' || '' }}
+      - name: Run unit tests
         env:
-          GOARCH: 386
-        run: make test-fuzz-long
+          GOARCH: ${{ matrix.goarch }}
+        run: go test -failfast ./internal/par2 ./internal/bundle
 
-      - name: Archive the testdata folder
-        if: failure()
-        uses: actions/upload-artifact@v4
+  fuzz-120min:
+    name: fuzz-${{ matrix.target.cat }}-${{ matrix.target.name }}-${{ matrix.goarch }}
+    needs: unit-tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, 386]
+        target:
+          - { cat: par2,     name: Fuzz_Parse,             pkg: ./internal/par2 }
+          - { cat: bundle,   name: Fuzz_Bundle_Open,       pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Scan,       pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Pack,       pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Manifest,   pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Unpack,     pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Update,     pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Validate,   pkg: ./internal/bundle }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
-          name: par2-testdata-386
-          path: internal/par2/testdata/
+          go-version-file: 'go.mod'
+          cache: false
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y par2
+          ${{ matrix.goarch == '386' && 'sudo apt-get install -y gcc-multilib' || '' }}
+      - name: Restore fuzz corpus
+        if: matrix.goarch == 'amd64'
+        uses: actions/cache@v5
+        with:
+          path: /home/runner/.cache/gocache/fuzz
+          key: fuzz-${{ matrix.target.name }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-${{ matrix.target.name }}-
+      - name: Run fuzz target
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          GOCACHE: /home/runner/.cache/gocache
+        run: ./scripts/golang-fuzz.sh ${{ matrix.target.name }} ${{ matrix.target.pkg }} 120m
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: testdata-${{ matrix.target.cat }}-${{ matrix.target.name }}-${{ matrix.goarch }}
+          path: |
+            internal/par2/testdata/
+            internal/bundle/testdata/
           retention-days: 3
