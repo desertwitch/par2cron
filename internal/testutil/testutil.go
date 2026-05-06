@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"strings"
@@ -263,4 +264,30 @@ func (m *MockBundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]strin
 	}
 
 	return nil, errors.New("not implemented")
+}
+
+type FakeDirEntry struct {
+	EntryName string
+}
+
+func (f FakeDirEntry) Name() string               { return f.EntryName }
+func (f FakeDirEntry) IsDir() bool                { return false }
+func (f FakeDirEntry) Type() fs.FileMode          { return 0 }
+func (f FakeDirEntry) Info() (fs.FileInfo, error) { return nil, nil } //nolint:nilnil
+
+type FakeWalker struct {
+	Entries []FakeDirEntry
+}
+
+func (fw *FakeWalker) Name() string { return "fake" }
+
+func (fw *FakeWalker) WalkDir(root string, fn fs.WalkDirFunc) error {
+	for i := range fw.Entries {
+		path := root + "/" + fw.Entries[i].EntryName
+		if err := fn(path, &fw.Entries[i], nil); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

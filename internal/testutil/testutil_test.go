@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"sync"
 	"testing"
@@ -857,4 +858,153 @@ func Test_MockBundle_Unpack_WithFunc_Error(t *testing.T) {
 	files, err := b.Unpack(afero.NewMemMapFs(), "/dest", true)
 	require.NoError(t, err)
 	require.Len(t, files, 2)
+}
+
+// Expectation: The fake dir entry should return the correct name.
+func Test_FakeDirEntry_Name_Success(t *testing.T) {
+	t.Parallel()
+
+	entry := FakeDirEntry{EntryName: "test.txt"}
+
+	require.Equal(t, "test.txt", entry.Name())
+}
+
+// Expectation: The fake dir entry should return false for IsDir.
+func Test_FakeDirEntry_IsDir_Success(t *testing.T) {
+	t.Parallel()
+
+	entry := FakeDirEntry{EntryName: "test.txt"}
+
+	require.False(t, entry.IsDir())
+}
+
+// Expectation: The fake dir entry should return zero for Type.
+func Test_FakeDirEntry_Type_Success(t *testing.T) {
+	t.Parallel()
+
+	entry := FakeDirEntry{EntryName: "test.txt"}
+
+	require.Equal(t, fs.FileMode(0), entry.Type())
+}
+
+// Expectation: The fake dir entry should return nil for Info.
+func Test_FakeDirEntry_Info_Success(t *testing.T) {
+	t.Parallel()
+
+	entry := FakeDirEntry{EntryName: "test.txt"}
+
+	info, err := entry.Info()
+
+	require.NoError(t, err)
+	require.Nil(t, info)
+}
+
+// Expectation: The fake walker should return the correct name.
+func Test_FakeWalker_Name_Success(t *testing.T) {
+	t.Parallel()
+
+	walker := &FakeWalker{}
+
+	require.Equal(t, "fake", walker.Name())
+}
+
+// Expectation: The fake walker should visit all entries with correct paths.
+func Test_FakeWalker_WalkDir_AllEntries_Success(t *testing.T) {
+	t.Parallel()
+
+	walker := &FakeWalker{
+		Entries: []FakeDirEntry{
+			{EntryName: "a.txt"},
+			{EntryName: "b.txt"},
+			{EntryName: "c.txt"},
+		},
+	}
+
+	var visited []string
+	err := walker.WalkDir("/root", func(path string, d fs.DirEntry, err error) error {
+		visited = append(visited, path)
+
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"/root/a.txt", "/root/b.txt", "/root/c.txt"}, visited)
+}
+
+// Expectation: The fake walker should pass the correct dir entry to the callback.
+func Test_FakeWalker_WalkDir_CorrectDirEntry_Success(t *testing.T) {
+	t.Parallel()
+
+	walker := &FakeWalker{
+		Entries: []FakeDirEntry{
+			{EntryName: "test.txt"},
+		},
+	}
+
+	err := walker.WalkDir("/root", func(path string, d fs.DirEntry, err error) error {
+		require.Equal(t, "test.txt", d.Name())
+
+		return nil
+	})
+
+	require.NoError(t, err)
+}
+
+// Expectation: The fake walker should handle an empty entry list.
+func Test_FakeWalker_WalkDir_NoEntries_Success(t *testing.T) {
+	t.Parallel()
+
+	walker := &FakeWalker{}
+
+	called := false
+	err := walker.WalkDir("/root", func(path string, d fs.DirEntry, err error) error {
+		called = true
+
+		return nil
+	})
+
+	require.NoError(t, err)
+	require.False(t, called)
+}
+
+// Expectation: The fake walker should stop and return the error when the callback returns an error.
+func Test_FakeWalker_WalkDir_CallbackError_Error(t *testing.T) {
+	t.Parallel()
+
+	walker := &FakeWalker{
+		Entries: []FakeDirEntry{
+			{EntryName: "a.txt"},
+			{EntryName: "b.txt"},
+		},
+	}
+
+	expectedErr := errors.New("stop walking")
+	var visited []string
+	err := walker.WalkDir("/root", func(path string, d fs.DirEntry, err error) error {
+		visited = append(visited, path)
+
+		return expectedErr
+	})
+
+	require.ErrorIs(t, err, expectedErr)
+	require.Len(t, visited, 1)
+}
+
+// Expectation: The fake walker should pass nil error to the callback.
+func Test_FakeWalker_WalkDir_NilError_Success(t *testing.T) {
+	t.Parallel()
+
+	walker := &FakeWalker{
+		Entries: []FakeDirEntry{
+			{EntryName: "test.txt"},
+		},
+	}
+
+	err := walker.WalkDir("/root", func(path string, d fs.DirEntry, err error) error {
+		require.NoError(t, err)
+
+		return nil
+	})
+
+	require.NoError(t, err)
 }
