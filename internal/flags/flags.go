@@ -89,6 +89,7 @@ func (f *LogLevel) String() string {
 	return f.Raw
 }
 
+//nolint:goconst
 func (f *LogLevel) Set(s string) error {
 	s = strings.ToLower(strings.TrimSpace(s))
 
