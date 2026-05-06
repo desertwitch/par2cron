@@ -19,6 +19,9 @@ $(BINARY): ## Builds the application
 benchmark: ## Runs the benchmark suite
 	go test -bench=. -benchmem ./internal/bundle/
 	go test -bench=. -benchmem ./internal/par2/
+	go test -bench=. -benchmem ./internal/create/
+	go test -bench=. -benchmem ./internal/verify/
+	go test -bench=. -benchmem ./internal/repair/
 
 check: ## Runs all static analysis and tests on the application code
 	@$(MAKE) lint
