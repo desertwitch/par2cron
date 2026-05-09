@@ -429,7 +429,9 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	)+schema.LockExtension)
 	unlock2, err := util.AcquireLock(prog.fsys, lockFile, false)
 	if err != nil {
-		cleanupPaths = append(cleanupPaths, lockFile)
+		if !errors.Is(err, schema.ErrFileIsLocked) {
+			cleanupPaths = append(cleanupPaths, lockFile)
+		}
 
 		return fmt.Errorf("failed to lock files: %w", err)
 	}
