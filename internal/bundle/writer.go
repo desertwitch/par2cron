@@ -40,7 +40,7 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 			len(manifest.Bytes), maxPacketBodyBytes)
 	}
 
-	f, err := fsys.Create(bundlePath)
+	f, err := fsys.OpenFile(bundlePath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0o666) //nolint:mnd
 	if err != nil {
 		return fmt.Errorf("failed to create: %w", err)
 	}

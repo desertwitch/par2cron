@@ -101,7 +101,7 @@ func Test_Pack_CreateFails_Error(t *testing.T) {
 
 	fs := &testFs{
 		Fs: afero.NewMemMapFs(),
-		createFunc: func(name string) (afero.File, error) {
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
 			return nil, errors.New("create boom")
 		},
 	}
@@ -119,8 +119,8 @@ func Test_Pack_WriteIndexPlaceholderFails_Error(t *testing.T) {
 	base := afero.NewMemMapFs()
 	fs := &testFs{
 		Fs: base,
-		createFunc: func(name string) (afero.File, error) {
-			f, err := base.Create(name)
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
 			require.NoError(t, err)
 
 			return &callbackFile{
@@ -145,8 +145,8 @@ func Test_Pack_GetManifestPacketPositionFails_Error(t *testing.T) {
 	base := afero.NewMemMapFs()
 	fs := &testFs{
 		Fs: base,
-		createFunc: func(name string) (afero.File, error) {
-			f, err := base.Create(name)
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
 			require.NoError(t, err)
 
 			return &callbackFile{
@@ -175,8 +175,8 @@ func Test_Pack_InvalidManifestPacketOffset_Error(t *testing.T) {
 	base := afero.NewMemMapFs()
 	fs := &testFs{
 		Fs: base,
-		createFunc: func(name string) (afero.File, error) {
-			f, err := base.Create(name)
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
 			require.NoError(t, err)
 
 			return &callbackFile{
@@ -204,8 +204,8 @@ func Test_Pack_SeekToStartFails_Error(t *testing.T) {
 	base := afero.NewMemMapFs()
 	fs := &testFs{
 		Fs: base,
-		createFunc: func(name string) (afero.File, error) {
-			f, err := base.Create(name)
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
 			require.NoError(t, err)
 
 			return &callbackFile{
@@ -234,8 +234,8 @@ func Test_Pack_WriteManifestPacketFails_Error(t *testing.T) {
 	base := afero.NewMemMapFs()
 	fs := &testFs{
 		Fs: base,
-		createFunc: func(name string) (afero.File, error) {
-			f, err := base.Create(name)
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
 			require.NoError(t, err)
 
 			manifestPhase := false
@@ -273,8 +273,8 @@ func Test_Pack_WriteIndexPacketFails_Error(t *testing.T) {
 	base := afero.NewMemMapFs()
 	fs := &testFs{
 		Fs: base,
-		createFunc: func(name string) (afero.File, error) {
-			f, err := base.Create(name)
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
 			require.NoError(t, err)
 
 			indexPhase := false
@@ -312,8 +312,8 @@ func Test_Pack_SyncFails_Error(t *testing.T) {
 	base := afero.NewMemMapFs()
 	fs := &testFs{
 		Fs: base,
-		createFunc: func(name string) (afero.File, error) {
-			f, err := base.Create(name)
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
 			require.NoError(t, err)
 
 			return &callbackFile{
@@ -329,6 +329,22 @@ func Test_Pack_SyncFails_Error(t *testing.T) {
 
 	require.ErrorContains(t, err, "failed to sync")
 	require.ErrorContains(t, err, "sync boom")
+}
+
+// Expectation: Pack should return an error when the bundle file already exists.
+func Test_Pack_FileExists_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/bundle.par2", []byte("existing"), 0o644))
+
+	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+
+	require.ErrorContains(t, err, "failed to create")
+
+	data, readErr := afero.ReadFile(fs, "/bundle.par2")
+	require.NoError(t, readErr)
+	require.Equal(t, []byte("existing"), data)
 }
 
 // Expectation: Update should rewrite the manifest and keep the indexed offsets aligned with the actual bytes on disk.
