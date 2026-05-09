@@ -15,7 +15,7 @@ import (
 // extract every file rather than stopping at the first error, returning the
 // paths that were successfully written alongside any errors. If strict is true,
 // files that fail integrity checks are removed; otherwise they are kept on disk
-// (returning ErrDataCorrupt). Locking needs to be taken care of at call-site.
+// (returning ErrDataCorrupt). Locking needs to be taken care of at the call-site.
 func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
 	var errs []error
 	var extractedPaths []string
