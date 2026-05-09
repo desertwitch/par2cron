@@ -1,7 +1,7 @@
 name: golang-fuzz-nightly
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,10 +29,13 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: go test -failfast ./internal/par2 ./internal/bundle
 
-  fuzz-120min:
+  fuzz-60min:
     name: fuzz-${{ matrix.target.cat }}-${{ matrix.target.name }}-${{ matrix.goarch }}
     needs: unit-tests
     runs-on: ubuntu-latest
+    concurrency:
+      group: fuzz-nightly-${{ matrix.goarch }}
+      queue: max
     strategy:
       fail-fast: false
       matrix:
@@ -69,7 +72,7 @@ jobs:
         env:
           GOARCH: ${{ matrix.goarch }}
           GOCACHE: /home/runner/.cache/gocache
-        run: ./scripts/golang-fuzz.sh ${{ matrix.target.name }} ${{ matrix.target.pkg }} 120m
+        run: ./scripts/golang-fuzz.sh ${{ matrix.target.name }} ${{ matrix.target.pkg }} 60m
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

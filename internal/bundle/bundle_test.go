@@ -466,6 +466,15 @@ func Test_Bundle_Manifest_ExtractFails_Error(t *testing.T) {
 	require.NotEqual(t, fixture.manifest.Bytes, got)
 }
 
+// Expectation: ManifestName should return the manifest filename from a valid bundle.
+func Test_Bundle_ManifestName_Success(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+
+	require.Equal(t, fixture.manifest.Name, b.ManifestName())
+}
+
 // Expectation: Validate should succeed on a clean bundle.
 func Test_Bundle_Validate_Success(t *testing.T) {
 	t.Parallel()

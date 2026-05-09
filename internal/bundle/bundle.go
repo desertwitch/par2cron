@@ -114,6 +114,12 @@ func (b *Bundle) Manifest() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ManifestName returns the filename of the manifest.
+// The name is given as-is and not sanitized by this function.
+func (b *Bundle) ManifestName() string {
+	return b.Index.ManifestName
+}
+
 // Validate checks the bundle's integrity by validating the index, all file
 // packets, and the manifest in sequence. If strict is true, manifest and file
 // data is additionally verified against their SHA256 hashes, which requires

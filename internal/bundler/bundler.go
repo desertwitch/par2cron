@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/logging"
@@ -277,9 +278,10 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 	logger := prog.bundleLogger(ctx, job, nil)
 
+	// Lock the files (in-flight bundle is locked in Pack function)
 	unlock, err := util.AcquireLock(prog.fsys, job.lockPath, false)
 	if err != nil {
-		return fmt.Errorf("failed to lock: %w", err)
+		return fmt.Errorf("failed to lock files: %w", err)
 	}
 	defer unlock()
 
@@ -396,9 +398,10 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 		}
 	}()
 
+	// Lock the bundle
 	unlock, err := util.AcquireLock(prog.fsys, job.lockPath, false)
 	if err != nil {
-		return fmt.Errorf("failed to lock: %w", err)
+		return fmt.Errorf("failed to lock bundle: %w", err)
 	}
 	defer unlock()
 
@@ -418,16 +421,35 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 		logger.Warn("Bundle was rebuilt from corruption, complete unpack cannot be guaranteed (but --force is set)")
 	}
 
+	// Lock the in-flight files (creating lock-file)
+	manifestName := filepath.Base(filepath.Clean(bun.ManifestName()))
+	lockFile := filepath.Join(job.workingDir, strings.TrimSuffix(
+		manifestName,
+		filepath.Ext(manifestName),
+	)+schema.LockExtension)
+	unlock2, err := util.AcquireLock(prog.fsys, lockFile, false)
+	if err != nil {
+		if !errors.Is(err, schema.ErrFileIsLocked) {
+			cleanupPaths = append(cleanupPaths, lockFile)
+		}
+
+		return fmt.Errorf("failed to lock files: %w", err)
+	}
+	defer unlock2()
+
 	files, err := bun.Unpack(prog.fsys, job.workingDir, false)
 	if err != nil {
 		if !onlyContains(err, bundle.ErrDataCorrupt) {
 			cleanupPaths = append(cleanupPaths, files...)
+			cleanupPaths = append(cleanupPaths, lockFile)
 
 			return fmt.Errorf("failed to unpack bundle: %w", err)
 		}
 
 		if !job.force {
 			cleanupPaths = append(cleanupPaths, files...)
+			cleanupPaths = append(cleanupPaths, lockFile)
+
 			logger.Error("Some files in the bundle are corrupted (and --force is not set)", "error", err)
 
 			return fmt.Errorf("failed to unpack bundle: %w", err)

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strings"
 
@@ -24,6 +25,7 @@ type ManifestInput struct {
 }
 
 // Pack creates a bundle at bundlePath from the given recovery set ID, files and manifest.
+// The bundle file is locked with syscall.LOCK_EX|syscall.LOCK_NB during the packing process.
 func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest ManifestInput, files []FileInput) error {
 	var failed bool
 	defer func() {
@@ -43,6 +45,17 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 		return fmt.Errorf("failed to create: %w", err)
 	}
 	defer f.Close()
+
+	// Lock the in-flight bundle.
+	if f, ok := f.(*os.File); ok {
+		fl := newFileLock(f)
+		if err := fl.lock(); err != nil {
+			failed = true
+
+			return fmt.Errorf("failed to lock: %w", err)
+		}
+		defer fl.unlock() //nolint:errcheck
+	}
 
 	// Deterministic ordering.
 	slices.SortFunc(files, func(a, b FileInput) int {

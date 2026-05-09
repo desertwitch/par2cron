@@ -1818,6 +1818,9 @@ func Test_Service_unpackBundle_CorruptNoForce_Error(t *testing.T) {
 	corruptFile := "/data/folder/test" + schema.Par2Extension
 	require.NoError(t, afero.WriteFile(fs, corruptFile, []byte("corrupt"), 0o644))
 
+	createdLock := corruptFile + schema.LockExtension
+	require.NoError(t, afero.WriteFile(fs, createdLock, []byte("data"), 0o644))
+
 	mockBundle := &testutil.MockBundle{
 		UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
 			return []string{corruptFile}, errors.Join(bundle.ErrDataCorrupt)
@@ -1825,6 +1828,7 @@ func Test_Service_unpackBundle_CorruptNoForce_Error(t *testing.T) {
 		CloseFunc: func() error {
 			return nil
 		},
+		ManifestNameValue: new(filepath.Base(corruptFile) + schema.ManifestExtension),
 	}
 
 	bndlr := &testutil.MockBundleHandler{
@@ -1841,6 +1845,9 @@ func Test_Service_unpackBundle_CorruptNoForce_Error(t *testing.T) {
 
 	fileExists, _ := afero.Exists(fs, corruptFile)
 	require.False(t, fileExists)
+
+	lockExists, _ := afero.Exists(fs, createdLock)
+	require.False(t, lockExists)
 }
 
 // Expectation: Corrupt files during unpack with --force should succeed.
@@ -1907,6 +1914,9 @@ func Test_Service_unpackBundle_NonCorruptError_Error(t *testing.T) {
 	unpackedFile := "/data/folder/test" + schema.Par2Extension
 	require.NoError(t, afero.WriteFile(fs, unpackedFile, []byte("data"), 0o644))
 
+	createdLock := unpackedFile + schema.LockExtension
+	require.NoError(t, afero.WriteFile(fs, createdLock, []byte("data"), 0o644))
+
 	mockBundle := &testutil.MockBundle{
 		UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
 			return []string{unpackedFile}, errors.New("I/O error")
@@ -1914,6 +1924,7 @@ func Test_Service_unpackBundle_NonCorruptError_Error(t *testing.T) {
 		CloseFunc: func() error {
 			return nil
 		},
+		ManifestNameValue: new(filepath.Base(unpackedFile) + schema.ManifestExtension),
 	}
 
 	bndlr := &testutil.MockBundleHandler{
@@ -1931,6 +1942,10 @@ func Test_Service_unpackBundle_NonCorruptError_Error(t *testing.T) {
 	// Unpacked files should be cleaned up on non-corrupt error.
 	fileExists, _ := afero.Exists(fs, unpackedFile)
 	require.False(t, fileExists)
+
+	// Lockfile should be cleaned up on non-corrupt error.
+	lockExists, _ := afero.Exists(fs, createdLock)
+	require.False(t, lockExists)
 }
 
 // Expectation: Failed cleanup after unpack failure should be logged and not mask the unpack error.

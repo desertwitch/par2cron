@@ -204,6 +204,7 @@ type MockBundle struct {
 	CloseFunc         func() error
 	IsRebuiltValue    *bool
 	ManifestFunc      func() ([]byte, error)
+	ManifestNameValue *string
 	UnpackFunc        func(fsys afero.Fs, destDir string, strict bool) ([]string, error)
 	UpdateFunc        func(manifest []byte) error
 	ValidateFunc      func(strict bool) error
@@ -224,6 +225,14 @@ func (m *MockBundle) Manifest() ([]byte, error) {
 	}
 
 	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundle) ManifestName() string {
+	if m.ManifestNameValue != nil {
+		return *m.ManifestNameValue
+	}
+
+	return ""
 }
 
 func (m *MockBundle) Update(manifest []byte) error {
