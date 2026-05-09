@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -98,6 +99,10 @@ func (s *Service) Run(opts Options) (string, error) {
 	outPath := filepath.Join(opts.Dir, opts.Out)
 	if err := s.fsys.MkdirAll(filepath.Dir(outPath), 0o777); err != nil { //nolint:mnd
 		return "", fmt.Errorf("fs error: %w", err)
+	}
+
+	if err := s.fsys.Remove(outPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("remove error: %w", err)
 	}
 
 	if err := s.bundler.Pack(s.fsys, outPath, recoverySetID, manifest, inputs); err != nil {

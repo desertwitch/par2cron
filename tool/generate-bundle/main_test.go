@@ -29,6 +29,22 @@ func (w errWriter) Write(p []byte) (int, error) {
 	return 0, errors.New("writer boom")
 }
 
+type failingRemoveFs struct {
+	afero.Fs
+
+	failPath   string
+	failErr    error
+	failAlways bool
+}
+
+func (f *failingRemoveFs) Remove(name string) error {
+	if f.failAlways || name == f.failPath {
+		return f.failErr
+	}
+
+	return f.Fs.Remove(name)
+}
+
 // Expectation: parseArgs should fail when -parse is missing.
 func Test_parseArgs_RequiresParseFlag_Error(t *testing.T) {
 	t.Parallel()
@@ -57,6 +73,141 @@ func Test_parseArgs_FlagParseError_Error(t *testing.T) {
 
 	require.ErrorContains(t, err, "args error")
 	require.ErrorContains(t, err, "flag provided but not defined")
+}
+
+// Expectation: Service.Run should succeed when the output file does not exist (remove returns ErrNotExist).
+func Test_Service_Run_OutputNotExists_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var packCalled bool
+	mockBundle := &testutil.MockBundle{}
+
+	service := NewService(
+		fs,
+		&testutil.MockPar2Handler{
+			ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+				return &par2.File{
+					Sets: []par2.Set{
+						{MainPacket: &par2.MainPacket{SetID: [16]byte{1}}},
+					},
+				}, nil
+			},
+		},
+		&testutil.MockBundleHandler{
+			PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, mf bundle.ManifestInput, files []bundle.FileInput) error {
+				packCalled = true
+
+				return nil
+			},
+			OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+				return mockBundle, nil
+			},
+		},
+	)
+
+	_, err := service.Run(Options{
+		Dir:   "/data",
+		Out:   "out.par2",
+		Parse: "index.par2",
+		Files: []string{"files.par2"},
+	})
+
+	require.NoError(t, err)
+	require.True(t, packCalled)
+}
+
+// Expectation: Service.Run should succeed when the output file already exists (removed before packing).
+func Test_Service_Run_OutputExistsRemoved_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	outPath := filepath.Join("/data", "out.par2")
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, outPath, []byte("old bundle"), 0o644))
+
+	var packCalled bool
+	mockBundle := &testutil.MockBundle{}
+
+	service := NewService(
+		fs,
+		&testutil.MockPar2Handler{
+			ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+				return &par2.File{
+					Sets: []par2.Set{
+						{MainPacket: &par2.MainPacket{SetID: [16]byte{1}}},
+					},
+				}, nil
+			},
+		},
+		&testutil.MockBundleHandler{
+			PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, mf bundle.ManifestInput, files []bundle.FileInput) error {
+				packCalled = true
+
+				exists, err := afero.Exists(fsys, bundlePath)
+				require.NoError(t, err)
+				require.False(t, exists, "old file should have been removed before Pack")
+
+				return nil
+			},
+			OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+				return mockBundle, nil
+			},
+		},
+	)
+
+	_, err := service.Run(Options{
+		Dir:   "/data",
+		Out:   "out.par2",
+		Parse: "index.par2",
+		Files: []string{"files.par2"},
+	})
+
+	require.NoError(t, err)
+	require.True(t, packCalled)
+}
+
+// Expectation: Service.Run should return a remove-prefixed error when removing an existing output file fails.
+func Test_Service_Run_RemoveFails_Error(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+	outPath := filepath.Join("/data", "out.par2")
+	require.NoError(t, base.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(base, outPath, []byte("old bundle"), 0o644))
+
+	fs := &failingRemoveFs{
+		Fs:         base,
+		failPath:   outPath,
+		failErr:    errors.New("remove boom"),
+		failAlways: true,
+	}
+
+	service := NewService(
+		fs,
+		&testutil.MockPar2Handler{
+			ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+				return &par2.File{
+					Sets: []par2.Set{
+						{MainPacket: &par2.MainPacket{SetID: [16]byte{1}}},
+					},
+				}, nil
+			},
+		},
+		&testutil.MockBundleHandler{},
+	)
+
+	_, err := service.Run(Options{
+		Dir:   "/data",
+		Out:   "out.par2",
+		Parse: "index.par2",
+		Files: []string{"files.par2"},
+	})
+
+	require.ErrorContains(t, err, "remove error")
+	require.ErrorContains(t, err, "remove boom")
 }
 
 // Expectation: Service.Run should return a parse-prefixed error when ParseFile fails.
