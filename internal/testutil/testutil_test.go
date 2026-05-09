@@ -717,6 +717,26 @@ func Test_MockBundle_Manifest_NoFunc_Error(t *testing.T) {
 	require.Contains(t, err.Error(), "not implemented")
 }
 
+// Expectation: The mock bundle should return "" when no ManifestName value is provided.
+func Test_MockBundle_ManifestName_NoValue_Success(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	require.Empty(t, b.ManifestName())
+}
+
+// Expectation: The mock bundle should return the value from the ManifestName value.
+func Test_MockBundle_ManifestName_WithValue_Error(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{
+		ManifestNameValue: new("test.json"),
+	}
+
+	require.Equal(t, "test.json", b.ManifestName())
+}
+
 // Expectation: The mock bundle should call the provided Update function.
 func Test_MockBundle_Update_WithFunc_Success(t *testing.T) {
 	t.Parallel()

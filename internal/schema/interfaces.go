@@ -32,6 +32,7 @@ type Bundle interface {
 	Close() error
 	IsRebuilt() bool
 	Manifest() ([]byte, error)
+	ManifestName() string
 	Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error)
 	Update(manifest []byte) error
 	Validate(strict bool) error
