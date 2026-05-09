@@ -1,7 +1,7 @@
 name: golang-fuzz-nightly
 on:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,6 +33,9 @@ jobs:
     name: fuzz-${{ matrix.target.cat }}-${{ matrix.target.name }}-${{ matrix.goarch }}
     needs: unit-tests
     runs-on: ubuntu-latest
+    concurrency:
+      group: fuzz-nightly-${{ matrix.goarch }}
+      queue: max
     strategy:
       fail-fast: false
       matrix:
