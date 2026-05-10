@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -21,6 +22,11 @@ func Test_ExitCodeFor_Table(t *testing.T) {
 			name:     "nil error returns success",
 			err:      nil,
 			expected: ExitCodeSuccess,
+		},
+		{
+			name:     "context.Canceled returns interrupted code",
+			err:      context.Canceled,
+			expected: ExitCodeInterrupted,
 		},
 		{
 			name:     "ErrExitBadInvocation returns bad invocation code",

@@ -637,11 +637,6 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	defer func() {
-		if ctx.Err() != nil {
-			exitCode = 143 // SIGTERM
-		}
-	}()
 
 	cobra.OnFinalize(func() {
 		// https://github.com/spf13/cobra/issues/1893#issuecomment-1573951697
