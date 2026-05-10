@@ -531,7 +531,12 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
-			return prog.InfoService.Info(ctx, resolvedPaths, infoOptions)
+			err := prog.InfoService.Info(ctx, resolvedPaths, infoOptions)
+			if err != nil {
+				return fmt.Errorf("info: %w", err)
+			}
+
+			return nil
 		},
 	}
 	infoCmd.Flags().BoolVar(&infoOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
