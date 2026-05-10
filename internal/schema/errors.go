@@ -1,6 +1,9 @@
 package schema
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 var (
 	ErrExitPartialFailure = errors.New("partial failure")                       // [ExitCodePartialFailure]
@@ -20,6 +23,7 @@ var exitErrorsByPriority = []struct {
 	err  error
 	code int
 }{
+	{context.Canceled, ExitCodeInterrupted},         // 143
 	{ErrExitUnclassified, ExitCodeUnclassified},     // 5
 	{ErrExitUnrepairable, ExitCodeUnrepairable},     // 4
 	{ErrExitRepairable, ExitCodeRepairable},         // 3

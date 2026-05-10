@@ -16,6 +16,7 @@ func Test_Constants_Success(t *testing.T) {
 	require.Equal(t, 3, ExitCodeRepairable)
 	require.Equal(t, 4, ExitCodeUnrepairable)
 	require.Equal(t, 5, ExitCodeUnclassified)
+	require.Equal(t, 143, ExitCodeInterrupted)
 
 	require.Equal(t, 0, Par2ExitCodeSuccess)
 	require.Equal(t, 1, Par2ExitCodeRepairPossible)

@@ -8,11 +8,12 @@ var Par2Version = ""
 
 const (
 	ExitCodeSuccess        int = 0
-	ExitCodePartialFailure int = 1 // ErrExitPartialFailure
-	ExitCodeBadInvocation  int = 2 // ErrExitBadInvocation
-	ExitCodeRepairable     int = 3 // ErrExitRepairable
-	ExitCodeUnrepairable   int = 4 // ErrExitUnrepairable
-	ExitCodeUnclassified   int = 5 // ErrExitUnclassified
+	ExitCodePartialFailure int = 1   // ErrExitPartialFailure
+	ExitCodeBadInvocation  int = 2   // ErrExitBadInvocation
+	ExitCodeRepairable     int = 3   // ErrExitRepairable
+	ExitCodeUnrepairable   int = 4   // ErrExitUnrepairable
+	ExitCodeUnclassified   int = 5   // ErrExitUnclassified
+	ExitCodeInterrupted    int = 143 // context.Canceled
 
 	// https://github.com/Parchive/par2cmdline/blob/master/src/libpar2.h
 
