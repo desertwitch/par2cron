@@ -58,6 +58,7 @@ changelog:
   filters:
     exclude:
     - "^Merge"
+    - "\\(ci\\)"
   groups:
     - title: 'New features'
       regexp: '^.*?feat[\(:]'
