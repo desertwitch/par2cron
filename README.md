@@ -335,7 +335,7 @@ Granular codes allow for integration with scripts and notification services:
 | 3    | Repairable      | Corruption detected, but parity data is sufficient to repair. |
 | 4    | Unrepairable    | Corruption detected that exceeds available redundancy.        |
 | 5    | Unclassified    | An unexpected or unknown error occurred.                      |
-| 143  | Signal          | A received OS signal has interrupted the operation.           |
+| 143  | Interrupted     | The operation was interrupted (SIGINT or SIGTERM).            |
 
 In general the program is able to recover from most problematic situations
 without user interaction, either retrying failures at a later time or with
