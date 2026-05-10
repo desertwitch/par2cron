@@ -635,14 +635,12 @@ func main() {
 		os.Exit(exitCode)
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	defer func() {
+		if ctx.Err() != nil {
+			exitCode = 143 // SIGTERM
+		}
 	}()
 
 	cobra.OnFinalize(func() {
