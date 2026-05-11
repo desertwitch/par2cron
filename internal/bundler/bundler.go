@@ -405,6 +405,11 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
+	info, err := util.LstatIfPossible(prog.fsys, bundlePath)
+	if err == nil && info.Size() == 0 {
+		return errors.New("bundle has zero bytes (may be in creation)")
+	}
+
 	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {
 		return fmt.Errorf("failed to open bundle: %w", err)

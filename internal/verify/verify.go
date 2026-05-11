@@ -348,6 +348,13 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
+	info, err := util.LstatIfPossible(prog.fsys, bundlePath)
+	if err == nil && info.Size() == 0 {
+		unlock()
+		logger.Debug("Bundle has zero bytes (will retry next run)")
+
+		return nil, schema.ErrSilentSkip
+	}
 	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
