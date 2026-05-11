@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/cache"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
@@ -752,7 +753,7 @@ func Test_Service_printDurationInfo_LargeJobWarning_Success(t *testing.T) {
 	js := verify.Stats{
 		TotalDuration:   2 * time.Hour,
 		LargestDuration: 2 * time.Hour,
-		LargestJob:      verify.NewJob("/data/large.par2", verify.Options{}, nil, false),
+		LargestJob:      cache.NewJobMeta("/data/large.par2", nil, false),
 		KnownCount:      1,
 	}
 
@@ -956,8 +957,8 @@ func Test_Service_printCycleInfo_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
 	}
 
 	js := verify.Stats{
@@ -970,7 +971,7 @@ func Test_Service_printCycleInfo_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	prog.printCycleInfo(js, jobs, args, time.Now())
+	prog.printCycleInfo(js, metas, args, time.Now())
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "Verification progress")
@@ -1000,9 +1001,9 @@ func Test_Service_printCycleInfo_UnknownDurations_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, nil, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
+		verify.NewJobMeta(cache.NewJobMeta("/data/test2"+schema.Par2Extension, nil, false)),
 	}
 
 	js := verify.Stats{
@@ -1016,7 +1017,7 @@ func Test_Service_printCycleInfo_UnknownDurations_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	prog.printCycleInfo(js, jobs, args, time.Now())
+	prog.printCycleInfo(js, metas, args, time.Now())
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "Verification progress")

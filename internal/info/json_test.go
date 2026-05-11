@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/cache"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
@@ -889,7 +890,7 @@ func Test_Service_buildDurationInfo_LargeJobWarning_Success(t *testing.T) {
 	js := verify.Stats{
 		TotalDuration:   2 * time.Hour,
 		LargestDuration: 2 * time.Hour,
-		LargestJob:      verify.NewJob("/data/large.par2", verify.Options{}, nil, false),
+		LargestJob:      cache.NewJobMeta("/data/large.par2", nil, false),
 		KnownCount:      1,
 	}
 
@@ -1095,8 +1096,8 @@ func Test_Service_buildCycleInfo_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
 	}
 
 	js := verify.Stats{
@@ -1109,7 +1110,7 @@ func Test_Service_buildCycleInfo_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 1, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1144,8 +1145,8 @@ func Test_Service_buildCycleInfo_OutsideWindow_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
 	}
 
 	js := verify.Stats{
@@ -1158,7 +1159,7 @@ func Test_Service_buildCycleInfo_OutsideWindow_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 0, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1190,9 +1191,9 @@ func Test_Service_buildCycleInfo_UnknownJobs_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, nil, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
+		verify.NewJobMeta(cache.NewJobMeta("/data/test2"+schema.Par2Extension, nil, false)),
 	}
 
 	js := verify.Stats{
@@ -1206,7 +1207,7 @@ func Test_Service_buildCycleInfo_UnknownJobs_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 1, info.UnknownCount)
 }
@@ -1231,8 +1232,8 @@ func Test_Service_buildCycleInfo_NoVerification_Success(t *testing.T) {
 
 	manifest := schema.NewManifest("test" + schema.Par2Extension)
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
 	}
 
 	js := verify.Stats{
@@ -1245,7 +1246,7 @@ func Test_Service_buildCycleInfo_NoVerification_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 0, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1269,8 +1270,8 @@ func Test_Service_buildCycleInfo_NilManifest_Success(t *testing.T) {
 
 	now := time.Now()
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, nil, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, nil, false)),
 	}
 
 	js := verify.Stats{
@@ -1283,7 +1284,7 @@ func Test_Service_buildCycleInfo_NilManifest_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 0, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1321,11 +1322,11 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 
 	manifest3 := schema.NewManifest("test3" + schema.Par2Extension)
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test1"+schema.Par2Extension, verify.Options{}, manifest1, false),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, manifest2, false),
-		verify.NewJob("/data/test3"+schema.Par2Extension, verify.Options{}, manifest3, false),
-		verify.NewJob("/data/test4"+schema.Par2Extension, verify.Options{}, nil, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest1, false)),
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest2, false)),
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, manifest3, false)),
+		verify.NewJobMeta(cache.NewJobMeta("/data/test"+schema.Par2Extension, nil, false)),
 	}
 
 	js := verify.Stats{
@@ -1339,7 +1340,7 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 1, info.VerifiedCount)
 	require.Equal(t, 4, info.TotalCount)

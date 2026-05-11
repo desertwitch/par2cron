@@ -68,7 +68,7 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
 	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
-	jobs := []*verify.Job{}
+	jobs := []*verify.JobMeta{}
 	for _, rootDir := range rootDirs {
 		fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem '%s' for jobs (using '%s')...\n", rootDir, prog.walker.Name())
 
@@ -164,7 +164,7 @@ func (prog *Service) printDurationInfo(js verify.Stats, opts Options) {
 
 	if js.LargestDuration > opts.MaxDuration.Value {
 		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Largest job (%s) exceeds --duration %s\n", util.FmtDur(js.LargestDuration), &opts.MaxDuration)
-		fmt.Fprintf(prog.log.Options.Stdout, "  Job: %s\n", filepath.Base(js.LargestJob.Par2Path()))
+		fmt.Fprintf(prog.log.Options.Stdout, "  Job: %s\n", filepath.Base(js.LargestJob.Par2Path))
 		fmt.Fprintf(prog.log.Options.Stdout, "  At least one job will overshoot the soft duration limit when it runs (to avoid starvation)\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	}
@@ -198,7 +198,7 @@ func (prog *Service) printBacklogInfo(js verify.Stats, opts Options) {
 	}
 }
 
-func (prog *Service) printCycleInfo(js verify.Stats, jobs []*verify.Job, opts Options, now time.Time) {
+func (prog *Service) printCycleInfo(js verify.Stats, jobs []*verify.JobMeta, opts Options, now time.Time) {
 	if opts.MinAge.Value <= 0 || js.TotalDuration <= 0 || js.JobCount == 0 {
 		return
 	}
@@ -208,10 +208,10 @@ func (prog *Service) printCycleInfo(js verify.Stats, jobs []*verify.Job, opts Op
 	var verifiedCount int
 	var verifiedDuration time.Duration
 	for _, job := range jobs {
-		if job.Manifest() != nil && job.Manifest().Verification != nil {
-			if job.Manifest().Verification.Time.After(cycleStart) {
+		if job.HasVerification {
+			if job.VerifyTime.After(cycleStart) {
 				verifiedCount++
-				verifiedDuration += job.Manifest().Verification.Duration
+				verifiedDuration += job.VerifyDuration
 			}
 		}
 	}

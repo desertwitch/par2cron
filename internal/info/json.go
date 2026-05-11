@@ -189,7 +189,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		Options: &opts,
 	}
 
-	jobs := []*verify.Job{}
+	jobs := []*verify.JobMeta{}
 	errs := []error{}
 	for _, rootDir := range rootDirs {
 		js, err := vs.Enumerate(ctx, rootDir, va)
@@ -281,7 +281,7 @@ func (prog *Service) buildDurationInfo(js verify.Stats, opts Options) *DurationI
 
 	if js.LargestDuration > opts.MaxDuration.Value {
 		info.Warning = fmt.Sprintf("Largest job (%s) exceeds max_duration; will overshoot soft limit", util.FmtDur(js.LargestDuration))
-		info.LargestJob = filepath.Base(js.LargestJob.Par2Path())
+		info.LargestJob = filepath.Base(js.LargestJob.Par2Path)
 	}
 
 	return info
@@ -310,16 +310,16 @@ func (prog *Service) buildBacklogInfo(js verify.Stats, opts Options) *BacklogInf
 	return info
 }
 
-func (prog *Service) buildCycleInfo(js verify.Stats, jobs []*verify.Job, opts Options, now time.Time) *CycleInfo {
+func (prog *Service) buildCycleInfo(js verify.Stats, jobs []*verify.JobMeta, opts Options, now time.Time) *CycleInfo {
 	cycleStart := now.Add(-opts.MinAge.Value)
 
 	var verifiedCount int
 	var verifiedDuration time.Duration
 	for _, job := range jobs {
-		if job.Manifest() != nil && job.Manifest().Verification != nil {
-			if job.Manifest().Verification.Time.After(cycleStart) {
+		if job.HasVerification {
+			if job.VerifyTime.After(cycleStart) {
 				verifiedCount++
-				verifiedDuration += job.Manifest().Verification.Duration
+				verifiedDuration += job.VerifyDuration
 			}
 		}
 	}
