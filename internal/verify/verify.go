@@ -122,7 +122,7 @@ func (prog *Service) openCache(ctx context.Context, rootDir string, opts Options
 
 	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		logger := prog.verificationLogger(ctx, nil, rootDir)
-		logger.Error("Failed to load metadata cache", "error", err)
+		logger.Error("Failed to load manifest cache", "error", err)
 	}
 
 	return cache
@@ -135,7 +135,7 @@ func (prog *Service) saveCache(ctx context.Context, cache schema.Cache, opts Opt
 
 	if err := cache.Save(); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		logger := prog.verificationLogger(ctx, nil, rootDir)
-		logger.Error("Failed to save metadata cache", "error", err)
+		logger.Error("Failed to save manifest cache", "error", err)
 	}
 }
 

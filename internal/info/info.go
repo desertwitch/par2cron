@@ -63,7 +63,7 @@ func (prog *Service) openCache(rootDir string, opts Options) schema.Cache { //no
 	}
 
 	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Metadata cache for '%s' could not be loaded (%v)\n", rootDir, err)
+		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Manifest cache for '%s' could not be loaded (%v)\n", rootDir, err)
 	}
 
 	return cache

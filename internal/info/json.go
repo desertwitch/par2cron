@@ -182,7 +182,7 @@ func (prog *Service) openCacheJSON(rootDir string, opts Options, result *Result)
 	}
 
 	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		result.Warning = fmt.Sprintf("Metadata cache for '%s' could not be loaded: %v", rootDir, err)
+		result.Warning = fmt.Sprintf("Manifest cache for '%s' could not be loaded: %v", rootDir, err)
 	}
 
 	return cache
