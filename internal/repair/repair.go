@@ -246,12 +246,6 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.repairLogger(ctx, nil, manifestPath)
 
-	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
-		logger.Debug("Failed to find par2cron manifest (will retry next run)", "error", err)
-
-		return nil, schema.ErrSilentSkip
-	}
-
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
@@ -264,8 +258,15 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
-		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 		unlock()
+
+		if errors.Is(err, fs.ErrNotExist) {
+			logger.Debug("Failed to find par2cron manifest (will retry next run)", "error", err)
+
+			return nil, schema.ErrSilentSkip
+		}
+
+		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 
 		return nil, schema.ErrNonFatal
 	}
@@ -318,13 +319,6 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 		}
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
-	}
-	info, err := util.LstatIfPossible(prog.fsys, bundlePath)
-	if err == nil && info.Size() == 0 {
-		unlock()
-		logger.Debug("Bundle has zero bytes (will retry next run)")
-
-		return nil, schema.ErrSilentSkip
 	}
 	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {

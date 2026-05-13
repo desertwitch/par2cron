@@ -276,21 +276,6 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.verificationLogger(ctx, nil, manifestPath)
 
-	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
-		if !opts.IncludeExternal {
-			logger.Debug("No manifest found (skipping)")
-
-			return nil, schema.ErrSilentSkip
-		}
-
-		job := NewJob(par2path, opts, nil, false)
-
-		logger := prog.verificationLogger(ctx, job, manifestPath)
-		logger.Debug("Failed to find par2cron manifest (resetting manifest)", "error", err)
-
-		return job, nil
-	}
-
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
@@ -303,8 +288,24 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
-		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 		unlock()
+
+		if errors.Is(err, fs.ErrNotExist) {
+			if !opts.IncludeExternal {
+				logger.Debug("No manifest found (skipping)")
+
+				return nil, schema.ErrSilentSkip
+			}
+
+			meta := NewJobMeta(schema.NewJobMeta(par2path, nil, false))
+
+			logger := prog.verificationLogger(ctx, meta, manifestPath)
+			logger.Debug("Failed to find par2cron manifest (resetting manifest)", "error", err)
+
+			return meta, nil
+		}
+
+		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 
 		return nil, schema.ErrNonFatal
 	}
@@ -349,13 +350,6 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 		}
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
-	}
-	info, err := util.LstatIfPossible(prog.fsys, bundlePath)
-	if err == nil && info.Size() == 0 {
-		unlock()
-		logger.Debug("Bundle has zero bytes (will retry next run)")
-
-		return nil, schema.ErrSilentSkip
 	}
 	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {

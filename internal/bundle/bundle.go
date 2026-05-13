@@ -66,10 +66,10 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 
 		return nil, fmt.Errorf("failed to stat: %w", err)
 	}
-	if fi.Size() < 0 {
+	if fi.Size() <= 0 {
 		_ = f.Close()
 
-		return nil, fmt.Errorf("file size < 0: %d", fi.Size())
+		return nil, fmt.Errorf("file size <= 0: %d", fi.Size())
 	}
 
 	b := &Bundle{f: f, size: fi.Size()}
