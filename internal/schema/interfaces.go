@@ -33,15 +33,13 @@ type CacheHandler interface {
 }
 
 type Cache interface {
-	Len() int
 	Get(key string) (*JobMeta, bool)
-	Set(key string, meta *JobMeta)
-	Touch(key string)
-	ResetWalked()
-	Prune() int
-	All() []*JobMeta
+	Len() int
 	Load() error
+	PruneUnwalked() int
+	ResetWalked()
 	Save() error
+	Set(key string, meta *JobMeta)
 }
 
 type Bundle interface {

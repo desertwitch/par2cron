@@ -162,7 +162,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 		}
 
-		cache.Prune()
+		cache.PruneUnwalked()
 		defer prog.saveCache(ctx, cache, opts, rootDir)
 
 		metas = append(metas, ms...)

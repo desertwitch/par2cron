@@ -316,15 +316,13 @@ func (m *MockCacheHandler) NewCache(fsys afero.Fs, cacheDir string, cacheName st
 
 // MockCache is a mock implementation of schema.Cache.
 type MockCache struct {
-	LenFunc         func() int
-	GetFunc         func(key string) (*schema.JobMeta, bool)
-	SetFunc         func(key string, meta *schema.JobMeta)
-	TouchFunc       func(key string)
-	ResetWalkedFunc func()
-	PruneFunc       func() int
-	AllFunc         func() []*schema.JobMeta
-	LoadFunc        func() error
-	SaveFunc        func() error
+	GetFunc           func(key string) (*schema.JobMeta, bool)
+	LenFunc           func() int
+	LoadFunc          func() error
+	PruneUnwalkedFunc func() int
+	ResetWalkedFunc   func()
+	SaveFunc          func() error
+	SetFunc           func(key string, meta *schema.JobMeta)
 }
 
 func (m *MockCache) Len() int {
@@ -349,32 +347,18 @@ func (m *MockCache) Set(key string, meta *schema.JobMeta) {
 	}
 }
 
-func (m *MockCache) Touch(key string) {
-	if m.TouchFunc != nil {
-		m.TouchFunc(key)
-	}
-}
-
 func (m *MockCache) ResetWalked() {
 	if m.ResetWalkedFunc != nil {
 		m.ResetWalkedFunc()
 	}
 }
 
-func (m *MockCache) Prune() int {
-	if m.PruneFunc != nil {
-		return m.PruneFunc()
+func (m *MockCache) PruneUnwalked() int {
+	if m.PruneUnwalkedFunc != nil {
+		return m.PruneUnwalkedFunc()
 	}
 
 	return 0
-}
-
-func (m *MockCache) All() []*schema.JobMeta {
-	if m.AllFunc != nil {
-		return m.AllFunc()
-	}
-
-	return nil
 }
 
 func (m *MockCache) Load() error {
