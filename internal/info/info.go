@@ -32,9 +32,10 @@ type Service struct {
 	runner  schema.CommandRunner
 	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
+	cacher  schema.CacheHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, cacher schema.CacheHandler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -48,6 +49,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 		runner:  runner,
 		walker:  walker,
 		bundler: bundler,
+		cacher:  cacher,
 	}
 }
 
@@ -65,7 +67,7 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 
 	now := time.Now()
 
-	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
+	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
 	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
 	jobs := []*verify.JobMeta{}

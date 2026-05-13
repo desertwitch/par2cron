@@ -74,9 +74,17 @@ type Service struct {
 	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
 	par2er  schema.Par2Handler
+	cacher  schema.CacheHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, par2er schema.Par2Handler) *Service {
+func NewService(
+	fsys afero.Fs,
+	log *logging.Logger,
+	runner schema.CommandRunner,
+	bundler schema.BundleHandler,
+	par2er schema.Par2Handler,
+	cacher schema.CacheHandler,
+) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -91,6 +99,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 		walker:  walker,
 		bundler: bundler,
 		par2er:  par2er,
+		cacher:  cacher,
 	}
 }
 
@@ -614,7 +623,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
+		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
 		vj := verify.NewJob(job.par2Path, verify.Options{}, mf, job.asBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {

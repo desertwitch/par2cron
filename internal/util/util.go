@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/bundle"
+	"github.com/desertwitch/par2cron/internal/cache"
 	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
@@ -25,6 +26,14 @@ func (b *BundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, e
 
 func (b *BundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
 	return bundle.Pack(fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
+}
+
+var _ schema.CacheHandler = (*GobCacheHandler)(nil)
+
+type GobCacheHandler struct{}
+
+func (GobCacheHandler) NewCache(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache { //nolint:ireturn
+	return cache.NewGobCache(fsys, cacheDir, cacheName)
 }
 
 var _ schema.Par2Handler = (*Par2Handler)(nil)

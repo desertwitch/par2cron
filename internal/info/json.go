@@ -180,7 +180,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 
 	now := time.Now()
 
-	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
+	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
 	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
 	result := &Result{

@@ -180,7 +180,7 @@ func newBundlePackCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "pack"))
 
 			ctx := context.WithValue(ctx, schema.ModeKey, "pack")
@@ -230,7 +230,7 @@ func newBundleUnpackCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "unpack"))
 
 			ctx := context.WithValue(ctx, schema.ModeKey, "unpack")
@@ -320,7 +320,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
 			result, err := prog.CreationService.Create(ctx, resolvedPaths, createOptions)
@@ -392,7 +392,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
 			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyOptions)
@@ -461,7 +461,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
 			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairOptions)
@@ -528,7 +528,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
 			err := prog.InfoService.Info(ctx, resolvedPaths, infoOptions)
@@ -567,14 +567,15 @@ func NewProgram(
 	r schema.CommandRunner,
 	b schema.BundleHandler,
 	p schema.Par2Handler,
+	c schema.CacheHandler,
 ) *Program {
 	log := logging.NewLogger(o)
 
 	return &Program{
-		CreationService:     create.NewService(fsys, log, r, b, p),
-		VerificationService: verify.NewService(fsys, log, r, b),
-		RepairService:       repair.NewService(fsys, log, r, b),
-		InfoService:         info.NewService(fsys, log, r, b),
+		CreationService:     create.NewService(fsys, log, r, b, p, c),
+		VerificationService: verify.NewService(fsys, log, r, b, c),
+		RepairService:       repair.NewService(fsys, log, r, b, c),
+		InfoService:         info.NewService(fsys, log, r, b, c),
 		BundlerService:      bundler.NewService(fsys, log, b, p),
 
 		log: log,

@@ -300,3 +300,95 @@ func (fw *FakeWalker) WalkDir(root string, fn fs.WalkDirFunc) error {
 
 	return nil
 }
+
+// MockCacheHandler is a mock implementation of schema.CacheHandler.
+type MockCacheHandler struct {
+	NewCacheFunc func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache
+}
+
+func (m *MockCacheHandler) NewCache(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+	if m.NewCacheFunc != nil {
+		return m.NewCacheFunc(fsys, cacheDir, cacheName)
+	}
+
+	return &MockCache{}
+}
+
+// MockCache is a mock implementation of schema.Cache.
+type MockCache struct {
+	LenFunc         func() int
+	GetFunc         func(key string) (*schema.JobMeta, bool)
+	SetFunc         func(key string, meta *schema.JobMeta)
+	TouchFunc       func(key string)
+	ResetWalkedFunc func()
+	PruneFunc       func() int
+	AllFunc         func() []*schema.JobMeta
+	LoadFunc        func() error
+	SaveFunc        func() error
+}
+
+func (m *MockCache) Len() int {
+	if m.LenFunc != nil {
+		return m.LenFunc()
+	}
+
+	return 0
+}
+
+func (m *MockCache) Get(key string) (*schema.JobMeta, bool) {
+	if m.GetFunc != nil {
+		return m.GetFunc(key)
+	}
+
+	return nil, false
+}
+
+func (m *MockCache) Set(key string, meta *schema.JobMeta) {
+	if m.SetFunc != nil {
+		m.SetFunc(key, meta)
+	}
+}
+
+func (m *MockCache) Touch(key string) {
+	if m.TouchFunc != nil {
+		m.TouchFunc(key)
+	}
+}
+
+func (m *MockCache) ResetWalked() {
+	if m.ResetWalkedFunc != nil {
+		m.ResetWalkedFunc()
+	}
+}
+
+func (m *MockCache) Prune() int {
+	if m.PruneFunc != nil {
+		return m.PruneFunc()
+	}
+
+	return 0
+}
+
+func (m *MockCache) All() []*schema.JobMeta {
+	if m.AllFunc != nil {
+		return m.AllFunc()
+	}
+
+	return nil
+}
+
+func (m *MockCache) Load() error {
+	if m.LoadFunc != nil {
+		return m.LoadFunc()
+	}
+
+	return nil
+}
+
+func (m *MockCache) Save() error {
+	if m.SaveFunc != nil {
+		return m.SaveFunc()
+	}
+
+	return nil
+}
