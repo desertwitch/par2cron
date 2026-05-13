@@ -247,6 +247,12 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	manifestPath := par2path + schema.ManifestExtension
 	logger := prog.repairLogger(ctx, nil, manifestPath)
 
+	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
+		logger.Debug("Failed to find par2cron manifest (will retry next run)", "error", err)
+
+		return nil, schema.ErrSilentSkip
+	}
+
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
@@ -259,15 +265,8 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
-		unlock()
-
-		if errors.Is(err, fs.ErrNotExist) {
-			logger.Debug("Failed to find par2cron manifest (will retry next run)", "error", err)
-
-			return nil, schema.ErrSilentSkip
-		}
-
 		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
+		unlock()
 
 		return nil, schema.ErrNonFatal
 	}
