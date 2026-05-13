@@ -33,6 +33,7 @@ type Options struct {
 	RunInterval     flags.Duration
 	IncludeExternal bool
 	SkipNotCreated  bool
+	CacheDir        string
 }
 
 func (o *Options) SetPar2Args(args []string) {
@@ -50,6 +51,14 @@ type Job struct {
 
 	isBundle bool
 	manifest *schema.Manifest
+}
+
+type JobMeta struct {
+	*schema.JobMeta
+}
+
+func NewJobMeta(meta *schema.JobMeta) *JobMeta {
+	return &JobMeta{meta}
 }
 
 func NewJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *Job {
@@ -104,18 +113,46 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 }
 
+func (prog *Service) openCache(ctx context.Context, rootDir string, opts Options) schema.Cache { //nolint:funcorder,ireturn
+	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
+
+	if opts.CacheDir == "" {
+		return cache
+	}
+
+	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger := prog.verificationLogger(ctx, nil, rootDir)
+		logger.Error("Failed to load metadata cache", "error", err)
+	}
+
+	return cache
+}
+
+func (prog *Service) saveCache(ctx context.Context, cache schema.Cache, opts Options, rootDir string) { //nolint:funcorder
+	if opts.CacheDir == "" {
+		return
+	}
+
+	if err := cache.Save(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger := prog.verificationLogger(ctx, nil, rootDir)
+		logger.Error("Failed to save metadata cache", "error", err)
+	}
+}
+
 //nolint:funlen
 func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
 	logger := prog.verificationLogger(ctx, nil, nil)
 
-	jobs := []*Job{}
+	metas := []*JobMeta{}
 	for _, rootDir := range rootDirs {
-		logger.Info("Scanning filesystem for jobs...",
-			"walker", prog.walker.Name(), "path", rootDir)
+		cache := prog.openCache(ctx, rootDir, opts)
 
-		js, err := prog.Enumerate(ctx, rootDir, opts)
+		logger.Info("Scanning filesystem for jobs...",
+			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.Len())
+
+		ms, err := prog.Enumerate(ctx, rootDir, opts, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
@@ -125,24 +162,33 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 		}
 
-		jobs = append(jobs, js...)
+		cache.Prune()
+		defer prog.saveCache(ctx, cache, opts, rootDir)
+
+		metas = append(metas, ms...)
 	}
 
-	jobs = filterByAge(jobs, opts.MinAge.Value)
-	sortJobs(jobs)
-	prog.considerBacklog(jobs, opts)
-	jobs = filterByDuration(jobs, opts.MaxDuration.Value)
+	// If --skip-not-created is set, but was not in a previous run, these
+	// items will be in cache, so we skip over them (but keep them in cache).
+	if opts.SkipNotCreated {
+		metas = FilterNotCreated(metas)
+	}
 
-	if len(jobs) > 0 {
-		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
+	metas = filterByAge(metas, opts.MinAge.Value)
+	sortJobs(metas)
+	prog.considerBacklog(metas, opts)
+	metas = filterByDuration(metas, opts.MaxDuration.Value)
+
+	if len(metas) > 0 {
+		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(metas)),
 			"maxDuration", opts.MaxDuration.Value.String())
-		results.Selected = len(jobs)
+		results.Selected = len(metas)
 	} else {
 		logger.Info("Nothing to do (will check again next run)",
 			"minAge", opts.MinAge.Value.String())
 	}
 
-	prog.considerDurations(jobs, opts)
+	prog.considerDurations(metas, opts)
 
 	var deadlineCtx context.Context //nolint:contextcheck
 	var deadlineCancel context.CancelFunc
@@ -151,7 +197,9 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 		defer deadlineCancel()
 	}
 
-	for i, job := range jobs {
+	for i, meta := range metas {
+		logger := prog.verificationLogger(ctx, meta, nil)
+
 		if err := ctx.Err(); err != nil {
 			return results, fmt.Errorf("context error: %w", err)
 		}
@@ -160,21 +208,43 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			if err := deadlineCtx.Err(); errors.Is(err, context.DeadlineExceeded) {
 				logger := prog.verificationLogger(ctx, nil, nil)
 				logger.Warn("Exceeded the --duration budget (will continue next run)",
-					"unprocessedJobs", len(jobs)-i, "totalJobs", len(jobs),
+					"unprocessedJobs", len(metas)-i, "totalJobs", len(metas),
 					"maxDuration", opts.MaxDuration.Value.String())
 
 				break
 			}
 		}
 
-		pos := fmt.Sprintf("%d/%d", i+1, len(jobs))
-		prio := job.queuePriority()
+		pos := fmt.Sprintf("%d/%d", i+1, len(metas))
+		prio := meta.queuePriority()
 
 		ctx := context.WithValue(ctx, schema.PosKey, pos)
 		ctx = context.WithValue(ctx, schema.PrioKey, prio)
 
-		logger := prog.verificationLogger(ctx, job, nil)
-		logger.Info("Job started", "estDuration", job.lastDurationStr())
+		var job *Job
+		if !meta.HasManifest {
+			job = NewJob(meta.Par2Path, opts, nil, meta.IsBundle)
+		} else {
+			mf, err := prog.loadManifest(ctx, meta)
+			if err != nil {
+				if errors.Is(err, schema.ErrFileIsLocked) {
+					logger.Warn("Manifest unavailable (will retry next run)", "error", err)
+					results.Skipped++
+
+					continue
+				}
+
+				logger.Error("Manifest failure (will retry next run)", "error", err)
+				errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+				results.Error++
+
+				continue
+			}
+			job = NewJob(meta.Par2Path, opts, mf, meta.IsBundle)
+		}
+
+		logger = prog.verificationLogger(ctx, job, nil)
+		logger.Info("Job started", "estDuration", meta.lastDurationStr())
 
 		if err := prog.RunVerify(ctx, job, false); err == nil {
 			if job.manifest.Verification.ExitCode == schema.Par2ExitCodeSuccess {
@@ -208,6 +278,8 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 			results.Error++
 		}
+
+		*meta.JobMeta = *(schema.NewJobMeta(job.par2Path, job.manifest, job.isBundle))
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -217,8 +289,9 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
-func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
-	jobs := []*Job{}
+func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options, cache schema.Cache) ([]*JobMeta, error) {
+	metas := []*JobMeta{}
+	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	var partialErrors int
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
@@ -235,26 +308,30 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		if !util.IsPar2Index(d.Name()) {
 			return nil
 		}
-		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
+		if checker.ShouldIgnore(par2path) {
 			logger := prog.verificationLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 
 			return nil
 		}
 
-		job, err := prog.processManifest(ctx, par2path, opts)
-		if err != nil {
-			if !errors.Is(err, schema.ErrNonFatal) && !errors.Is(err, schema.ErrSilentSkip) {
-				return fmt.Errorf("failed to process manifest: %w", err)
-			}
-			if errors.Is(err, schema.ErrNonFatal) {
-				partialErrors++
-			}
+		if meta, cached := cache.Get(par2path); cached {
+			metas = append(metas, NewJobMeta(meta))
+		} else {
+			meta, err := prog.processManifest(ctx, par2path, opts)
+			if err != nil {
+				if !errors.Is(err, schema.ErrNonFatal) && !errors.Is(err, schema.ErrSilentSkip) {
+					return fmt.Errorf("failed to process manifest: %w", err)
+				}
+				if errors.Is(err, schema.ErrNonFatal) {
+					partialErrors++
+				}
 
-			return nil
+				return nil
+			}
+			cache.Set(par2path, meta.JobMeta)
+			metas = append(metas, meta)
 		}
-
-		jobs = append(jobs, job)
 
 		return nil
 	})
@@ -262,13 +339,13 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		return nil, fmt.Errorf("failed to walk FS: %w", err)
 	}
 	if partialErrors > 0 {
-		return jobs, fmt.Errorf("%w: %d manifests failed to read", schema.ErrNonFatal, partialErrors)
+		return metas, fmt.Errorf("%w: %d manifests failed to read", schema.ErrNonFatal, partialErrors)
 	}
 
-	return jobs, nil
+	return metas, nil
 }
 
-func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) { //nolint:funcorder
+func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*JobMeta, error) { //nolint:funcorder
 	if util.IsPar2Bundle(par2path) {
 		return prog.processBundleManifest(ctx, par2path, opts)
 	}
@@ -283,12 +360,12 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 			return nil, schema.ErrSilentSkip
 		}
 
-		job := NewJob(par2path, opts, nil, false)
+		meta := NewJobMeta(schema.NewJobMeta(par2path, nil, false))
 
-		logger := prog.verificationLogger(ctx, job, manifestPath)
+		logger := prog.verificationLogger(ctx, meta, manifestPath)
 		logger.Debug("Failed to find par2cron manifest (resetting manifest)", "error", err)
 
-		return job, nil
+		return meta, nil
 	}
 
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
@@ -318,12 +395,12 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 			return nil, schema.ErrSilentSkip
 		}
 
-		job := NewJob(par2path, opts, nil, false)
+		meta := NewJobMeta(schema.NewJobMeta(par2path, nil, false))
 
-		logger := prog.verificationLogger(ctx, job, manifestPath)
+		logger := prog.verificationLogger(ctx, meta, manifestPath)
 		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
 
-		return job, nil
+		return meta, nil
 	}
 
 	if opts.SkipNotCreated && mf.Creation == nil {
@@ -332,12 +409,10 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 		return nil, schema.ErrSilentSkip
 	}
 
-	job := NewJob(par2path, opts, mf, false)
-
-	return job, nil
+	return NewJobMeta(schema.NewJobMeta(par2path, mf, false)), nil
 }
 
-func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*Job, error) { //nolint:funcorder
+func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*JobMeta, error) { //nolint:funcorder
 	logger := prog.verificationLogger(ctx, nil, bundlePath)
 
 	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
@@ -359,15 +434,15 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	}
 	by, err := bun.Manifest()
 	if err != nil {
-		job := NewJob(bundlePath, opts, nil, true)
+		meta := NewJobMeta(schema.NewJobMeta(bundlePath, nil, true))
 
-		logger := prog.verificationLogger(ctx, job, bundlePath)
+		logger := prog.verificationLogger(ctx, meta, bundlePath)
 		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
 
 		_ = bun.Close()
 		unlock()
 
-		return job, nil
+		return meta, nil
 	}
 	_ = bun.Close()
 	unlock()
@@ -380,12 +455,12 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 			return nil, schema.ErrSilentSkip
 		}
 
-		job := NewJob(bundlePath, opts, nil, true)
+		meta := NewJobMeta(schema.NewJobMeta(bundlePath, nil, true))
 
-		logger := prog.verificationLogger(ctx, job, bundlePath)
+		logger := prog.verificationLogger(ctx, meta, bundlePath)
 		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
 
-		return job, nil
+		return meta, nil
 	}
 
 	if opts.SkipNotCreated && mf.Creation == nil {
@@ -394,9 +469,81 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 		return nil, schema.ErrSilentSkip
 	}
 
-	job := NewJob(bundlePath, opts, mf, true)
+	return NewJobMeta(schema.NewJobMeta(bundlePath, mf, true)), nil
+}
 
-	return job, nil
+func (prog *Service) loadManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) { //nolint:funcorder
+	if meta.IsBundle {
+		return prog.loadBundleManifest(ctx, meta)
+	}
+
+	manifestPath := meta.Par2Path + schema.ManifestExtension
+
+	unlock, err := util.AcquireLock(prog.fsys, meta.Par2Path+schema.LockExtension, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lock: %w", err)
+	}
+	data, err := afero.ReadFile(prog.fsys, manifestPath)
+	if err != nil {
+		unlock()
+
+		if errors.Is(err, fs.ErrNotExist) {
+			logger := prog.verificationLogger(ctx, meta, manifestPath)
+			logger.Warn("Failed to find par2cron manifest (resetting manifest)", "error", err)
+
+			return nil, nil //nolint:nilnil
+		}
+
+		return nil, fmt.Errorf("failed to read: %w", err)
+	}
+	unlock()
+
+	mf := &schema.Manifest{}
+	if err := json.Unmarshal(data, mf); err != nil {
+		logger := prog.verificationLogger(ctx, meta, manifestPath)
+		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
+
+		return nil, nil //nolint:nilnil
+	}
+
+	return mf, nil
+}
+
+func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) { //nolint:funcorder
+	bundlePath := meta.Par2Path
+
+	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lock: %w", err)
+	}
+	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	if err != nil {
+		unlock()
+
+		return nil, fmt.Errorf("failed to open: %w", err)
+	}
+	by, err := bun.Manifest()
+	if err != nil {
+		logger := prog.verificationLogger(ctx, meta, bundlePath)
+		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
+
+		_ = bun.Close()
+		unlock()
+
+		return nil, nil //nolint:nilnil
+	}
+	_ = bun.Close()
+	unlock()
+
+	mf := &schema.Manifest{}
+	if err := json.Unmarshal(by, mf); err != nil {
+		logger := prog.verificationLogger(ctx, meta, bundlePath)
+		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
+
+		return nil, nil //nolint:nilnil
+	}
+
+	return mf, nil
 }
 
 func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) error {
@@ -521,12 +668,12 @@ func (prog *Service) parseExitCode(job *Job, err error) error {
 	}
 }
 
-func (prog *Service) considerBacklog(jobs []*Job, opts Options) {
-	if len(jobs) == 0 || opts.MinAge.Value <= 0 || opts.MaxDuration.Value <= 0 || opts.RunInterval.Value <= 0 {
+func (prog *Service) considerBacklog(metas []*JobMeta, opts Options) {
+	if len(metas) == 0 || opts.MinAge.Value <= 0 || opts.MaxDuration.Value <= 0 || opts.RunInterval.Value <= 0 {
 		return
 	}
 
-	js := prog.Stats(jobs)
+	js := prog.Stats(metas)
 	if js.TotalDuration <= 0 {
 		return
 	}
@@ -544,29 +691,29 @@ func (prog *Service) considerBacklog(jobs []*Job, opts Options) {
 	}
 }
 
-func (prog *Service) considerDurations(jobs []*Job, opts Options) {
-	if len(jobs) == 0 {
+func (prog *Service) considerDurations(metas []*JobMeta, opts Options) {
+	if len(metas) == 0 {
 		return
 	}
 
 	if opts.MaxDuration.Value > 0 {
-		est := jobs[0].lastDuration()
+		est := metas[0].lastDuration()
 		switch {
 		case est == 0:
 			prog.log.Warn("First job has (still) unknown duration, may exceed --duration",
-				"job", jobs[0].par2Path,
+				"job", metas[0].Par2Path,
 				"maxDuration", opts.MaxDuration.Value.String(),
 			)
 		case est > opts.MaxDuration.Value:
 			prog.log.Warn("First job is estimated to exceed --duration (required to prevent starvation)",
-				"job", jobs[0].par2Path,
+				"job", metas[0].Par2Path,
 				"estDuration", est.String(),
 				"maxDuration", opts.MaxDuration.Value.String(),
 			)
 		}
 
-		for _, job := range jobs[1:] {
-			if job.lastDuration() == 0 {
+		for _, meta := range metas[1:] {
+			if meta.lastDuration() == 0 {
 				prog.log.Warn("Some jobs have a (still) unknown duration, may exceed --duration",
 					"maxDuration", opts.MaxDuration.Value.String(),
 				)
