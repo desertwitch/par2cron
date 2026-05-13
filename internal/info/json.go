@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"time"
@@ -173,6 +174,20 @@ func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, opts Opti
 	return nil
 }
 
+func (prog *Service) openCacheJSON(rootDir string, opts Options, result *Result) schema.Cache { //nolint:ireturn
+	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
+
+	if opts.CacheDir == "" {
+		return cache
+	}
+
+	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		result.Warning = fmt.Sprintf("Metadata cache for '%s' could not be loaded: %v", rootDir, err)
+	}
+
+	return cache
+}
+
 func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options) (*Result, error) {
 	if opts.RunInterval.Value <= 0 {
 		return nil, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, errNoCalcInterval)
@@ -192,13 +207,21 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 	jobs := []*verify.JobMeta{}
 	errs := []error{}
 	for _, rootDir := range rootDirs {
-		js, err := vs.Enumerate(ctx, rootDir, va)
+		cache := prog.openCacheJSON(rootDir, opts, result)
+
+		js, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return nil, fmt.Errorf("failed to enumerate jobs: %w", err)
 			}
 
 			errs = append(errs, err)
+		}
+
+		// If --skip-not-created is set, but was not in a previous run, these
+		// items will be in cache, so we skip over them (but keep them in cache).
+		if opts.SkipNotCreated {
+			js = verify.FilterNotCreated(js)
 		}
 
 		jobs = append(jobs, js...)

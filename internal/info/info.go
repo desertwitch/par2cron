@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"time"
 
@@ -23,6 +24,7 @@ type Options struct {
 	RunInterval     flags.Duration `json:"run_interval"`
 	IncludeExternal bool           `json:"include_external"`
 	SkipNotCreated  bool           `json:"skip_not_created"`
+	CacheDir        string         `json:"cache_dir"`
 }
 
 type Service struct {
@@ -53,6 +55,20 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 }
 
+func (prog *Service) openCache(rootDir string, opts Options) schema.Cache { //nolint:funcorder,ireturn
+	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
+
+	if opts.CacheDir == "" {
+		return cache
+	}
+
+	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Metadata cache for '%s' could not be loaded (%v)\n", rootDir, err)
+	}
+
+	return cache
+}
+
 func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) error {
 	if prog.log.Options.WantJSON {
 		return prog.PrintJSON(ctx, rootDirs, opts)
@@ -72,15 +88,24 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 
 	jobs := []*verify.JobMeta{}
 	for _, rootDir := range rootDirs {
-		fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem '%s' for jobs (using '%s')...\n", rootDir, prog.walker.Name())
+		cache := prog.openCache(rootDir, opts)
 
-		js, err := vs.Enumerate(ctx, rootDir, va)
+		fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem '%s' for jobs (using '%s', %d in cache)...\n",
+			rootDir, prog.walker.Name(), cache.Len())
+
+		js, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return fmt.Errorf("failed to enumerate jobs: %w", err)
 			}
 
 			fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read for '%s' (%v)\n", rootDir, err)
+		}
+
+		// If --skip-not-created is set, but was not in a previous run, these
+		// items will be in cache, so we skip over them (but keep them in cache).
+		if opts.SkipNotCreated {
+			js = verify.FilterNotCreated(js)
 		}
 
 		jobs = append(jobs, js...)
