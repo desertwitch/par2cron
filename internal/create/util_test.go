@@ -35,7 +35,7 @@ func Test_Service_cleanupAfterFailure_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -91,7 +91,7 @@ func Test_Service_cleanupAfterFailure_EdgeCases_Success(t *testing.T) {
 
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -144,7 +144,7 @@ func Test_Service_cleanupAfterFailure_DoesNotRemoveSamePrefixUnrelatedPar2_Succe
 	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -185,7 +185,7 @@ func Test_Service_cleanupAfterFailure_BundleJob_RemovesBundle_Success(t *testing
 	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -224,7 +224,7 @@ func Test_Service_cleanupAfterFailure_OneFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data/folder",
@@ -271,7 +271,7 @@ func Test_Service_considerRecursive_HasRArgButNotRecursiveMode_Error(t *testing.
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-R"},
@@ -298,7 +298,7 @@ func Test_Service_considerRecursive_RecursiveModeButNoRArg_Success(t *testing.T)
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-n3"},
@@ -326,7 +326,7 @@ func Test_Service_considerRecursive_RecursiveModeWithRArg_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-R"},
@@ -355,7 +355,7 @@ func Test_Service_considerRecursive_FileModeWithoutRArg_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-n3"},
@@ -383,7 +383,7 @@ func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := &Options{
 		Par2Args: []string{"-r10", "-n3"},
@@ -538,7 +538,7 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			}
 			_ = ls.LogLevel.Set("debug")
 
-			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 			job := &Job{
 				workingDir:    "/data/folder",

@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/davidscholberg/go-durationfmt v0.0.0-20170122144659-64843a2083d3
+	github.com/klauspost/compress v1.18.6
 	github.com/lmittmann/tint v1.1.3
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2

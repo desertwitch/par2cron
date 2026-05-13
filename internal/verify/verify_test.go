@@ -115,7 +115,7 @@ func Test_Service_Verify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -149,7 +149,7 @@ func Test_Service_Verify_MultiRoot_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data", "/data2"}, args)
 	require.NoError(t, err)
@@ -184,7 +184,7 @@ func Test_Service_Verify_DurationExceeded_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
@@ -222,7 +222,7 @@ func Test_Service_Verify_FileLocked_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -252,7 +252,7 @@ func Test_Service_Verify_Generic_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -282,7 +282,7 @@ func Test_Service_Verify_CorruptionDetected_Repairable_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -312,7 +312,7 @@ func Test_Service_Verify_CorruptionDetected_Unrepairable_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -346,7 +346,7 @@ func Test_Service_Verify_MultipleJobs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -384,7 +384,7 @@ func Test_Service_Verify_MultipleJobs_OneFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -425,7 +425,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -467,7 +467,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_NoOtherJobs_Error(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -508,7 +508,7 @@ func Test_Service_Verify_MultipleJobs_ErrorOrdering_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitUnrepairable)
@@ -531,7 +531,7 @@ func Test_Service_Verify_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -558,7 +558,7 @@ func Test_Service_Verify_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(ctx, []string{"/data"}, args)
@@ -581,14 +581,14 @@ func Test_Service_Enumerate_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
+	require.True(t, jobs[0].HasManifest)
 }
 
 // Expectation: The correct job and a nil manifest should be returned on invalid manifest.
@@ -607,7 +607,7 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -615,7 +615,7 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
+	require.False(t, jobs[0].HasManifest)
 	require.Contains(t, logBuf.String(), "resetting manifest")
 
 	// Should not be deleted yet (will be overwritten on success).
@@ -640,15 +640,15 @@ func Test_Service_Enumerate_NoManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
-	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[0].par2Path)
+	require.True(t, jobs[0].HasManifest)
+	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: A partial failure should be returned when reading the manifest fails.
@@ -671,7 +671,7 @@ func Test_Service_Enumerate_ReadManifestFailure_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(t.Context(), "/data", args)
@@ -696,7 +696,7 @@ func Test_Service_Enumerate_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -723,14 +723,14 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/subdir/notignored"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/subdir/notignored"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: Elements in directories with an ignore-all file should be skipped recursively.
@@ -751,14 +751,14 @@ func Test_Service_Enumerate_IgnoreAllFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/normal/test"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/normal/test"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: Subdirectories with an ignore-all file should skip the entire directory tree.
@@ -781,15 +781,15 @@ func Test_Service_Enumerate_IgnoreAllFile_SkipsRecursive_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
-	require.Equal(t, "/data/subdir/test"+schema.Par2Extension, jobs[0].par2Path)
-	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[1].par2Path)
+	require.Equal(t, "/data/subdir/test"+schema.Par2Extension, jobs[0].Par2Path)
+	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[1].Par2Path)
 }
 
 // Expectation: PAR2 files without manifest should be included when --include-external is set.
@@ -807,7 +807,7 @@ func Test_Service_Enumerate_IncludeExternal_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -817,7 +817,7 @@ func Test_Service_Enumerate_IncludeExternal_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
+	require.False(t, jobs[0].HasManifest)
 }
 
 // Expectation: PAR2 files without manifest should be skipped when --include-external is unset.
@@ -836,7 +836,7 @@ func Test_Service_Enumerate_IncludeExternal_Unset_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -846,7 +846,7 @@ func Test_Service_Enumerate_IncludeExternal_Unset_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/with-manifest"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/with-manifest"+schema.Par2Extension, jobs[0].Par2Path)
 	require.Contains(t, logBuf.String(), "skipping")
 }
 
@@ -872,7 +872,7 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -882,7 +882,7 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/with-creation"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/with-creation"+schema.Par2Extension, jobs[0].Par2Path)
 	require.Contains(t, logBuf.String(), "skipping; --skip-not-created")
 }
 
@@ -902,7 +902,7 @@ func Test_Service_Enumerate_SkipNotCreated_InvalidManifest_Success(t *testing.T)
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -936,7 +936,7 @@ func Test_Service_Enumerate_NoSkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -946,8 +946,8 @@ func Test_Service_Enumerate_NoSkipNotCreated_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
-	require.Nil(t, jobs[0].manifest.Creation)
+	require.True(t, jobs[0].HasManifest)
+	require.False(t, jobs[0].HasCreation)
 }
 
 // Expectation: Both --include-external=false and --skip-not-created can be used together.
@@ -978,7 +978,7 @@ func Test_Service_Enumerate_BothSkipOptions_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -989,7 +989,7 @@ func Test_Service_Enumerate_BothSkipOptions_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/full"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/full"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: Context cancellation should be respected during enumeration.
@@ -1010,7 +1010,7 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(ctx, "/data", args)
@@ -1053,16 +1053,16 @@ func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
-	require.True(t, jobs[0].isBundle)
-	require.Contains(t, jobs[0].par2Path, schema.BundleExtension)
+	require.True(t, jobs[0].HasManifest)
+	require.True(t, jobs[0].IsBundle)
+	require.Contains(t, jobs[0].Par2Path, schema.BundleExtension)
 }
 
 // Expectation: A nil manifest should be returned when the bundle manifest cannot be read.
@@ -1095,15 +1095,15 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
-	require.True(t, jobs[0].isBundle)
+	require.False(t, jobs[0].HasManifest)
+	require.True(t, jobs[0].IsBundle)
 	require.Contains(t, logBuf.String(), "resetting manifest")
 }
 
@@ -1137,15 +1137,15 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
-	require.True(t, jobs[0].isBundle)
+	require.False(t, jobs[0].HasManifest)
+	require.True(t, jobs[0].IsBundle)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }
 
@@ -1170,7 +1170,7 @@ func Test_Service_Enumerate_Bundle_OpenFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(t.Context(), "/data", args)
@@ -1213,7 +1213,7 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -1253,7 +1253,7 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_InvalidManifest_Success(t *tes
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args)
@@ -1284,7 +1284,7 @@ func Test_Service_RunVerify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -1333,7 +1333,7 @@ func Test_Service_RunVerify_CorrectArgs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -1379,7 +1379,7 @@ func Test_Service_RunVerify_UpdatesVerificationFields_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	oldTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	job := &Job{
@@ -1442,7 +1442,7 @@ func Test_Service_RunVerify_KeepCreateManifest_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -1493,7 +1493,7 @@ func Test_Service_RunVerify_HashMismatch_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -1537,7 +1537,7 @@ func Test_Service_RunVerify_GenericError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -1576,7 +1576,7 @@ func Test_Service_RunVerify_ManifestWriteError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -1637,7 +1637,7 @@ func Test_Service_RunVerify_Bundle_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.SHA256 = "abc123"
@@ -1713,7 +1713,7 @@ func Test_Service_RunVerify_Bundle_ManifestWriteError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.SHA256 = "abc123"
@@ -1749,7 +1749,7 @@ func Test_Service_parseExitCode_CodeSuccess_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1778,7 +1778,7 @@ func Test_Service_parseExitCode_CodeRepairPossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1808,7 +1808,7 @@ func Test_Service_parseExitCode_CodeRepairImpossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1838,7 +1838,7 @@ func Test_Service_parseExitCode_UnhandledCode_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1865,14 +1865,14 @@ func Test_Service_considerBacklog_InsufficientCapacity_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 10 * time.Hour,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  10 * time.Hour,
 			},
 		},
 	}
@@ -1882,7 +1882,7 @@ func Test_Service_considerBacklog_InsufficientCapacity_Success(t *testing.T) {
 	_ = args.MaxDuration.Set("1h")
 	_ = args.RunInterval.Set("24h")
 
-	prog.considerBacklog(jobs, args)
+	prog.considerBacklog(metas, args)
 
 	require.Contains(t, logBuf.String(), "Backlog is growing indefinitely")
 }
@@ -1901,17 +1901,19 @@ func Test_Service_considerBacklog_NoDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
 			},
 		},
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
 			},
 		},
 	}
@@ -1921,7 +1923,7 @@ func Test_Service_considerBacklog_NoDuration_Success(t *testing.T) {
 	_ = args.MaxDuration.Set("1h")
 	_ = args.RunInterval.Set("24h")
 
-	prog.considerBacklog(jobs, args)
+	prog.considerBacklog(metas, args)
 
 	require.NotContains(t, logBuf.String(), "Backlog is growing indefinitely")
 }
@@ -1940,15 +1942,14 @@ func Test_Service_considerDurations_FirstJobUnknownDuration_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 	}
@@ -1956,7 +1957,7 @@ func Test_Service_considerDurations_FirstJobUnknownDuration_Success(t *testing.T
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.Contains(t, logBuf.String(), "First job has (still) unknown duration")
 }
@@ -1975,15 +1976,14 @@ func Test_Service_considerDurations_FirstJobExceedsDuration_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 2 * time.Hour,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  2 * time.Hour,
 			},
 		},
 	}
@@ -1991,7 +1991,7 @@ func Test_Service_considerDurations_FirstJobExceedsDuration_Success(t *testing.T
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.Contains(t, logBuf.String(), "First job is estimated to exceed --duration")
 }
@@ -2010,23 +2010,21 @@ func Test_Service_considerDurations_SubsequentJobsUnknownDuration_Success(t *tes
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 30 * time.Minute,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  30 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/test2" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 	}
@@ -2034,7 +2032,7 @@ func Test_Service_considerDurations_SubsequentJobsUnknownDuration_Success(t *tes
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.Contains(t, logBuf.String(), "Some jobs have a (still) unknown duration")
 }
@@ -2053,23 +2051,21 @@ func Test_Service_considerDurations_AllJobsKnownDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 30 * time.Minute,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  30 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/test2" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 20 * time.Minute,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  20 * time.Minute,
 			},
 		},
 	}
@@ -2077,7 +2073,7 @@ func Test_Service_considerDurations_AllJobsKnownDuration_Success(t *testing.T) {
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.NotContains(t, logBuf.String(), "unknown duration")
 	require.NotContains(t, logBuf.String(), "exceed --duration")
@@ -2097,22 +2093,21 @@ func Test_Service_considerDurations_NoMaxDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 	}
 
 	args := Options{}
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.NotContains(t, logBuf.String(), "unknown duration")
 	require.NotContains(t, logBuf.String(), "exceed --duration")
@@ -2132,11 +2127,11 @@ func Test_Service_considerDurations_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{}
+	metas := []*JobMeta{}
 	args := Options{}
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 	require.Empty(t, logBuf.String())
 }

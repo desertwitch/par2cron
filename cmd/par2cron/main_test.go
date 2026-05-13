@@ -93,7 +93,7 @@ func Test_NewProgram_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewProgram(nil, ls, &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+	prog := NewProgram(nil, ls, &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 	require.NotNil(t, prog)
 	require.NotNil(t, prog.CreationService)
