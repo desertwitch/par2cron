@@ -43,36 +43,33 @@ func (c *GobCache) Len() int {
 }
 
 // Get returns the JobMeta for the given key, or nil and false if not found.
+// It also sets the walked state to true (if found), the element has been seen.
 func (c *GobCache) Get(key string) (*schema.JobMeta, bool) {
 	meta, ok := c.items[key]
 	if !ok {
 		return nil, false
 	}
+	meta.Walked = true
 
 	return meta, true
 }
 
 // Set adds or updates a JobMeta entry in the cache.
+// It also sets the walked state to true, the element has been seen.
 func (c *GobCache) Set(key string, meta *schema.JobMeta) {
+	meta.Walked = true
 	c.items[key] = meta
 }
 
-// Touch marks a key as walked in the current walk.
-func (c *GobCache) Touch(key string) {
-	if meta, ok := c.items[key]; ok {
-		meta.Walked = true
-	}
-}
-
-// ResetWalked sets all items of the cache to not seen.
+// ResetWalked sets all items of the cache to not walked.
 func (c *GobCache) ResetWalked() {
 	for _, meta := range c.items {
 		meta.Walked = false
 	}
 }
 
-// Prune removes all entries not seen in the current walk.
-func (c *GobCache) Prune() int {
+// PruneUnwalked removes all entries not walked in the current walk.
+func (c *GobCache) PruneUnwalked() int {
 	pruned := 0
 
 	for key, meta := range c.items {
@@ -83,17 +80,6 @@ func (c *GobCache) Prune() int {
 	}
 
 	return pruned
-}
-
-// All returns all cached JobMeta pointers in no particular order.
-func (c *GobCache) All() []*schema.JobMeta {
-	result := make([]*schema.JobMeta, 0, len(c.items))
-
-	for _, meta := range c.items {
-		result = append(result, meta)
-	}
-
-	return result
 }
 
 // Load reads the cache from disk, streaming entries one at a time.
@@ -161,7 +147,7 @@ func (c *GobCache) Save() error {
 		return fmt.Errorf("failed to seek: %w", err)
 	}
 
-	zw, err := zstd.NewWriter(f, zstd.WithEncoderLevel(zstd.SpeedFastest))
+	zw, err := zstd.NewWriter(f, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {
 		return fmt.Errorf("failed to create zstd writer: %w", err)
 	}
