@@ -266,6 +266,7 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, opts Options
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
+	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	var parseErrors int
 	err := prog.walker.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
@@ -282,7 +283,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		if !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
 			return nil
 		}
-		if util.ShouldIgnorePath(prog.fsys, path, rootDir) {
+		if checker.ShouldIgnore(path) {
 			logger := prog.creationLogger(ctx, nil, path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 

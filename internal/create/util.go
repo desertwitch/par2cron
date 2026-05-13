@@ -75,6 +75,7 @@ func (prog *Service) considerRecursive(opts *Options) error {
 	return nil
 }
 
+// TODO: Refactor to use dirent.
 func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
 	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
 	baseName = strings.TrimPrefix(baseName, ".")

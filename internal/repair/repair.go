@@ -189,6 +189,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
+	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	var partialErrors int
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
@@ -205,7 +206,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		if !util.IsPar2Index(d.Name()) {
 			return nil
 		}
-		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
+		if checker.ShouldIgnore(par2path) {
 			logger := prog.repairLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 

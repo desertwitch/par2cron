@@ -584,7 +584,7 @@ func Test_Service_Enumerate_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -610,7 +610,7 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 
@@ -643,7 +643,7 @@ func Test_Service_Enumerate_NoManifest_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -674,7 +674,7 @@ func Test_Service_Enumerate_ReadManifestFailure_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Enumerate(t.Context(), "/data", args)
+	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Contains(t, logBuf.String(), "Failed to read par2cron manifest")
@@ -699,7 +699,7 @@ func Test_Service_Enumerate_NoJobs_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)
@@ -726,7 +726,7 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -754,7 +754,7 @@ func Test_Service_Enumerate_IgnoreAllFile_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -784,7 +784,7 @@ func Test_Service_Enumerate_IgnoreAllFile_SkipsRecursive_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
@@ -813,7 +813,7 @@ func Test_Service_Enumerate_IncludeExternal_Success(t *testing.T) {
 		Par2Args:        []string{"-v"},
 		IncludeExternal: true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -842,7 +842,7 @@ func Test_Service_Enumerate_IncludeExternal_Unset_Success(t *testing.T) {
 		Par2Args:        []string{"-v"},
 		IncludeExternal: false,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -878,7 +878,7 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 		Par2Args:       []string{"-v"},
 		SkipNotCreated: true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -908,7 +908,7 @@ func Test_Service_Enumerate_SkipNotCreated_InvalidManifest_Success(t *testing.T)
 		Par2Args:       []string{"-v"},
 		SkipNotCreated: true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)
@@ -942,7 +942,7 @@ func Test_Service_Enumerate_NoSkipNotCreated_Success(t *testing.T) {
 		Par2Args:       []string{"-v"},
 		SkipNotCreated: false,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -985,7 +985,7 @@ func Test_Service_Enumerate_BothSkipOptions_Success(t *testing.T) {
 		IncludeExternal: false,
 		SkipNotCreated:  true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -1013,7 +1013,7 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Enumerate(ctx, "/data", args)
+	_, err := prog.Enumerate(ctx, "/data", args, &testutil.MockCache{})
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -1056,7 +1056,7 @@ func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -1098,7 +1098,7 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -1140,7 +1140,7 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
@@ -1173,7 +1173,7 @@ func Test_Service_Enumerate_Bundle_OpenFails_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Enumerate(t.Context(), "/data", args)
+	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Contains(t, logBuf.String(), "Failed to open bundle")
@@ -1216,7 +1216,7 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)
@@ -1256,7 +1256,7 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_InvalidManifest_Success(t *tes
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)

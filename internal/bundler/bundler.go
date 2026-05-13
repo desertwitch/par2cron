@@ -158,6 +158,7 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 
 func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
+	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	var partialErrors int
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
@@ -177,7 +178,7 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 		if util.IsPar2Bundle(d.Name()) {
 			return nil
 		}
-		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
+		if checker.ShouldIgnore(par2path) {
 			logger := prog.bundleLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 
@@ -349,6 +350,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 
 func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
+	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
@@ -367,7 +369,7 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 		if !util.IsPar2Bundle(d.Name()) {
 			return nil
 		}
-		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
+		if checker.ShouldIgnore(par2path) {
 			logger := prog.bundleLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 
