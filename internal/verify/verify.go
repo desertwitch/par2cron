@@ -192,8 +192,6 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 	}
 
 	for i, meta := range metas {
-		logger := prog.verificationLogger(ctx, meta, nil)
-
 		if err := ctx.Err(); err != nil {
 			return results, fmt.Errorf("context error: %w", err)
 		}
@@ -301,7 +299,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 		if !util.IsPar2Index(d.Name()) {
 			return nil
-		}
+		} // --- End of Hot Path ---
 		if checker.ShouldIgnore(par2path) {
 			logger := prog.verificationLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
@@ -325,7 +323,6 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 				return nil
 			}
-
 			cache.Set(par2path, meta.JobMeta)
 
 			if prog.isVerificationCandidate(ctx, meta.JobMeta, opts) {

@@ -218,6 +218,12 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, err)
 		}
 
+		cache.PruneUnwalked()
+		// We don't save the cache so there cannot be races with verification.
+		// An info could finish after an overlapping verification and discard
+		// the verification progress in a race, so we only let verification
+		// write to the cache (seeing info does not mutate manifests anyway).
+
 		jobs = append(jobs, js...)
 	}
 	if err := errors.Join(errs...); err != nil {

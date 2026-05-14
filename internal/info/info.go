@@ -102,6 +102,12 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 			fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read for '%s' (%v)\n", rootDir, err)
 		}
 
+		cache.PruneUnwalked()
+		// We don't save the cache so there cannot be races with verification.
+		// An info could finish after an overlapping verification and discard
+		// the verification progress in a race, so we only let verification
+		// write to the cache (seeing info does not mutate manifests anyway).
+
 		jobs = append(jobs, js...)
 	}
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
