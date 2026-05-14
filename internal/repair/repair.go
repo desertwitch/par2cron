@@ -29,6 +29,7 @@ type Options struct {
 	AttemptUnrepairables bool
 	PurgeBackups         bool
 	RestoreBackups       bool
+	CacheDir             string
 }
 
 func (o *Options) SetPar2Args(args []string) {
@@ -63,6 +64,14 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 }
 
+type JobMeta struct {
+	*schema.JobMeta
+}
+
+func NewJobMeta(meta *schema.JobMeta) *JobMeta {
+	return &JobMeta{meta}
+}
+
 type Job struct {
 	workingDir     string
 	par2Name       string
@@ -79,7 +88,7 @@ type Job struct {
 	manifest *schema.Manifest
 }
 
-func NewRepairJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *Job {
+func NewJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *Job {
 	rj := &Job{}
 
 	rj.workingDir = filepath.Dir(par2Path)
@@ -107,17 +116,34 @@ func NewRepairJob(par2Path string, opts Options, mf *schema.Manifest, isBundle b
 	return rj
 }
 
+func (prog *Service) openCache(ctx context.Context, rootDir string, opts Options) schema.Cache {
+	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
+
+	if opts.CacheDir == "" {
+		return cache
+	}
+
+	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		logger := prog.repairLogger(ctx, nil, rootDir)
+		logger.Error("Failed to load manifest cache", "error", err)
+	}
+
+	return cache
+}
+
 func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
 	logger := prog.repairLogger(ctx, nil, nil)
 
-	jobs := []*Job{}
+	metas := []*JobMeta{}
 	for _, rootDir := range rootDirs {
-		logger.Info("Scanning filesystem for jobs...",
-			"walker", prog.walker.Name(), "path", rootDir)
+		cache := prog.openCache(ctx, rootDir, opts)
 
-		js, err := prog.Enumerate(ctx, rootDir, opts)
+		logger.Info("Scanning filesystem for jobs...",
+			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.Len())
+
+		ms, err := prog.Enumerate(ctx, rootDir, opts, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
@@ -127,13 +153,19 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 		}
 
-		jobs = append(jobs, js...)
+		cache.PruneUnwalked()
+		// We don't save the cache so there cannot be races with verification.
+		// A repair could finish after an overlapping verification and discard
+		// the verification progress in a race, so we only let verification
+		// write to the cache (it needs to confirm the repair results anyway).
+
+		metas = append(metas, ms...)
 	}
 
-	if len(jobs) > 0 {
-		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(jobs)),
+	if len(metas) > 0 {
+		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(metas)),
 			"maxDuration", opts.MaxDuration.Value.String())
-		results.Selected = len(jobs)
+		results.Selected = len(metas)
 	} else {
 		logger.Info("Nothing to do (will check again next run)")
 	}
@@ -145,7 +177,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 		defer deadlineCancel()
 	}
 
-	for i, job := range jobs {
+	for i, meta := range metas {
 		if err := ctx.Err(); err != nil {
 			return results, fmt.Errorf("context error: %w", err)
 		}
@@ -154,16 +186,33 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 			if err := deadlineCtx.Err(); errors.Is(err, context.DeadlineExceeded) {
 				logger := prog.repairLogger(ctx, nil, nil)
 				logger.Warn("Exceeded the --duration budget (will continue next run)",
-					"unprocessedJobs", len(jobs)-i, "totalJobs", len(jobs),
+					"unprocessedJobs", len(metas)-i, "totalJobs", len(metas),
 					"maxDuration", opts.MaxDuration.Value.String())
 
 				break
 			}
 		}
 
-		pos := fmt.Sprintf("%d/%d", i+1, len(jobs))
+		pos := fmt.Sprintf("%d/%d", i+1, len(metas))
 		ctx := context.WithValue(ctx, schema.PosKey, pos)
 
+		mf, err := prog.loadManifest(meta)
+		if err != nil {
+			if errors.Is(err, schema.ErrFileIsLocked) {
+				logger.Warn("Manifest unavailable (will retry next run)", "error", err)
+				results.Skipped++
+
+				continue
+			}
+
+			logger.Error("Manifest failure (will retry next run)", "error", err)
+			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+			results.Error++
+
+			continue
+		}
+
+		job := NewJob(meta.Par2Path, opts, mf, meta.IsBundle)
 		logger := prog.repairLogger(ctx, job, nil)
 		logger.Info("Job started")
 
@@ -187,8 +236,8 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 	return results, util.HighestError(errs) //nolint:wrapcheck
 }
 
-func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
-	jobs := []*Job{}
+func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options, cache schema.Cache) ([]*JobMeta, error) {
+	metas := []*JobMeta{}
 	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	var partialErrors int
@@ -205,7 +254,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 		if !util.IsPar2Index(d.Name()) {
 			return nil
-		}
+		} // --- End of Hot Path ---
 		if checker.ShouldIgnore(par2path) {
 			logger := prog.repairLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
@@ -213,19 +262,28 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 			return nil
 		}
 
-		job, err := prog.processManifest(ctx, par2path, opts)
-		if err != nil {
-			if !errors.Is(err, schema.ErrNonFatal) && !errors.Is(err, schema.ErrSilentSkip) {
-				return fmt.Errorf("failed to process manifest: %w", err)
+		if meta, cached := cache.Get(par2path); cached {
+			if prog.isRepairCandidate(ctx, meta, opts) {
+				metas = append(metas, NewJobMeta(meta))
 			}
-			if errors.Is(err, schema.ErrNonFatal) {
-				partialErrors++
-			}
+		} else {
+			meta, err := prog.processManifest(ctx, par2path)
+			if err != nil {
+				if !errors.Is(err, schema.ErrNonFatal) && !errors.Is(err, schema.ErrSilentSkip) {
+					return fmt.Errorf("failed to process manifest: %w", err)
+				}
+				if errors.Is(err, schema.ErrNonFatal) {
+					partialErrors++
+				}
 
-			return nil
+				return nil
+			}
+			cache.Set(par2path, meta.JobMeta)
+
+			if prog.isRepairCandidate(ctx, meta.JobMeta, opts) {
+				metas = append(metas, meta)
+			}
 		}
-
-		jobs = append(jobs, job)
 
 		return nil
 	})
@@ -233,21 +291,53 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		return nil, fmt.Errorf("failed to walk FS: %w", err)
 	}
 	if partialErrors > 0 {
-		return jobs, fmt.Errorf("%w: %d manifests failed to read", schema.ErrNonFatal, partialErrors)
+		return metas, fmt.Errorf("%w: %d manifests failed to read", schema.ErrNonFatal, partialErrors)
 	}
 
-	return jobs, nil
+	return metas, nil
 }
 
-func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*Job, error) {
+func (prog *Service) isRepairCandidate(ctx context.Context, meta *schema.JobMeta, opts Options) bool {
+	if opts.SkipNotCreated && !meta.HasCreation {
+		logger := prog.repairLogger(ctx, meta, nil)
+		logger.Debug("No creation manifest (skipping; --skip-not-created)")
+
+		return false
+	}
+
+	if !meta.HasVerification {
+		logger := prog.repairLogger(ctx, meta, nil)
+		logger.Debug("No verification manifest (skipping; not a repair candidate)")
+
+		return false
+	}
+
+	if meta.RepairNeeded && (meta.CountCorrupted >= opts.MinTestedCount) {
+		if opts.AttemptUnrepairables || meta.RepairPossible {
+			return true
+		}
+	}
+
+	logger := prog.repairLogger(ctx, meta, nil)
+	logger.Debug("Not a candidate for repair",
+		"minTested", opts.MinTestedCount,
+		"actualTested", meta.CountCorrupted,
+		"repairNeeded", meta.RepairNeeded,
+		"repairPossible", meta.RepairPossible,
+	)
+
+	return false
+}
+
+func (prog *Service) processManifest(ctx context.Context, par2path string) (*JobMeta, error) {
 	if util.IsPar2Bundle(par2path) {
-		return prog.processBundleManifest(ctx, par2path, opts)
+		return prog.processBundleManifest(ctx, par2path)
 	}
 
 	manifestPath := par2path + schema.ManifestExtension
-	logger := prog.repairLogger(ctx, nil, manifestPath)
 
 	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
+		logger := prog.repairLogger(ctx, nil, manifestPath)
 		logger.Debug("Failed to find par2cron manifest (will retry next run)", "error", err)
 
 		return nil, schema.ErrSilentSkip
@@ -256,6 +346,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger := prog.repairLogger(ctx, nil, manifestPath)
 			logger.Debug("Manifest is locked by another instance (will retry next run)")
 
 			return nil, schema.ErrSilentSkip
@@ -265,6 +356,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
+		logger := prog.repairLogger(ctx, nil, manifestPath)
 		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 		unlock()
 
@@ -274,45 +366,20 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(data, mf); err != nil {
+		logger := prog.repairLogger(ctx, nil, manifestPath)
 		logger.Warn("Failed to unmarshal par2cron manifest (will retry next run)", "error", err)
 
-		return nil, schema.ErrSilentSkip
+		return nil, schema.ErrNonFatal
 	}
 
-	if opts.SkipNotCreated && mf.Creation == nil {
-		logger.Debug("No creation manifest (skipping; --skip-not-created)")
-
-		return nil, schema.ErrSilentSkip
-	}
-
-	if mf.Verification == nil {
-		logger.Debug("No verification manifest (skipping; not a repair candidate)")
-
-		return nil, schema.ErrSilentSkip
-	}
-
-	if mf.Verification.RepairNeeded && (mf.Verification.CountCorrupted >= opts.MinTestedCount) {
-		if opts.AttemptUnrepairables || mf.Verification.RepairPossible {
-			return NewRepairJob(par2path, opts, mf, false), nil
-		}
-	}
-
-	logger.Debug("Not a candidate for repair",
-		"minTested", opts.MinTestedCount,
-		"actualTested", mf.Verification.CountCorrupted,
-		"repairNeeded", mf.Verification.RepairNeeded,
-		"repairPossible", mf.Verification.RepairPossible,
-	)
-
-	return nil, schema.ErrSilentSkip
+	return NewJobMeta(schema.NewJobMeta(par2path, mf, false)), nil
 }
 
-func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*Job, error) {
-	logger := prog.repairLogger(ctx, nil, bundlePath)
-
+func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string) (*JobMeta, error) {
 	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger := prog.repairLogger(ctx, nil, bundlePath)
 			logger.Debug("Bundle is locked by another instance (will retry next run)")
 
 			return nil, schema.ErrSilentSkip
@@ -323,6 +390,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
+		logger := prog.repairLogger(ctx, nil, bundlePath)
 		logger.Error("Failed to open bundle (will retry next run)", "error", err)
 
 		return nil, schema.ErrNonFatal
@@ -331,6 +399,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	if err != nil {
 		_ = bun.Close()
 		unlock()
+		logger := prog.repairLogger(ctx, nil, bundlePath)
 		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 
 		return nil, schema.ErrNonFatal
@@ -340,37 +409,71 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(by, mf); err != nil {
-		logger.Warn("Failed to unmarshal par2cron manifest (will retry next run)", "error", err)
+		logger := prog.repairLogger(ctx, nil, bundlePath)
+		logger.Error("Failed to unmarshal par2cron manifest (will retry next run)", "error", err)
 
-		return nil, schema.ErrSilentSkip
+		return nil, schema.ErrNonFatal
 	}
 
-	if opts.SkipNotCreated && mf.Creation == nil {
-		logger.Debug("No creation manifest (skipping; --skip-not-created)")
+	return NewJobMeta(schema.NewJobMeta(bundlePath, mf, true)), nil
+}
 
-		return nil, schema.ErrSilentSkip
+func (prog *Service) loadManifest(meta *JobMeta) (*schema.Manifest, error) {
+	if meta.IsBundle {
+		return prog.loadBundleManifest(meta)
 	}
 
-	if mf.Verification == nil {
-		logger.Debug("No verification manifest (skipping; not a repair candidate)")
+	manifestPath := meta.Par2Path + schema.ManifestExtension
 
-		return nil, schema.ErrSilentSkip
+	unlock, err := util.AcquireLock(prog.fsys, meta.Par2Path+schema.LockExtension, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lock: %w", err)
+	}
+	data, err := afero.ReadFile(prog.fsys, manifestPath)
+	if err != nil {
+		unlock()
+
+		return nil, fmt.Errorf("failed to read: %w", err)
+	}
+	unlock()
+
+	mf := &schema.Manifest{}
+	if err := json.Unmarshal(data, mf); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
-	if mf.Verification.RepairNeeded && (mf.Verification.CountCorrupted >= opts.MinTestedCount) {
-		if opts.AttemptUnrepairables || mf.Verification.RepairPossible {
-			return NewRepairJob(bundlePath, opts, mf, true), nil
-		}
+	return mf, nil
+}
+
+func (prog *Service) loadBundleManifest(meta *JobMeta) (*schema.Manifest, error) {
+	bundlePath := meta.Par2Path
+
+	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lock: %w", err)
+	}
+	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	if err != nil {
+		unlock()
+
+		return nil, fmt.Errorf("failed to open: %w", err)
+	}
+	by, err := bun.Manifest()
+	if err != nil {
+		_ = bun.Close()
+		unlock()
+
+		return nil, fmt.Errorf("failed to read: %w", err)
+	}
+	_ = bun.Close()
+	unlock()
+
+	mf := &schema.Manifest{}
+	if err := json.Unmarshal(by, mf); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
-	logger.Debug("Not a candidate for repair",
-		"minTested", opts.MinTestedCount,
-		"actualTested", mf.Verification.CountCorrupted,
-		"repairNeeded", mf.Verification.RepairNeeded,
-		"repairPossible", mf.Verification.RepairPossible,
-	)
-
-	return nil, schema.ErrSilentSkip
+	return mf, nil
 }
 
 //nolint:funlen
