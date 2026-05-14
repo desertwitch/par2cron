@@ -550,8 +550,6 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 }
 
 func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.FsElement) error {
-	logger := prog.creationLogger(ctx, job, job.par2Path)
-
 	var needsCleanup bool
 	defer func() {
 		if needsCleanup {
@@ -592,6 +590,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 			err = fmt.Errorf("%w (%d)", err, *c)
 		}
 
+		logger := prog.creationLogger(ctx, job, job.par2Path)
 		logger.Error("Failed to create PAR2", "error", err)
 
 		return err
@@ -604,6 +603,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 	// }, prog.creationLogger(ctx, job, nil))
 
 	if sha256hash, err := util.HashFile(prog.fsys, job.par2Path); err != nil {
+		logger := prog.creationLogger(ctx, job, job.par2Path)
 		logger.Warn("Failed to hash PAR2 for par2cron manifest (will retry on verify)", "error", err)
 	} else {
 		mf.SHA256 = sha256hash
@@ -612,6 +612,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 	if job.asBundle {
 		if err := prog.packAsBundle(ctx, job, mf); err != nil {
 			needsCleanup = true
+			logger := prog.creationLogger(ctx, job, job.par2Path)
 			logger.Error("Failed to bundle created PAR2 files (will retry next run)", "error", err)
 
 			return fmt.Errorf("failed to bundle: %w", err)
@@ -638,8 +639,6 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 }
 
 func (prog *Service) packAsBundle(ctx context.Context, job *Job, mf *schema.Manifest) error {
-	logger := prog.creationLogger(ctx, job, job.par2Path)
-
 	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
 	if err != nil {
 		return fmt.Errorf("failed to find created files: %w", err)
@@ -650,6 +649,7 @@ func (prog *Service) packAsBundle(ctx context.Context, job *Job, mf *schema.Mani
 		return fmt.Errorf("failed to parse index par2: %w", err)
 	}
 
+	logger := prog.creationLogger(ctx, job, job.par2Path)
 	logger.Debug("Parsed PAR2 index file", "sets", len(p.Sets))
 	if len(p.Sets) != 1 || p.Sets[0].MainPacket == nil {
 		return errors.New("failed to parse index par2: malformed file")

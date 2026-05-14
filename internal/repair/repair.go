@@ -478,8 +478,6 @@ func (prog *Service) loadBundleManifest(meta *JobMeta) (*schema.Manifest, error)
 
 //nolint:funlen
 func (prog *Service) runRepair(ctx context.Context, job *Job) error {
-	logger := prog.repairLogger(ctx, job, job.par2Path)
-
 	unlock, err := util.AcquireLock(prog.fsys, job.lockPath, false)
 	if err != nil {
 		return fmt.Errorf("failed to lock: %w", err)
@@ -489,12 +487,14 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	if !job.isBundle {
 		sha256hash, err := util.HashFile(prog.fsys, job.par2Path)
 		if err != nil {
+			logger := prog.repairLogger(ctx, job, job.par2Path)
 			logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
 
 			return fmt.Errorf("failed to hash par2: %w", err)
 		}
 
 		if sha256hash != job.manifest.SHA256 {
+			logger := prog.repairLogger(ctx, job, job.par2Path)
 			logger.Warn("PAR2 has changed (needs re-verification; skipping repair)",
 				"currentHash", sha256hash,
 				"manifestHash", job.manifest.SHA256,
@@ -522,6 +522,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	if job.purgeBackups {
 		purger, err = newBackupPurger(prog.fsys, prog.repairLogger(ctx, job, nil), job.workingDir)
 		if err != nil {
+			logger := prog.repairLogger(ctx, job, job.par2Path)
 			logger.Warn("Failed to create backup file purger (cannot --purge-backups)",
 				"error", err)
 		}
@@ -531,11 +532,13 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	if job.restoreBackups {
 		restorer, err := newBackupRestorer(prog.fsys, prog.repairLogger(ctx, job, nil), job.workingDir)
 		if err != nil {
+			logger := prog.repairLogger(ctx, job, job.par2Path)
 			logger.Warn("Failed to create backup file restorer (cannot --restore-backups)", "error", err)
 		} else {
 			defer func() {
 				if needsRestore {
 					if err := restorer.Restore(); err != nil {
+						logger := prog.repairLogger(ctx, job, job.par2Path)
 						logger.Warn("Failed to restore backup files (cannot --restore-backups)", "error", err)
 					}
 				}
@@ -555,6 +558,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 		if c != nil {
 			err = fmt.Errorf("%w (%d)", err, *c)
 		}
+		logger := prog.repairLogger(ctx, job, job.par2Path)
 		logger.Error("Failed to repair PAR2", "error", err)
 
 		return err
@@ -586,6 +590,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 
 	if purger != nil && job.purgeBackups {
 		if err := purger.Purge(); err != nil {
+			logger := prog.repairLogger(ctx, job, job.par2Path)
 			logger.Warn("Failed to remove backup files (cannot --purge-backups)",
 				"error", err)
 		}

@@ -547,8 +547,6 @@ func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*sc
 }
 
 func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) error {
-	logger := prog.verificationLogger(ctx, job, job.manifestPath)
-
 	if !isPreLocked {
 		unlock, err := util.AcquireLock(prog.fsys, job.lockPath, false)
 		if err != nil {
@@ -561,6 +559,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	if !job.isBundle {
 		hash, err := util.HashFile(prog.fsys, job.par2Path)
 		if err != nil {
+			logger := prog.verificationLogger(ctx, job, job.manifestPath)
 			logger.Error("Failed to hash PAR2 against par2cron manifest", "error", err)
 
 			return fmt.Errorf("failed to hash par2: %w", err)
@@ -568,6 +567,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 		sha256hash = hash
 
 		if job.manifest != nil && sha256hash != job.manifest.SHA256 {
+			logger := prog.verificationLogger(ctx, job, job.manifestPath)
 			logger.Warn("PAR2 has changed (manifest out of date; resetting manifest)",
 				"currentHash", sha256hash,
 				"manifestHash", job.manifest.SHA256,
