@@ -102,12 +102,6 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 			fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read for '%s' (%v)\n", rootDir, err)
 		}
 
-		// If --skip-not-created is set, but was not in a previous run, these
-		// items will be in cache, so we skip over them (but keep them in cache).
-		if opts.SkipNotCreated {
-			js = verify.FilterNotCreated(js)
-		}
-
 		jobs = append(jobs, js...)
 	}
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")

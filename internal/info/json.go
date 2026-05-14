@@ -218,12 +218,6 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, err)
 		}
 
-		// If --skip-not-created is set, but was not in a previous run, these
-		// items will be in cache, so we skip over them (but keep them in cache).
-		if opts.SkipNotCreated {
-			js = verify.FilterNotCreated(js)
-		}
-
 		jobs = append(jobs, js...)
 	}
 	if err := errors.Join(errs...); err != nil {

@@ -40,6 +40,14 @@ func (o *Options) SetPar2Args(args []string) {
 	o.Par2Args = slices.Clone(args)
 }
 
+type JobMeta struct {
+	*schema.JobMeta
+}
+
+func NewJobMeta(meta *schema.JobMeta) *JobMeta {
+	return &JobMeta{meta}
+}
+
 type Job struct {
 	workingDir   string
 	par2Name     string
@@ -51,14 +59,6 @@ type Job struct {
 
 	isBundle bool
 	manifest *schema.Manifest
-}
-
-type JobMeta struct {
-	*schema.JobMeta
-}
-
-func NewJobMeta(meta *schema.JobMeta) *JobMeta {
-	return &JobMeta{meta}
 }
 
 func NewJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *Job {
@@ -166,12 +166,6 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 		defer prog.saveCache(ctx, cache, opts, rootDir)
 
 		metas = append(metas, ms...)
-	}
-
-	// If --skip-not-created is set, but was not in a previous run, these
-	// items will be in cache, so we skip over them (but keep them in cache).
-	if opts.SkipNotCreated {
-		metas = FilterNotCreated(metas)
 	}
 
 	metas = filterByAge(metas, opts.MinAge.Value)
@@ -316,7 +310,10 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		}
 
 		if meta, cached := cache.Get(par2path); cached {
-			metas = append(metas, NewJobMeta(meta))
+			meta := NewJobMeta(meta)
+			if prog.isVerificationCandidate(ctx, meta, opts) {
+				metas = append(metas, meta)
+			}
 		} else {
 			meta, err := prog.processManifest(ctx, par2path, opts)
 			if err != nil {
@@ -330,7 +327,10 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 				return nil
 			}
 			cache.Set(par2path, meta.JobMeta)
-			metas = append(metas, meta)
+
+			if prog.isVerificationCandidate(ctx, meta, opts) {
+				metas = append(metas, meta)
+			}
 		}
 
 		return nil
@@ -345,16 +345,27 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 	return metas, nil
 }
 
+func (prog *Service) isVerificationCandidate(ctx context.Context, meta *JobMeta, opts Options) bool { //nolint:funcorder
+	if opts.SkipNotCreated && !meta.HasCreation {
+		logger := prog.verificationLogger(ctx, meta, nil)
+		logger.Debug("No creation manifest (skipping; --skip-not-created)")
+
+		return false
+	}
+
+	return true
+}
+
 func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*JobMeta, error) { //nolint:funcorder
 	if util.IsPar2Bundle(par2path) {
 		return prog.processBundleManifest(ctx, par2path, opts)
 	}
 
 	manifestPath := par2path + schema.ManifestExtension
-	logger := prog.verificationLogger(ctx, nil, manifestPath)
 
 	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
 		if !opts.IncludeExternal {
+			logger := prog.verificationLogger(ctx, nil, manifestPath)
 			logger.Debug("No manifest found (skipping)")
 
 			return nil, schema.ErrSilentSkip
@@ -371,6 +382,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger := prog.verificationLogger(ctx, nil, manifestPath)
 			logger.Debug("Manifest is locked by another instance (will retry next run)")
 
 			return nil, schema.ErrSilentSkip
@@ -380,6 +392,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
+		logger := prog.verificationLogger(ctx, nil, manifestPath)
 		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
 		unlock()
 
@@ -390,6 +403,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(data, mf); err != nil {
 		if opts.SkipNotCreated {
+			logger := prog.verificationLogger(ctx, nil, manifestPath)
 			logger.Debug("No unmarshalable manifest (skipping; --skip-not-created)")
 
 			return nil, schema.ErrSilentSkip
@@ -403,21 +417,14 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 		return meta, nil
 	}
 
-	if opts.SkipNotCreated && mf.Creation == nil {
-		logger.Debug("No creation manifest (skipping; --skip-not-created)")
-
-		return nil, schema.ErrSilentSkip
-	}
-
 	return NewJobMeta(schema.NewJobMeta(par2path, mf, false)), nil
 }
 
 func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*JobMeta, error) { //nolint:funcorder
-	logger := prog.verificationLogger(ctx, nil, bundlePath)
-
 	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger := prog.verificationLogger(ctx, nil, bundlePath)
 			logger.Debug("Bundle is locked by another instance (will retry next run)")
 
 			return nil, schema.ErrSilentSkip
@@ -428,6 +435,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
+		logger := prog.verificationLogger(ctx, nil, bundlePath)
 		logger.Error("Failed to open bundle (will retry next run)", "error", err)
 
 		return nil, schema.ErrNonFatal
@@ -450,6 +458,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(by, mf); err != nil {
 		if opts.SkipNotCreated {
+			logger := prog.verificationLogger(ctx, nil, bundlePath)
 			logger.Debug("No unmarshalable manifest (skipping; --skip-not-created)")
 
 			return nil, schema.ErrSilentSkip
@@ -461,12 +470,6 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 		logger.Warn("Failed to unmarshal par2cron manifest (resetting manifest)", "error", err)
 
 		return meta, nil
-	}
-
-	if opts.SkipNotCreated && mf.Creation == nil {
-		logger.Debug("No creation manifest (skipping; --skip-not-created)")
-
-		return nil, schema.ErrSilentSkip
 	}
 
 	return NewJobMeta(schema.NewJobMeta(bundlePath, mf, true)), nil

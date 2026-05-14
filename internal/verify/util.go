@@ -106,18 +106,6 @@ func (meta *JobMeta) lastDurationStr() string {
 	return meta.VerifyDuration.String()
 }
 
-func FilterNotCreated(metas []*JobMeta) []*JobMeta {
-	filtered := make([]*JobMeta, 0, len(metas))
-
-	for _, meta := range metas {
-		if meta.HasCreation {
-			filtered = append(filtered, meta)
-		}
-	}
-
-	return filtered
-}
-
 func filterByAge(metas []*JobMeta, minAge time.Duration) []*JobMeta {
 	if len(metas) == 0 || minAge <= 0 {
 		return metas
