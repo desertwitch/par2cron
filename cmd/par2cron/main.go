@@ -54,7 +54,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var profFile *os.File
+var (
+	profFile    *os.File
+	profFileMem *os.File
+)
 
 func checkForPar2(ctx context.Context, runner schema.CommandRunner, errout io.Writer) error {
 	var out bytes.Buffer
@@ -79,6 +82,14 @@ func stopProfile() {
 		pprof.StopCPUProfile()
 		_ = profFile.Close()
 		profFile = nil
+	}
+}
+
+func stopProfileMem() {
+	if profFileMem != nil {
+		_ = pprof.Lookup("allocs").WriteTo(profFileMem, 0)
+		_ = profFileMem.Close()
+		profFileMem = nil
 	}
 }
 
@@ -116,10 +127,21 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
+			pm, _ := cmd.Flags().GetString("mprof")
+			if pm != "" {
+				pm, err := os.Create(pm)
+				if err != nil {
+					return fmt.Errorf("%w: failed to create --mprof: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+				profFileMem = pm
+			}
+
 			return nil
 		},
 	}
 	rootCmd.PersistentFlags().String("pprof", "", "write CPU performance profile to file")
+	rootCmd.PersistentFlags().String("mprof", "", "write RAM allocation profile to file")
 
 	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -650,6 +672,7 @@ func main() {
 	cobra.OnFinalize(func() {
 		// https://github.com/spf13/cobra/issues/1893#issuecomment-1573951697
 		stopProfile()
+		stopProfileMem()
 	})
 
 	rootCmd := newRootCmd(ctx)
