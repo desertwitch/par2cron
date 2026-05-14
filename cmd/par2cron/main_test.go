@@ -542,6 +542,19 @@ func Test_NewVerifyCmd_HasConfigFlag_Success(t *testing.T) {
 	require.Empty(t, flag.DefValue)
 }
 
+// Expectation: The "verify" command should have a "cache" flag.
+func Test_NewVerifyCmd_HasCacheFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newVerifyCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("cache")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
 // Expectation: The "verify" command should have an "age" flag.
 func Test_NewVerifyCmd_HasAgeFlag_Success(t *testing.T) {
 	t.Parallel()
@@ -813,6 +826,19 @@ func Test_NewRepairCmd_HasConfigFlag_Success(t *testing.T) {
 	require.Empty(t, flag.DefValue)
 }
 
+// Expectation: The "repair" command should have a "cache" flag.
+func Test_NewRepairCmd_HasCacheFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRepairCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("cache")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
 // Expectation: The "repair" command cannot run without arguments.
 func Test_NewRepairCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
@@ -843,6 +869,19 @@ func Test_NewInfoCmd_HasConfigFlag_Success(t *testing.T) {
 	cmd := newInfoCmd(t.Context())
 
 	flag := cmd.Flags().Lookup("config")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
+// Expectation: The "info" command should have a "cache" flag.
+func Test_NewInfoCmd_HasCacheFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newInfoCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("cache")
 
 	require.NotNil(t, flag)
 	require.Equal(t, "string", flag.Value.Type())

@@ -143,6 +143,13 @@ verify:
   # Default: false
   json: false
 
+  # cache: Directory for optional manifest cache (works best on fast storage)
+  # Caches manifests between commands so filesystem scanning completes faster
+  # If enabled, it should then be enabled for all commands (where applicable)
+  #
+  # Default: "" (disabled)
+  cache: ""
+
 # ==============================================================================
 # REPAIR COMMAND SETTINGS
 # ==============================================================================
@@ -215,6 +222,13 @@ repair:
   # Default: false
   json: false
 
+  # cache: Directory for optional manifest cache (works best on fast storage)
+  # Caches manifests between commands so filesystem scanning completes faster
+  # If enabled, it should then be enabled for all commands (where applicable)
+  #
+  # Default: "" (disabled)
+  cache: ""
+
 # ==============================================================================
 # INFO COMMAND SETTINGS
 # Set always to the same values used for "verify" settings (where applicable)
@@ -266,3 +280,10 @@ info:
   #
   # Default: false
   json: false
+
+  # cache: Directory for optional manifest cache (works best on fast storage)
+  # Caches manifests between commands so filesystem scanning completes faster
+  # If enabled, it should then be enabled for all commands (where applicable)
+  #
+  # Default: "" (disabled)
+  cache: ""

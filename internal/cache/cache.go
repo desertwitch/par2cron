@@ -25,7 +25,7 @@ type GobCache struct {
 // NewGobCache creates a new GobCache with a hashed filename derived from cacheName.
 func NewGobCache(fsys afero.Fs, cacheDir string, cacheName string) *GobCache {
 	hash := sha256.Sum256([]byte(cacheName))
-	cacheName = hex.EncodeToString(hash[:8]) + ".gob"
+	cacheName = hex.EncodeToString(hash[:8]) + ".gob.zst"
 	cachePath := filepath.Join(cacheDir, cacheName)
 
 	c := &GobCache{
