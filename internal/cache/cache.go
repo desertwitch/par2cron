@@ -162,7 +162,7 @@ func (c *GobCache) Save() error {
 
 	for _, meta := range c.items {
 		meta.Walked = false
-		if err := enc.Encode(meta); err != nil {
+		if err := enc.Encode(*meta); err != nil {
 			return fmt.Errorf("failed to encode value: %w", err)
 		}
 	}
