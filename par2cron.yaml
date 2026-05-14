@@ -145,7 +145,7 @@ verify:
 
   # cache: Directory for optional manifest cache (works best on fast storage)
   # Caches manifests between commands so filesystem scanning completes faster
-  # If enabled, it should then be enabled for all commands (where applicable)
+  # If enabled should be enabled and same for all commands (where applicable)
   #
   # Default: "" (disabled)
   cache: ""
@@ -224,7 +224,7 @@ repair:
 
   # cache: Directory for optional manifest cache (works best on fast storage)
   # Caches manifests between commands so filesystem scanning completes faster
-  # If enabled, it should then be enabled for all commands (where applicable)
+  # If enabled should be enabled and same for all commands (where applicable)
   #
   # Default: "" (disabled)
   cache: ""
@@ -283,7 +283,7 @@ info:
 
   # cache: Directory for optional manifest cache (works best on fast storage)
   # Caches manifests between commands so filesystem scanning completes faster
-  # If enabled, it should then be enabled for all commands (where applicable)
+  # If enabled should be enabled and same for all commands (where applicable)
   #
   # Default: "" (disabled)
   cache: ""

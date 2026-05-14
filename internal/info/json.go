@@ -204,12 +204,12 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		Options: &opts,
 	}
 
-	jobs := []*verify.JobMeta{}
+	metas := []*verify.JobMeta{}
 	errs := []error{}
 	for _, rootDir := range rootDirs {
 		cache := prog.openCacheJSON(rootDir, opts, result)
 
-		js, err := vs.Enumerate(ctx, rootDir, va, cache)
+		meta, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return nil, fmt.Errorf("failed to enumerate jobs: %w", err)
@@ -224,13 +224,13 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		// the verification progress in a race, so we only let verification
 		// write to the cache (seeing info does not mutate manifests anyway).
 
-		jobs = append(jobs, js...)
+		metas = append(metas, meta...)
 	}
 	if err := errors.Join(errs...); err != nil {
 		result.Warning = fmt.Sprintf("Not all manifests could be read: %v", err)
 	}
 
-	js := vs.Stats(jobs)
+	js := vs.Stats(metas)
 	result.Summary = &Summary{
 		JobCount:      js.JobCount,
 		KnownCount:    js.KnownCount,
@@ -266,7 +266,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 	}
 
 	if opts.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
-		result.CycleInfo = prog.buildCycleInfo(js, jobs, opts, now)
+		result.CycleInfo = prog.buildCycleInfo(js, metas, opts, now)
 	}
 
 	return result, nil

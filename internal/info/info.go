@@ -86,14 +86,14 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
 	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
-	jobs := []*verify.JobMeta{}
+	metas := []*verify.JobMeta{}
 	for _, rootDir := range rootDirs {
 		cache := prog.openCache(rootDir, opts)
 
 		fmt.Fprintf(prog.log.Options.Stdout, "Scanning filesystem '%s' for jobs (using '%s', %d in cache)...\n",
 			rootDir, prog.walker.Name(), cache.Len())
 
-		js, err := vs.Enumerate(ctx, rootDir, va, cache)
+		meta, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return fmt.Errorf("failed to enumerate jobs: %w", err)
@@ -108,11 +108,11 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 		// the verification progress in a race, so we only let verification
 		// write to the cache (seeing info does not mutate manifests anyway).
 
-		jobs = append(jobs, js...)
+		metas = append(metas, meta...)
 	}
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
-	js := vs.Stats(jobs)
+	js := vs.Stats(metas)
 
 	fmt.Fprintf(prog.log.Options.Stdout, "Total jobs found: %d (%d with known duration, %d with unknown duration)\n",
 		js.JobCount, js.KnownCount, js.UnknownCount)
@@ -145,7 +145,7 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 	}
 
 	if opts.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
-		prog.printCycleInfo(js, jobs, opts, now)
+		prog.printCycleInfo(js, metas, opts, now)
 	}
 
 	return nil
