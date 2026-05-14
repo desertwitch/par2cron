@@ -55,7 +55,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 }
 
-func (prog *Service) openCache(rootDir string, opts Options) schema.Cache { //nolint:funcorder,ireturn
+func (prog *Service) openCache(rootDir string, opts Options) schema.Cache {
 	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
 
 	if opts.CacheDir == "" {

@@ -16,6 +16,17 @@ func (prog *Service) verificationLogger(ctx context.Context, job any, path any) 
 
 	if job != nil {
 		switch j := job.(type) {
+		case *schema.JobMeta:
+			logElems = append(logElems, "job", j.Par2Path)
+			if ctx.Value(schema.PosKey) != nil {
+				logElems = append(logElems, "job_position", ctx.Value(schema.PosKey))
+			}
+			if ctx.Value(schema.MposKey) != nil {
+				logElems = append(logElems, "job_position_sub", ctx.Value(schema.MposKey))
+			}
+			if ctx.Value(schema.PrioKey) != nil {
+				logElems = append(logElems, "job_priority", ctx.Value(schema.PrioKey))
+			}
 		case *JobMeta:
 			logElems = append(logElems, "job", j.Par2Path)
 			if ctx.Value(schema.PosKey) != nil {

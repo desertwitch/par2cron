@@ -113,7 +113,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 	}
 }
 
-func (prog *Service) openCache(ctx context.Context, rootDir string, opts Options) schema.Cache { //nolint:funcorder,ireturn
+func (prog *Service) openCache(ctx context.Context, rootDir string, opts Options) schema.Cache {
 	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
 
 	if opts.CacheDir == "" {
@@ -128,7 +128,7 @@ func (prog *Service) openCache(ctx context.Context, rootDir string, opts Options
 	return cache
 }
 
-func (prog *Service) saveCache(ctx context.Context, cache schema.Cache, opts Options, rootDir string) { //nolint:funcorder
+func (prog *Service) saveCache(ctx context.Context, cache schema.Cache, opts Options, rootDir string) {
 	if opts.CacheDir == "" {
 		return
 	}
@@ -310,9 +310,8 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		}
 
 		if meta, cached := cache.Get(par2path); cached {
-			meta := NewJobMeta(meta)
 			if prog.isVerificationCandidate(ctx, meta, opts) {
-				metas = append(metas, meta)
+				metas = append(metas, NewJobMeta(meta))
 			}
 		} else {
 			meta, err := prog.processManifest(ctx, par2path, opts)
@@ -326,9 +325,10 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 				return nil
 			}
+
 			cache.Set(par2path, meta.JobMeta)
 
-			if prog.isVerificationCandidate(ctx, meta, opts) {
+			if prog.isVerificationCandidate(ctx, meta.JobMeta, opts) {
 				metas = append(metas, meta)
 			}
 		}
@@ -345,7 +345,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 	return metas, nil
 }
 
-func (prog *Service) isVerificationCandidate(ctx context.Context, meta *JobMeta, opts Options) bool { //nolint:funcorder
+func (prog *Service) isVerificationCandidate(ctx context.Context, meta *schema.JobMeta, opts Options) bool {
 	if opts.SkipNotCreated && !meta.HasCreation {
 		logger := prog.verificationLogger(ctx, meta, nil)
 		logger.Debug("No creation manifest (skipping; --skip-not-created)")
@@ -356,7 +356,7 @@ func (prog *Service) isVerificationCandidate(ctx context.Context, meta *JobMeta,
 	return true
 }
 
-func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*JobMeta, error) { //nolint:funcorder
+func (prog *Service) processManifest(ctx context.Context, par2path string, opts Options) (*JobMeta, error) {
 	if util.IsPar2Bundle(par2path) {
 		return prog.processBundleManifest(ctx, par2path, opts)
 	}
@@ -420,7 +420,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	return NewJobMeta(schema.NewJobMeta(par2path, mf, false)), nil
 }
 
-func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*JobMeta, error) { //nolint:funcorder
+func (prog *Service) processBundleManifest(ctx context.Context, bundlePath string, opts Options) (*JobMeta, error) {
 	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
@@ -475,7 +475,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	return NewJobMeta(schema.NewJobMeta(bundlePath, mf, true)), nil
 }
 
-func (prog *Service) loadManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) { //nolint:funcorder
+func (prog *Service) loadManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) {
 	if meta.IsBundle {
 		return prog.loadBundleManifest(ctx, meta)
 	}
@@ -512,7 +512,7 @@ func (prog *Service) loadManifest(ctx context.Context, meta *JobMeta) (*schema.M
 	return mf, nil
 }
 
-func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) { //nolint:funcorder
+func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) {
 	bundlePath := meta.Par2Path
 
 	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
