@@ -737,7 +737,7 @@ configuration will prevent the program from starting (bad invocation exit code).
 ## Performance
 
 As a cron-based tool, which for most will run at some point during the night,
-performance is not a high priority concern. That being said, continued efforts
+performance is not a high-priority concern. That being said, continued efforts
 are being made to reduce enumeration time and memory allocations. Ongoing work
 focuses mostly on reducing the time until par2cron can actually start working on
 enumerated "jobs", so that configured soft duration limits are more predictable
@@ -774,6 +774,10 @@ scanning phase by reducing expensive random I/O access.
 Filesystem traversal itself will still occur to prevent stale cache entries, but
 this phase is typically helped considerably by aggressive kernel caching of
 directory metadata.
+
+As for the space required by the cache, at the time of writing roughly 25,000
+PAR2 sets (their manifests) resulted in a cache file of ~1.2 MB. In practice,
+cache size is therefore negligible compared to the performance benefit gained.
 
 > **Note:** When using `--cache`, it should be enabled for all applicable
 > commands and use the same directory path. This ensures all operations benefit
