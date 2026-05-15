@@ -211,8 +211,8 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 
 			continue
 		}
-
 		job := NewJob(meta.Par2Path, opts, mf, meta.IsBundle)
+
 		logger := prog.repairLogger(ctx, job, nil)
 		logger.Info("Job started")
 
@@ -358,9 +358,9 @@ func (prog *Service) processManifest(ctx context.Context, par2path string) (*Job
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
+		unlock()
 		logger := prog.repairLogger(ctx, nil, manifestPath)
 		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
-		unlock()
 
 		return nil, schema.ErrNonFatal
 	}

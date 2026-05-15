@@ -174,7 +174,7 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 
 		if !util.IsPar2Index(d.Name()) {
 			return nil
-		}
+		} // --- End of Hot Path ---
 		if util.IsPar2Bundle(d.Name()) {
 			return nil
 		}
@@ -243,9 +243,9 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
+		unlock()
 		logger := prog.bundleLogger(ctx, nil, manifestPath)
 		logger.Error("Failed to read par2cron manifest (skipping)", "error", err)
-		unlock()
 
 		return nil, schema.ErrNonFatal
 	}
@@ -367,7 +367,7 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 
 		if !util.IsPar2Index(d.Name()) {
 			return nil
-		}
+		} // --- End of Hot Path ---
 		if !util.IsPar2Bundle(d.Name()) {
 			return nil
 		}

@@ -282,7 +282,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 		if !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
 			return nil
-		}
+		} // --- End of Hot Path ---
 		if checker.ShouldIgnore(path) {
 			logger := prog.creationLogger(ctx, nil, path)
 			logger.Debug("A path was skipped due to a present ignore-file")

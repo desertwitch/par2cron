@@ -389,9 +389,9 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
+		unlock()
 		logger := prog.verificationLogger(ctx, nil, manifestPath)
 		logger.Error("Failed to read par2cron manifest (will retry next run)", "error", err)
-		unlock()
 
 		return nil, schema.ErrNonFatal
 	}
@@ -439,13 +439,13 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	}
 	by, err := bun.Manifest()
 	if err != nil {
+		_ = bun.Close()
+		unlock()
+
 		meta := NewJobMeta(schema.NewJobMeta(bundlePath, nil, true))
 
 		logger := prog.verificationLogger(ctx, meta, bundlePath)
 		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
-
-		_ = bun.Close()
-		unlock()
 
 		return meta, nil
 	}
@@ -524,11 +524,11 @@ func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*sc
 	}
 	by, err := bun.Manifest()
 	if err != nil {
-		logger := prog.verificationLogger(ctx, meta, bundlePath)
-		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
-
 		_ = bun.Close()
 		unlock()
+
+		logger := prog.verificationLogger(ctx, meta, bundlePath)
+		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
 
 		return nil, nil //nolint:nilnil
 	}

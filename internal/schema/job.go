@@ -20,9 +20,11 @@ type JobMeta struct {
 }
 
 func NewJobMeta(par2path string, mf *Manifest, isBundle bool) *JobMeta {
-	meta := &JobMeta{MetaVersion: MetaVersion}
-	meta.Par2Path = par2path
-	meta.IsBundle = isBundle
+	meta := &JobMeta{
+		IsBundle:    isBundle,
+		MetaVersion: MetaVersion,
+		Par2Path:    par2path,
+	}
 
 	if mf != nil {
 		meta.HasManifest = true
