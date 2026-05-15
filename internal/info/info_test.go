@@ -675,6 +675,171 @@ func Test_Service_Info_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// Expectation: Info should not load the cache when CacheDir is empty.
+func Test_Service_Info_WithoutCacheDir_NotLoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: false,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	args := Options{CacheDir: ""}
+	_ = args.RunInterval.Set("24h")
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
+
+	require.False(t, loadCalled)
+}
+
+// Expectation: Info should load the cache when CacheDir is set.
+func Test_Service_Info_WithCacheDir_LoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: false,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	args := Options{CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
+
+	require.True(t, loadCalled)
+}
+
+// Expectation: Info should call PruneUnwalked on the cache after enumeration.
+func Test_Service_Info_PrunesCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: false,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var pruneCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				PruneUnwalkedFunc: func() int {
+					pruneCalled = true
+
+					return 0
+				},
+			}
+		},
+	}
+
+	args := Options{CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
+
+	require.True(t, pruneCalled)
+}
+
+// Expectation: Info should not save the cache (to avoid races with verification).
+func Test_Service_Info_DoesNotSaveCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: false,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var saveCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				SaveFunc: func() error {
+					saveCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	args := Options{CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
+
+	require.False(t, saveCalled)
+}
+
 // Expectation: The printAgeInfo should output correct information.
 func Test_Service_printAgeInfo_Success(t *testing.T) {
 	t.Parallel()

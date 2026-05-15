@@ -954,6 +954,124 @@ func Test_Service_Repair_LoadManifestReadError_ContinuesWithError_Error(t *testi
 	require.Contains(t, logBuf.String(), "Job completed with success")
 }
 
+// Expectation: Repair should not load the cache when CacheDir is empty.
+func Test_Service_Repair_WithoutCacheDir_NotLoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: ""}
+	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.False(t, loadCalled)
+}
+
+// Expectation: Repair should load the cache when CacheDir is set.
+func Test_Service_Repair_WithCacheDir_LoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
+	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.True(t, loadCalled)
+}
+
 // Expectation: The correct job should be returned when manifest indicates repair is needed and possible.
 func Test_Service_Enumerate_RepairNeeded_RepairPossible_Success(t *testing.T) {
 	t.Parallel()
