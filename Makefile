@@ -29,18 +29,22 @@ check: ## Runs all static analysis and tests on the application code
 	@$(MAKE) test
 
 check-slop: ## Checks relevant text files for punctuation used by AI
-	@! find . \
-		-type d \( \
-			-name vendor \
-		\) -prune \
-		-o -type f \( \
-			-name '*.go'    -o \
-			-name '*.txt'   -o \
-			-name '*.yaml'  -o \
-			-name '*.yml'   -o \
-			-name '*.md' \
-		\) -print0 | \
-		xargs -0 grep -nP '[\x{2013}\x{2014}\x{2018}\x{2019}\x{201C}\x{201D}\x{2026}\x{00A0}]'
+	@grep -RInP \
+		--exclude-dir=vendor \
+		--include='*.go' \
+		--include='*.txt' \
+		--include='*.yaml' \
+		--include='*.yml' \
+		--include='*.md' \
+		'[\x{2013}\x{2014}\x{2018}\x{2019}\x{201C}\x{201D}\x{2026}\x{00A0}]' . ; \
+	rc=$$?; \
+	if [ $$rc -eq 0 ]; then \
+		exit 1; \
+	elif [ $$rc -eq 1 ]; then \
+		exit 0; \
+	else \
+		exit $$rc; \
+	fi
 
 clean: ## Returns the application build stage to its original state (deleting files)
 	@rm -vf $(BINARY) || true
