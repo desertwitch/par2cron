@@ -2,8 +2,8 @@ PAR2CRON APPLICATION BUNDLE SPECIFICATION
 extending on Parity Volume Set Specification 2.0
 making use of the "Application-Specific Packet Type"
 
-Specification version: 1.0
-Last updated: 18.04.2026 (desertwitch)
+Specification version: 1
+Last updated: 15.05.2026 (desertwitch)
 
 This specification may not be modified while advertised under the same or an
 ambiguous similar name without agreement of the par2cron project maintainers
@@ -29,7 +29,7 @@ File Format:
 Parsing:
 - Readers should parse all spec versions (warn if not)
 - Unknown flags should be ignored by reading programs
-- If version is unreadable, expect latest spec version
+- If version is unreadable, bundle cannot safely be parsed
 - If in doubt the PAR 2.0 specification is the ultimate deciding factor
 
 Index and Ordering:
