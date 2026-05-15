@@ -216,7 +216,7 @@ Verify sets not verified < 7 days, run around 2 hours:
 
 Flags:
   -a, --age duration                 minimum time between re-verifications (skip if verified within this period)
-      --cache string                 directory for optional manifest cache (works best on fast storage)
+      --cache string                 directory for optional manifest cache (use same for all commands)
   -i, --calc-run-interval duration   how often you run par2cron verify (for backlog calculations) (default 24h)
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            time budget per run (best effort/soft limit)
@@ -252,7 +252,7 @@ Repair repairable, verify after, run for around 1 hour:
 
 Flags:
   -u, --attempt-unrepairables   attempt to repair PAR2 sets marked as unrepairable
-      --cache string            directory for optional manifest cache (works best on fast storage)
+      --cache string            directory for optional manifest cache (use same for all commands)
   -c, --config string           path to a par2cron YAML configuration file
   -d, --duration duration       time budget per run (best effort/soft limit)
   -h, --help                    help for repair
@@ -286,7 +286,7 @@ Output results as JSON (stdout/standard output):
 
 Flags:
   -a, --age duration                 target cycle length (time between re-verifications)
-      --cache string                 directory for optional manifest cache (works best on fast storage)
+      --cache string                 directory for optional manifest cache (use same for all commands)
   -i, --calc-run-interval duration   how often you run par2cron verify (default 24h)
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            target time budget for each verify run (soft limit)
