@@ -129,6 +129,9 @@ func (c *GobCache) Load() error {
 	if err := dec.Decode(&count); err != nil {
 		return fmt.Errorf("failed to decode count: %w", err)
 	}
+	if count < 0 {
+		return fmt.Errorf("invalid cache entry count: %d", count)
+	}
 
 	c.items = make(map[string]*schema.JobMeta, count)
 	for i := range count {
