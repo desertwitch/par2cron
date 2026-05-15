@@ -56,6 +56,8 @@
   - [Marker configuration](#marker-configuration)
 - [Ignore Files](#ignore-files)
 - [Configuration](#configuration)
+- [Performance](#performance)
+  - [Manifest cache](#manifest-cache)
 - [Limitations](#limitations)
 - [License](#license)
 
@@ -731,6 +733,51 @@ You should verify the configuration using `par2cron check-config`, as malformed
 configuration will prevent the program from starting (bad invocation exit code).
 
 **For a full configuration example, refer to the [par2cron.yaml](par2cron.yaml) file.**
+
+## Performance
+
+As a cron-based tool, which for most will run at some point during the night,
+performance is not a high priority concern. That being said, continued efforts
+are being made to reduce enumeration time and memory allocations. Ongoing work
+focuses mostly on reducing the time until par2cron can actually start working on
+enumerated "jobs", so that configured soft duration limits are more predictable
+and filesystem scanning times reduced.
+
+Performance profiling has shown that overall runtime is dominated by filesystem
+I/O during scanning for jobs: opening directories, reading entries, statting
+files, and closing file descriptors. CPU-side processing, including any binary
+packet parsing, manifest extraction, JSON decoding, and checksum work, accounts
+for only a comparatively small part of the profile. In practice, this means that
+the type and latency of the underlying storage has the largest influence on
+runtime: a spinning rust HDD will be many times slower than an NVMe SSD.
+
+PAR2 operations themselves are handled by the `par2` dependency rather than
+par2cron directly, and are therefore outside this project's scope of control.
+
+### Manifest cache
+
+By default, par2cron will always walk all target filesystems and load any found
+manifests directly from disk. As this is an I/O-dependent operation, it can
+accumulate on slower storage (spinning rust HDDs) and delay the time until
+par2cron can actually start working on enumerated jobs.
+
+The `verify`, `repair`, and `info` commands accept an optional `--cache`
+argument, specifying a cache directory shared between these commands. Ideally,
+this directory should reside on memory-backed or otherwise fast solid-state
+storage (for example an NVMe SSD).
+
+If the manifest cache is enabled, relevant parts of loaded manifests are instead
+stored in a compressed cache file, allowing repeated manifest loading and
+decoding from disk to be skipped. This can significantly speed up the filesystem
+scanning phase by reducing expensive random I/O access.
+
+Filesystem traversal itself will still occur to prevent stale cache entries, but
+this phase is typically helped considerably by aggressive kernel caching of
+directory metadata.
+
+> **Note:** When using `--cache`, it should be enabled for all applicable
+> commands and use the same directory path. This ensures all operations benefit
+> from the same cache and maximizes cache effectiveness.
 
 ## Limitations
 
