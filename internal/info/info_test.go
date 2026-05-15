@@ -3,7 +3,9 @@ package info
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"testing"
 	"time"
 
@@ -25,6 +27,142 @@ func writeTestManifest(t *testing.T, fs afero.Fs, path string, mf *schema.Manife
 	}
 
 	return afero.WriteFile(fs, path, data, 0o644)
+}
+
+// Expectation: openCache should not attempt to load when CacheDir is empty.
+func Test_Service_openCache_NoCacheDir_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: ""}
+	prog.openCache("/data", opts)
+
+	require.False(t, loadCalled)
+}
+
+// Expectation: openCache should attempt to load when CacheDir is set.
+func Test_Service_openCache_WithCacheDir_LoadsCacheFromDisk_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	prog.openCache("/data", opts)
+
+	require.True(t, loadCalled)
+}
+
+// Expectation: openCache should log an error when cache loading fails with a non-ErrNotExist error.
+func Test_Service_openCache_LoadError_LogsError_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &logBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("error")
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					return errors.New("disk I/O error")
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	cache := prog.openCache("/data", opts)
+
+	require.NotNil(t, cache)
+	require.Contains(t, logBuf.String(), "could not be loaded")
+}
+
+// Expectation: openCache should silently ignore ErrNotExist when loading the cache.
+func Test_Service_openCache_LoadErrNotExist_NoLog_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &logBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("error")
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					return fs.ErrNotExist
+				},
+			}
+		},
+	}
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	cache := prog.openCache("/data", opts)
+
+	require.NotNil(t, cache)
+	require.NotContains(t, logBuf.String(), "could not be loaded")
 }
 
 // Expectation: The filesystem should be walked for jobs.

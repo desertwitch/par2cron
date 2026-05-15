@@ -174,7 +174,7 @@ func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, opts Opti
 	return nil
 }
 
-func (prog *Service) openCacheJSON(rootDir string, opts Options, result *Result) schema.Cache { //nolint:ireturn
+func (prog *Service) openCacheJSON(rootDir string, opts Options, result *Result) schema.Cache {
 	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
 
 	if opts.CacheDir == "" {

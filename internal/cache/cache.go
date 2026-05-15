@@ -8,12 +8,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/klauspost/compress/zstd"
 	"github.com/spf13/afero"
 )
+
+const GobCacheExtension = ".gob.zst"
 
 type GobCache struct {
 	fsys afero.Fs
@@ -25,7 +29,8 @@ type GobCache struct {
 // NewGobCache creates a new GobCache with a hashed filename derived from cacheName.
 func NewGobCache(fsys afero.Fs, cacheDir string, cacheName string) *GobCache {
 	hash := sha256.Sum256([]byte(cacheName))
-	cacheName = hex.EncodeToString(hash[:8]) + ".gob.zst"
+
+	cacheName = hex.EncodeToString(hash[:8]) + GobCacheExtension
 	cachePath := filepath.Join(cacheDir, cacheName)
 
 	c := &GobCache{
@@ -35,6 +40,21 @@ func NewGobCache(fsys afero.Fs, cacheDir string, cacheName string) *GobCache {
 	}
 
 	return c
+}
+
+// All returns a slice of all cache elements in path-sorted order.
+func (c *GobCache) All() []*schema.JobMeta {
+	results := make([]*schema.JobMeta, 0, len(c.items))
+
+	for _, meta := range c.items {
+		results = append(results, meta)
+	}
+
+	slices.SortFunc(results, func(a, b *schema.JobMeta) int {
+		return strings.Compare(a.Par2Path, b.Par2Path)
+	})
+
+	return results
 }
 
 // Len returns the number of entries in the cache.

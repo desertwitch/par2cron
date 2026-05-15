@@ -133,7 +133,7 @@ func (prog *Service) saveCache(ctx context.Context, cache schema.Cache, opts Opt
 		return
 	}
 
-	if err := cache.Save(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if err := cache.Save(); err != nil {
 		logger := prog.verificationLogger(ctx, nil, rootDir)
 		logger.Error("Failed to save manifest cache", "error", err)
 	}

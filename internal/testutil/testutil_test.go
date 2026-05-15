@@ -1028,3 +1028,314 @@ func Test_FakeWalker_WalkDir_NilError_Success(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+// Expectation: The mock cache handler should call the provided NewCache function.
+func Test_MockCacheHandler_NewCache_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	expectedCache := &MockCache{}
+	handler := &MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			called = true
+
+			return expectedCache
+		},
+	}
+
+	result := handler.NewCache(afero.NewMemMapFs(), "/cache", "test")
+
+	require.True(t, called)
+	require.Equal(t, expectedCache, result)
+}
+
+// Expectation: The mock cache handler should return a default MockCache when no function is provided.
+func Test_MockCacheHandler_NewCache_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	handler := &MockCacheHandler{}
+
+	result := handler.NewCache(afero.NewMemMapFs(), "/cache", "test")
+
+	require.NotNil(t, result)
+	require.IsType(t, &MockCache{}, result)
+}
+
+// Expectation: The mock cache handler should pass the correct arguments to the function.
+func Test_MockCacheHandler_NewCache_PassesArguments_Success(t *testing.T) {
+	t.Parallel()
+
+	var capturedDir, capturedName string
+	handler := &MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			capturedDir = cacheDir
+			capturedName = cacheName
+
+			return &MockCache{}
+		},
+	}
+
+	handler.NewCache(afero.NewMemMapFs(), "/data/cache", "my-cache")
+
+	require.Equal(t, "/data/cache", capturedDir)
+	require.Equal(t, "my-cache", capturedName)
+}
+
+// Expectation: The mock cache should call the provided All function.
+func Test_MockCache_All_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	expected := []*schema.JobMeta{
+		{Par2Path: "/a.par2"},
+		{Par2Path: "/b.par2"},
+	}
+	c := &MockCache{
+		AllFunc: func() []*schema.JobMeta {
+			return expected
+		},
+	}
+
+	result := c.All()
+
+	require.Equal(t, expected, result)
+}
+
+// Expectation: The mock cache should return nil when no All function is provided.
+func Test_MockCache_All_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.Nil(t, c.All())
+}
+
+// Expectation: The mock cache should call the provided Get function.
+func Test_MockCache_Get_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	expected := &schema.JobMeta{Par2Path: "/a.par2"}
+	c := &MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			return expected, true
+		},
+	}
+
+	result, ok := c.Get("/a.par2")
+
+	require.True(t, ok)
+	require.Equal(t, expected, result)
+}
+
+// Expectation: The mock cache should return nil and false when no Get function is provided.
+func Test_MockCache_Get_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	result, ok := c.Get("/a.par2")
+
+	require.False(t, ok)
+	require.Nil(t, result)
+}
+
+// Expectation: The mock cache should pass the correct key to the Get function.
+func Test_MockCache_Get_PassesKey_Success(t *testing.T) {
+	t.Parallel()
+
+	var capturedKey string
+	c := &MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			capturedKey = key
+
+			return nil, false
+		},
+	}
+
+	c.Get("/data/test.par2")
+
+	require.Equal(t, "/data/test.par2", capturedKey)
+}
+
+// Expectation: The mock cache should call the provided Len function.
+func Test_MockCache_Len_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{
+		LenFunc: func() int {
+			return 42
+		},
+	}
+
+	require.Equal(t, 42, c.Len())
+}
+
+// Expectation: The mock cache should return zero when no Len function is provided.
+func Test_MockCache_Len_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.Equal(t, 0, c.Len())
+}
+
+// Expectation: The mock cache should call the provided Load function.
+func Test_MockCache_Load_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	c := &MockCache{
+		LoadFunc: func() error {
+			called = true
+
+			return nil
+		},
+	}
+
+	require.NoError(t, c.Load())
+	require.True(t, called)
+}
+
+// Expectation: The mock cache should return the error from the Load function.
+func Test_MockCache_Load_WithFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("load error")
+	c := &MockCache{
+		LoadFunc: func() error {
+			return expectedErr
+		},
+	}
+
+	err := c.Load()
+
+	require.ErrorIs(t, err, expectedErr)
+}
+
+// Expectation: The mock cache should return nil when no Load function is provided.
+func Test_MockCache_Load_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.NoError(t, c.Load())
+}
+
+// Expectation: The mock cache should call the provided Save function.
+func Test_MockCache_Save_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	c := &MockCache{
+		SaveFunc: func() error {
+			called = true
+
+			return nil
+		},
+	}
+
+	require.NoError(t, c.Save())
+	require.True(t, called)
+}
+
+// Expectation: The mock cache should return the error from the Save function.
+func Test_MockCache_Save_WithFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("save error")
+	c := &MockCache{
+		SaveFunc: func() error {
+			return expectedErr
+		},
+	}
+
+	err := c.Save()
+
+	require.ErrorIs(t, err, expectedErr)
+}
+
+// Expectation: The mock cache should return nil when no Save function is provided.
+func Test_MockCache_Save_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.NoError(t, c.Save())
+}
+
+// Expectation: The mock cache should call the provided Set function.
+func Test_MockCache_Set_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	var capturedKey string
+	var capturedMeta *schema.JobMeta
+	c := &MockCache{
+		SetFunc: func(key string, meta *schema.JobMeta) {
+			capturedKey = key
+			capturedMeta = meta
+		},
+	}
+
+	meta := &schema.JobMeta{Par2Path: "/a.par2"}
+	c.Set("/a.par2", meta)
+
+	require.Equal(t, "/a.par2", capturedKey)
+	require.Equal(t, meta, capturedMeta)
+}
+
+// Expectation: The mock cache should not panic when no Set function is provided.
+func Test_MockCache_Set_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.NotPanics(t, func() {
+		c.Set("/a.par2", &schema.JobMeta{Par2Path: "/a.par2"})
+	})
+}
+
+// Expectation: The mock cache should call the provided ResetWalked function.
+func Test_MockCache_ResetWalked_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	c := &MockCache{
+		ResetWalkedFunc: func() {
+			called = true
+		},
+	}
+
+	c.ResetWalked()
+
+	require.True(t, called)
+}
+
+// Expectation: The mock cache should not panic when no ResetWalked function is provided.
+func Test_MockCache_ResetWalked_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.NotPanics(t, func() { c.ResetWalked() })
+}
+
+// Expectation: The mock cache should call the provided PruneUnwalked function.
+func Test_MockCache_PruneUnwalked_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{
+		PruneUnwalkedFunc: func() int {
+			return 5
+		},
+	}
+
+	require.Equal(t, 5, c.PruneUnwalked())
+}
+
+// Expectation: The mock cache should return zero when no PruneUnwalked function is provided.
+func Test_MockCache_PruneUnwalked_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.Equal(t, 0, c.PruneUnwalked())
+}

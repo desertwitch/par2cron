@@ -316,6 +316,7 @@ func (m *MockCacheHandler) NewCache(fsys afero.Fs, cacheDir string, cacheName st
 
 // MockCache is a mock implementation of schema.Cache.
 type MockCache struct {
+	AllFunc           func() []*schema.JobMeta
 	GetFunc           func(key string) (*schema.JobMeta, bool)
 	LenFunc           func() int
 	LoadFunc          func() error
@@ -331,6 +332,14 @@ func (m *MockCache) Len() int {
 	}
 
 	return 0
+}
+
+func (m *MockCache) All() []*schema.JobMeta {
+	if m.AllFunc != nil {
+		return m.AllFunc()
+	}
+
+	return nil
 }
 
 func (m *MockCache) Get(key string) (*schema.JobMeta, bool) {

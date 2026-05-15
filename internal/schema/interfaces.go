@@ -33,6 +33,7 @@ type CacheHandler interface {
 }
 
 type Cache interface {
+	All() []*JobMeta
 	Get(key string) (*JobMeta, bool)
 	Len() int
 	Load() error

@@ -20,7 +20,7 @@ var _ schema.BundleHandler = (*BundleHandler)(nil)
 
 type BundleHandler struct{}
 
-func (b *BundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) { //nolint:ireturn
+func (b *BundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
 	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
 }
 
@@ -32,7 +32,7 @@ var _ schema.CacheHandler = (*GobCacheHandler)(nil)
 
 type GobCacheHandler struct{}
 
-func (GobCacheHandler) NewCache(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache { //nolint:ireturn
+func (GobCacheHandler) NewCache(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
 	return cache.NewGobCache(fsys, cacheDir, cacheName)
 }
 
