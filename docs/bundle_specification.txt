@@ -29,7 +29,7 @@ File Format:
 Parsing:
 - Readers should parse all spec versions (warn if not)
 - Unknown flags should be ignored by reading programs
-- If version is unreadable, bundle cannot safely be parsed
+- If version is unreadable, reader decides if parse is attempted
 - If in doubt the PAR 2.0 specification is the ultimate deciding factor
 
 Index and Ordering:
