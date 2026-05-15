@@ -8,7 +8,7 @@ VERSION := $(shell \
   if [ -n "$$tag" ]; then echo $$tag | sed 's/^v//'; \
   else git rev-parse --short=7 HEAD; fi)
 
-.PHONY: all $(BINARY) benchmark check clean debug generate help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
+.PHONY: all $(BINARY) benchmark check check-slop clean debug generate help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
@@ -24,8 +24,23 @@ benchmark: ## Runs the benchmark suite
 	go test -bench=. -benchmem ./internal/repair/
 
 check: ## Runs all static analysis and tests on the application code
+	@$(MAKE) check-slop
 	@$(MAKE) lint
 	@$(MAKE) test
+
+check-slop: ## Checks relevant text files for punctuation used by AI
+	@! find . \
+		-type d \( \
+			-name vendor \
+		\) -prune \
+		-o -type f \( \
+			-name '*.go'    -o \
+			-name '*.txt'   -o \
+			-name '*.yaml'  -o \
+			-name '*.yml'   -o \
+			-name '*.md' \
+		\) -print0 | \
+		xargs -0 grep -nP '[\x{2013}\x{2014}\x{2018}\x{2019}\x{201C}\x{201D}\x{2026}\x{00A0}]'
 
 clean: ## Returns the application build stage to its original state (deleting files)
 	@rm -vf $(BINARY) || true
