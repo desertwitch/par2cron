@@ -227,6 +227,8 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
 			results.Error++
 		}
+
+		*meta.JobMeta = *(schema.NewJobMeta(job.par2Path, job.manifest, job.isBundle))
 	}
 
 	if err := ctx.Err(); err != nil {

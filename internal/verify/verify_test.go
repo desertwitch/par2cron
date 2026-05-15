@@ -2,8 +2,10 @@ package verify
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"path/filepath"
@@ -23,6 +25,7 @@ func createWithManifest(t *testing.T, fs afero.Fs, path string) {
 	t.Helper()
 
 	mf := schema.NewManifest(filepath.Base(path))
+	mf.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("par2data")))
 
 	mf.Creation = &schema.CreationManifest{}
 	mf.Creation.Time = time.Now()
@@ -856,7 +859,7 @@ func Test_Service_Verify_PrunesCache_Success(t *testing.T) {
 	require.True(t, pruneCalled)
 }
 
-// Expectation: Verify should update the cache after processing when CacheDir is set.
+// Expectation: Verify should update the cache after verification.
 func Test_Service_Verify_UpdatesCache_Success(t *testing.T) {
 	t.Parallel()
 
@@ -877,13 +880,14 @@ func Test_Service_Verify_UpdatesCache_Success(t *testing.T) {
 		},
 	}
 
-	var getCalled bool
-
 	// Must be mutated in place in the cache:
 	cacheMeta := &schema.JobMeta{
-		HasManifest: false,
+		Par2Path:    "/data/test" + schema.Par2Extension,
+		HasManifest: true,
+		HasCreation: false,
 	}
 
+	var getCalled bool
 	cacher := &testutil.MockCacheHandler{
 		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
 			return &testutil.MockCache{
@@ -902,7 +906,7 @@ func Test_Service_Verify_UpdatesCache_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	require.True(t, getCalled)
-	require.True(t, cacheMeta.HasManifest)
+	require.True(t, cacheMeta.HasCreation)
 }
 
 // Expectation: Verify should save the cache after processing when CacheDir is set.

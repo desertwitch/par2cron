@@ -832,6 +832,75 @@ func Test_Service_Repair_PrunesCache_Success(t *testing.T) {
 	require.True(t, pruneCalled)
 }
 
+// Expectation: Repair should update the cache after repairing.
+func Test_Service_Repair_UpdatesCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Creation = &schema.CreationManifest{}
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+		CountCorrupted: 1,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	// Must be mutated in place in the cache:
+	cacheMeta := &schema.JobMeta{
+		Par2Path:        "/data/test" + schema.Par2Extension,
+		HasManifest:     true,
+		HasCreation:     false,
+		HasVerification: true,
+		RepairNeeded:    true,
+		RepairPossible:  true,
+	}
+
+	var getCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				GetFunc: func(key string) (*schema.JobMeta, bool) {
+					getCalled = true
+
+					return cacheMeta, true
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}}
+	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.True(t, getCalled)
+	require.True(t, cacheMeta.HasCreation)
+}
+
 // Expectation: Repair should not save the cache (to avoid races with verification).
 func Test_Service_Repair_DoesNotSaveCache_Success(t *testing.T) {
 	t.Parallel()
