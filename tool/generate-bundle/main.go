@@ -49,7 +49,7 @@ type Service struct {
 
 type bundleHandler struct{}
 
-func (bundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) { //nolint:ireturn
+func (bundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
 	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
 }
 

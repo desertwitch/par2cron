@@ -1,3 +1,4 @@
+//nolint:cyclop
 package main
 
 import (
@@ -117,6 +118,7 @@ func (yamlCfg *configFileCreate) Merge(cfg *create.Options, logs *logging.Option
 type configFileVerify struct {
 	Par2Args *[]string `yaml:"args"`
 
+	CacheDir        *string         `yaml:"cache"`
 	MaxDuration     *flags.Duration `yaml:"duration"`
 	MinAge          *flags.Duration `yaml:"age"`
 	RunInterval     *flags.Duration `yaml:"calc-run-interval"`
@@ -130,6 +132,9 @@ type configFileVerify struct {
 func (yamlCfg *configFileVerify) Merge(cfg *verify.Options, logs *logging.Options, hasExternalArgs bool, setFlags map[string]bool) {
 	if yamlCfg.Par2Args != nil && !hasExternalArgs {
 		cfg.Par2Args = slices.Clone(*yamlCfg.Par2Args)
+	}
+	if yamlCfg.CacheDir != nil && !setFlags["cache"] {
+		cfg.CacheDir = *yamlCfg.CacheDir
 	}
 	if yamlCfg.MaxDuration != nil && !setFlags["duration"] {
 		cfg.MaxDuration = *yamlCfg.MaxDuration
@@ -158,6 +163,7 @@ type configFileRepair struct {
 	Par2Args   *[]string `yaml:"args"`
 	Par2Verify *bool     `yaml:"verify"`
 
+	CacheDir             *string         `yaml:"cache"`
 	MaxDuration          *flags.Duration `yaml:"duration"`
 	MinTestedCount       *int            `yaml:"min-tested"`
 	SkipNotCreated       *bool           `yaml:"skip-not-created"`
@@ -175,6 +181,9 @@ func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, logs *logging.Option
 	}
 	if yamlCfg.Par2Verify != nil && !setFlags["verify"] {
 		cfg.Par2Verify = *yamlCfg.Par2Verify
+	}
+	if yamlCfg.CacheDir != nil && !setFlags["cache"] {
+		cfg.CacheDir = *yamlCfg.CacheDir
 	}
 	if yamlCfg.MaxDuration != nil && !setFlags["duration"] {
 		cfg.MaxDuration = *yamlCfg.MaxDuration
@@ -203,6 +212,7 @@ func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, logs *logging.Option
 }
 
 type configFileInfo struct {
+	CacheDir        *string         `yaml:"cache"`
 	MaxDuration     *flags.Duration `yaml:"duration"`
 	MinAge          *flags.Duration `yaml:"age"`
 	RunInterval     *flags.Duration `yaml:"calc-run-interval"`
@@ -214,6 +224,9 @@ type configFileInfo struct {
 }
 
 func (yamlCfg *configFileInfo) Merge(cfg *info.Options, logs *logging.Options, _ bool, setFlags map[string]bool) {
+	if yamlCfg.CacheDir != nil && !setFlags["cache"] {
+		cfg.CacheDir = *yamlCfg.CacheDir
+	}
 	if yamlCfg.MaxDuration != nil && !setFlags["duration"] {
 		cfg.MaxDuration = *yamlCfg.MaxDuration
 	}

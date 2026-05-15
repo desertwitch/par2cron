@@ -171,64 +171,68 @@ func (fi fileInfoDirEntry) Name() string {
 	return fi.FileInfo.Name()
 }
 
-func ShouldIgnorePath(fsys afero.Fs, path string, rootDir string) bool {
+type IgnoreChecker struct {
+	fsys    afero.Fs
+	rootDir string
+	cache   map[string]bool
+}
+
+func NewIgnoreChecker(fsys afero.Fs, rootDir string) *IgnoreChecker {
+	return &IgnoreChecker{
+		fsys:    fsys,
+		rootDir: rootDir,
+		cache:   make(map[string]bool),
+	}
+}
+
+func (ic *IgnoreChecker) ShouldIgnore(path string) bool {
 	dir := filepath.Dir(path)
 
+	if len(ic.cache) > 100000 { //nolint:mnd
+		ic.cache = make(map[string]bool)
+	}
+
+	return ic.calculateIgnore(dir)
+}
+
+func (ic *IgnoreChecker) calculateIgnore(dir string) bool {
 	ignorePath := filepath.Join(dir, schema.IgnoreFile)
-	if _, err := LstatIfPossible(fsys, ignorePath); err == nil {
+
+	ignored, exists := ic.cache[ignorePath]
+	if exists && ignored {
 		return true
+	} else if !exists {
+		if _, err := LstatIfPossible(ic.fsys, ignorePath); err == nil {
+			ic.cache[ignorePath] = true
+
+			return true
+		}
+		ic.cache[ignorePath] = false
 	}
 
 	for {
 		ignoreAllPath := filepath.Join(dir, schema.IgnoreAllFile)
-		if _, err := LstatIfPossible(fsys, ignoreAllPath); err == nil {
+
+		ignored, exists := ic.cache[ignoreAllPath]
+		if exists && ignored {
 			return true
+		} else if !exists {
+			if _, err := LstatIfPossible(ic.fsys, ignoreAllPath); err == nil {
+				ic.cache[ignoreAllPath] = true
+
+				return true
+			}
+			ic.cache[ignoreAllPath] = false
 		}
-		if dir == rootDir || dir == filepath.Dir(dir) {
+
+		if dir == ic.rootDir || dir == filepath.Dir(dir) {
 			break
 		}
+
 		dir = filepath.Dir(dir)
 	}
 
 	return false
-}
-
-// Deprecated: IgnoreChecker is unused because it's much slower (more .Stat);
-// keeping if needed later as it allows to [filepath.SkipDir] large subtrees.
-type IgnoreChecker struct {
-	fsys afero.Fs
-
-	lastVisited  string
-	hasIgnore    bool
-	hasIgnoreAll bool
-}
-
-func NewIgnoreChecker(fsys afero.Fs) *IgnoreChecker {
-	return &IgnoreChecker{
-		fsys: fsys,
-	}
-}
-
-func (c *IgnoreChecker) ShouldSkip(path string, isDir bool) (bool, error) {
-	if currentDir := filepath.Dir(path); currentDir != c.lastVisited {
-		ignorePath := filepath.Join(currentDir, schema.IgnoreFile)
-		ignoreAllPath := filepath.Join(currentDir, schema.IgnoreAllFile)
-
-		_, err := LstatIfPossible(c.fsys, ignorePath)
-		c.hasIgnore = (err == nil)
-		_, err = LstatIfPossible(c.fsys, ignoreAllPath)
-		c.hasIgnoreAll = (err == nil)
-
-		c.lastVisited = currentDir
-	}
-
-	if isDir && c.hasIgnoreAll {
-		return true, filepath.SkipDir
-	} else if !isDir && (c.hasIgnore || c.hasIgnoreAll) {
-		return true, nil
-	}
-
-	return false, nil
 }
 
 func HasGlobSymlinks(fsys afero.Fs, workingDir string, pattern string) (string, bool) {

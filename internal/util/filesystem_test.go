@@ -3,6 +3,7 @@ package util
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -508,242 +509,226 @@ func Test_AferoWalker_WalkDir_Error(t *testing.T) {
 	require.ErrorIs(t, err, expectedErr)
 }
 
-// Expectation: The function should not skip a path when no ignore files exist.
-func Test_ShouldIgnorePath_NoIgnoreFiles_Success(t *testing.T) {
+// Expectation: The checker should reset the cache when it exceeds 100000 entries.
+func Test_IgnoreChecker_ShouldIgnore_CacheOverflow_ResetsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/root", 0o755))
+
+	checker := NewIgnoreChecker(fsys, "/root")
+
+	// Seed the cache beyond the threshold.
+	for i := range 100001 {
+		checker.cache[fmt.Sprintf("/fake/%d", i)] = false
+	}
+	require.Greater(t, len(checker.cache), 100000)
+
+	checker.ShouldIgnore("/root/file.txt")
+
+	require.LessOrEqual(t, len(checker.cache), 100000)
+}
+
+// Expectation: The checker should not skip a path when no ignore files exist.
+func Test_IgnoreChecker_ShouldIgnore_NoIgnoreFiles_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/subdir", 0o755))
 
-	skip := ShouldIgnorePath(fsys, "/root/subdir/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.False(t, skip)
+	require.False(t, checker.ShouldIgnore("/root/subdir/file.txt"))
 }
 
-// Expectation: The function should skip a path when ignore file exists in the same directory.
-func Test_ShouldIgnorePath_IgnoreFile_SkipsPath_Success(t *testing.T) {
+// Expectation: The checker should skip a path when ignore file exists in the same directory.
+func Test_IgnoreChecker_ShouldIgnore_IgnoreFile_SkipsPath_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/subdir", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/root/subdir/"+schema.IgnoreFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/subdir/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.True(t, skip)
+	require.True(t, checker.ShouldIgnore("/root/subdir/file.txt"))
 }
 
-// Expectation: The function should not skip a path when ignore file exists only in a parent directory.
-func Test_ShouldIgnorePath_IgnoreFile_InParent_DoesNotSkip_Success(t *testing.T) {
+// Expectation: The checker should not skip a path when ignore file exists only in a parent directory.
+func Test_IgnoreChecker_ShouldIgnore_IgnoreFile_InParent_DoesNotSkip_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/subdir", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/subdir/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.False(t, skip)
+	require.False(t, checker.ShouldIgnore("/root/subdir/file.txt"))
 }
 
-// Expectation: The function should skip a path when ignore-all file exists in the same directory.
-func Test_ShouldIgnorePath_IgnoreAllFile_SameDir_SkipsPath_Success(t *testing.T) {
+// Expectation: The checker should skip a path when ignore-all file exists in the same directory.
+func Test_IgnoreChecker_ShouldIgnore_IgnoreAllFile_SameDir_SkipsPath_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/subdir", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/root/subdir/"+schema.IgnoreAllFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/subdir/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.True(t, skip)
+	require.True(t, checker.ShouldIgnore("/root/subdir/file.txt"))
 }
 
-// Expectation: The function should skip a path when ignore-all file exists in a parent directory.
-func Test_ShouldIgnorePath_IgnoreAllFile_InParent_SkipsPath_Success(t *testing.T) {
+// Expectation: The checker should skip a path when ignore-all file exists in a parent directory.
+func Test_IgnoreChecker_ShouldIgnore_IgnoreAllFile_InParent_SkipsPath_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/subdir/deep", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreAllFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/subdir/deep/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.True(t, skip)
+	require.True(t, checker.ShouldIgnore("/root/subdir/deep/file.txt"))
 }
 
-// Expectation: The function should skip a path when ignore-all file exists in an intermediate directory.
-func Test_ShouldIgnorePath_IgnoreAllFile_InIntermediate_SkipsPath_Success(t *testing.T) {
+// Expectation: The checker should skip a path when ignore-all file exists in an intermediate directory.
+func Test_IgnoreChecker_ShouldIgnore_IgnoreAllFile_InIntermediate_SkipsPath_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/mid/subdir", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/root/mid/"+schema.IgnoreAllFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/mid/subdir/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.True(t, skip)
+	require.True(t, checker.ShouldIgnore("/root/mid/subdir/file.txt"))
 }
 
-// Expectation: The function should not walk above the root directory.
-func Test_ShouldIgnorePath_StopsAtRoot_Success(t *testing.T) {
+// Expectation: The checker should not walk above the root directory.
+func Test_IgnoreChecker_ShouldIgnore_StopsAtRoot_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/subdir", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/"+schema.IgnoreAllFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/subdir/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.False(t, skip)
+	require.False(t, checker.ShouldIgnore("/root/subdir/file.txt"))
 }
 
-// Expectation: The function should handle a path directly in the root directory with ignore-all.
-func Test_ShouldIgnorePath_PathInRoot_IgnoreAll_Success(t *testing.T) {
+// Expectation: The checker should handle a path directly in the root directory with ignore-all.
+func Test_IgnoreChecker_ShouldIgnore_PathInRoot_IgnoreAll_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreAllFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.True(t, skip)
+	require.True(t, checker.ShouldIgnore("/root/file.txt"))
 }
 
-// Expectation: The function should handle a path directly in the root directory with ignore file.
-func Test_ShouldIgnorePath_PathInRoot_IgnoreFile_Success(t *testing.T) {
+// Expectation: The checker should handle a path directly in the root directory with ignore file.
+func Test_IgnoreChecker_ShouldIgnore_PathInRoot_IgnoreFile_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root", 0o755))
 	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreFile, []byte{}, 0o644))
 
-	skip := ShouldIgnorePath(fsys, "/root/file.txt", "/root")
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	require.True(t, skip)
+	require.True(t, checker.ShouldIgnore("/root/file.txt"))
 }
 
-// Expectation: The checker should not skip files when no ignore files exist.
-func Test_IgnoreChecker_ShouldSkip_NoIgnoreFiles_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, fsys.MkdirAll("/root", 0o755))
-	require.NoError(t, afero.WriteFile(fsys, "/root/file.txt", []byte("content"), 0o644))
-
-	checker := NewIgnoreChecker(fsys)
-
-	skip, err := checker.ShouldSkip("/root/file.txt", false)
-
-	require.NoError(t, err)
-	require.False(t, skip)
-}
-
-// Expectation: The checker should skip files when ignore file exists.
-func Test_IgnoreChecker_ShouldSkip_IgnoreFile_SkipsFile_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, fsys.MkdirAll("/root", 0o755))
-	require.NoError(t, afero.WriteFile(fsys, "/root/file.txt", []byte("content"), 0o644))
-	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreFile, []byte{}, 0o644))
-
-	checker := NewIgnoreChecker(fsys)
-
-	skip, err := checker.ShouldSkip("/root/file.txt", false)
-
-	require.NoError(t, err)
-	require.True(t, skip)
-}
-
-// Expectation: The checker should not skip directories when only ignore file exists.
-func Test_IgnoreChecker_ShouldSkip_IgnoreFile_DoesNotSkipDir_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, fsys.MkdirAll("/root/subdir", 0o755))
-	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreFile, []byte{}, 0o644))
-
-	checker := NewIgnoreChecker(fsys)
-
-	skip, err := checker.ShouldSkip("/root/subdir", true)
-
-	require.NoError(t, err)
-	require.False(t, skip)
-}
-
-// Expectation: The checker should skip files when ignore-all file exists.
-func Test_IgnoreChecker_ShouldSkip_IgnoreAllFile_SkipsFile_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, fsys.MkdirAll("/root", 0o755))
-	require.NoError(t, afero.WriteFile(fsys, "/root/file.txt", []byte("content"), 0o644))
-	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreAllFile, []byte{}, 0o644))
-
-	checker := NewIgnoreChecker(fsys)
-
-	skip, err := checker.ShouldSkip("/root/file.txt", false)
-
-	require.NoError(t, err)
-	require.True(t, skip)
-}
-
-// Expectation: The checker should skip directories with SkipDir when ignore-all file exists.
-func Test_IgnoreChecker_ShouldSkip_IgnoreAllFile_SkipsDir_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, fsys.MkdirAll("/root/subdir", 0o755))
-	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreAllFile, []byte{}, 0o644))
-
-	checker := NewIgnoreChecker(fsys)
-
-	skip, err := checker.ShouldSkip("/root/subdir", true)
-
-	require.True(t, skip)
-	require.ErrorIs(t, err, filepath.SkipDir)
-}
-
-// Expectation: The checker should cache ignore status for the same directory.
-func Test_IgnoreChecker_ShouldSkip_CachesDirectory_Success(t *testing.T) {
-	t.Parallel()
-
-	fsys := afero.NewMemMapFs()
-	require.NoError(t, fsys.MkdirAll("/root", 0o755))
-	require.NoError(t, afero.WriteFile(fsys, "/root/file1.txt", []byte("content"), 0o644))
-	require.NoError(t, afero.WriteFile(fsys, "/root/file2.txt", []byte("content"), 0o644))
-	require.NoError(t, afero.WriteFile(fsys, "/root/"+schema.IgnoreFile, []byte{}, 0o644))
-
-	checker := NewIgnoreChecker(fsys)
-
-	skip1, _ := checker.ShouldSkip("/root/file1.txt", false)
-	skip2, _ := checker.ShouldSkip("/root/file2.txt", false)
-
-	require.True(t, skip1)
-	require.True(t, skip2)
-	require.Equal(t, "/root", checker.lastVisited)
-}
-
-// Expectation: The checker should update cache when directory changes.
-func Test_IgnoreChecker_ShouldSkip_UpdatesCacheOnDirChange_Success(t *testing.T) {
+// Expectation: The checker should cache positive and negative ignore file results.
+func Test_IgnoreChecker_ShouldIgnore_CachesIgnoreFile_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
 	require.NoError(t, fsys.MkdirAll("/root/dir1", 0o755))
 	require.NoError(t, fsys.MkdirAll("/root/dir2", 0o755))
-	require.NoError(t, afero.WriteFile(fsys, "/root/dir1/file.txt", []byte("content"), 0o644))
-	require.NoError(t, afero.WriteFile(fsys, "/root/dir2/file.txt", []byte("content"), 0o644))
 	require.NoError(t, afero.WriteFile(fsys, "/root/dir1/"+schema.IgnoreFile, []byte{}, 0o644))
 
-	checker := NewIgnoreChecker(fsys)
+	checker := NewIgnoreChecker(fsys, "/root")
 
-	skip1, _ := checker.ShouldSkip("/root/dir1/file.txt", false)
-	skip2, _ := checker.ShouldSkip("/root/dir2/file.txt", false)
+	require.True(t, checker.ShouldIgnore("/root/dir1/file.txt"))
+	require.False(t, checker.ShouldIgnore("/root/dir2/file.txt"))
 
-	require.True(t, skip1)
-	require.False(t, skip2)
+	require.Contains(t, checker.cache, filepath.Join("/root/dir1", schema.IgnoreFile))
+	require.True(t, checker.cache[filepath.Join("/root/dir1", schema.IgnoreFile)])
+
+	require.Contains(t, checker.cache, filepath.Join("/root/dir2", schema.IgnoreFile))
+	require.False(t, checker.cache[filepath.Join("/root/dir2", schema.IgnoreFile)])
+}
+
+// Expectation: The checker should cache positive and negative ignore-all file results across the ancestor walk.
+func Test_IgnoreChecker_ShouldIgnore_CachesIgnoreAllFile_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/root/mid/deep", 0o755))
+	require.NoError(t, fsys.MkdirAll("/root/other", 0o755))
+	require.NoError(t, afero.WriteFile(fsys, "/root/mid/"+schema.IgnoreAllFile, []byte{}, 0o644))
+
+	checker := NewIgnoreChecker(fsys, "/root")
+
+	require.True(t, checker.ShouldIgnore("/root/mid/deep/file.txt"))
+	require.False(t, checker.ShouldIgnore("/root/other/file.txt"))
+
+	// positive: ignore-all found at /root/mid
+	require.Contains(t, checker.cache, filepath.Join("/root/mid", schema.IgnoreAllFile))
+	require.True(t, checker.cache[filepath.Join("/root/mid", schema.IgnoreAllFile)])
+
+	// negative: no ignore-all at /root/mid/deep (checked before walking up)
+	require.Contains(t, checker.cache, filepath.Join("/root/mid/deep", schema.IgnoreAllFile))
+	require.False(t, checker.cache[filepath.Join("/root/mid/deep", schema.IgnoreAllFile)])
+
+	// negative: no ignore-all at /root/other or /root (walked up from /root/other)
+	require.Contains(t, checker.cache, filepath.Join("/root/other", schema.IgnoreAllFile))
+	require.False(t, checker.cache[filepath.Join("/root/other", schema.IgnoreAllFile)])
+	require.Contains(t, checker.cache, filepath.Join("/root", schema.IgnoreAllFile))
+	require.False(t, checker.cache[filepath.Join("/root", schema.IgnoreAllFile)])
+}
+
+// Expectation: The checker should serve ignore file result from cache on subsequent calls.
+func Test_IgnoreChecker_ShouldIgnore_CachedIgnoreFile_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/root/dir", 0o755))
+	require.NoError(t, afero.WriteFile(fsys, "/root/dir/"+schema.IgnoreFile, []byte{}, 0o644))
+
+	checker := NewIgnoreChecker(fsys, "/root")
+
+	require.True(t, checker.ShouldIgnore("/root/dir/file1.txt"))
+
+	// Remove the ignore file - second call should still return true from cache.
+	require.NoError(t, fsys.Remove("/root/dir/"+schema.IgnoreFile))
+
+	require.True(t, checker.ShouldIgnore("/root/dir/file2.txt"))
+}
+
+// Expectation: The checker should serve ignore-all file result from cache on subsequent calls.
+func Test_IgnoreChecker_ShouldIgnore_CachedIgnoreAllFile_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	require.NoError(t, fsys.MkdirAll("/root/mid/deep", 0o755))
+	require.NoError(t, afero.WriteFile(fsys, "/root/mid/"+schema.IgnoreAllFile, []byte{}, 0o644))
+
+	checker := NewIgnoreChecker(fsys, "/root")
+
+	require.True(t, checker.ShouldIgnore("/root/mid/deep/file1.txt"))
+
+	// Remove the ignore-all file - second call should still return true from cache.
+	require.NoError(t, fsys.Remove("/root/mid/"+schema.IgnoreAllFile))
+
+	require.True(t, checker.ShouldIgnore("/root/mid/deep/file2.txt"))
 }
 
 // Expectation: No available lstat should pass all table tests.

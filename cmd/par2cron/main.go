@@ -54,7 +54,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var profFile *os.File
+var (
+	profFile    *os.File
+	profFileMem *os.File
+)
 
 func checkForPar2(ctx context.Context, runner schema.CommandRunner, errout io.Writer) error {
 	var out bytes.Buffer
@@ -79,6 +82,14 @@ func stopProfile() {
 		pprof.StopCPUProfile()
 		_ = profFile.Close()
 		profFile = nil
+	}
+}
+
+func stopProfileMem() {
+	if profFileMem != nil {
+		_ = pprof.Lookup("allocs").WriteTo(profFileMem, 0)
+		_ = profFileMem.Close()
+		profFileMem = nil
 	}
 }
 
@@ -116,10 +127,21 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 				}
 			}
 
+			pm, _ := cmd.Flags().GetString("mprof")
+			if pm != "" {
+				pm, err := os.Create(pm)
+				if err != nil {
+					return fmt.Errorf("%w: failed to create --mprof: %w",
+						schema.ErrExitBadInvocation, err)
+				}
+				profFileMem = pm
+			}
+
 			return nil
 		},
 	}
 	rootCmd.PersistentFlags().String("pprof", "", "write CPU performance profile to file")
+	rootCmd.PersistentFlags().String("mprof", "", "write RAM allocation profile to file")
 
 	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -180,7 +202,7 @@ func newBundlePackCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "pack"))
 
 			ctx := context.WithValue(ctx, schema.ModeKey, "pack")
@@ -230,7 +252,7 @@ func newBundleUnpackCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "unpack"))
 
 			ctx := context.WithValue(ctx, schema.ModeKey, "unpack")
@@ -320,7 +342,7 @@ func newCreateCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "create"))
 
 			result, err := prog.CreationService.Create(ctx, resolvedPaths, createOptions)
@@ -392,7 +414,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "verify"))
 
 			result, err := prog.VerificationService.Verify(ctx, resolvedPaths, verifyOptions)
@@ -408,6 +430,7 @@ func newVerifyCmd(ctx context.Context) *cobra.Command {
 	verifyCmd.Flags().BoolVar(&verifyOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
 	verifyCmd.Flags().BoolVarP(&verifyOptions.IncludeExternal, "include-external", "e", false, "include PAR2 sets without a par2cron manifest (and create one)")
 	verifyCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
+	verifyCmd.Flags().StringVar(&verifyOptions.CacheDir, "cache", "", "directory for optional manifest cache (use same for all commands)")
 	verifyCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 	verifyCmd.Flags().VarP(&verifyOptions.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
 	verifyCmd.Flags().VarP(&verifyOptions.MinAge, "age", "a", "minimum time between re-verifications (skip if verified within this period)")
@@ -461,7 +484,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "repair"))
 
 			result, err := prog.RepairService.Repair(ctx, resolvedPaths, repairOptions)
@@ -480,6 +503,7 @@ func newRepairCmd(ctx context.Context) *cobra.Command {
 	repairCmd.Flags().BoolVarP(&repairOptions.PurgeBackups, "purge-backups", "p", false, "remove obsolete backup files (.1, .2, ...) after successful repair")
 	repairCmd.Flags().BoolVarP(&repairOptions.RestoreBackups, "restore-backups", "r", false, "roll back protected files to pre-repair state after unsuccessful repair")
 	repairCmd.Flags().IntVarP(&repairOptions.MinTestedCount, "min-tested", "t", 0, "repair only when verified as corrupted at least X times")
+	repairCmd.Flags().StringVar(&repairOptions.CacheDir, "cache", "", "directory for optional manifest cache (use same for all commands)")
 	repairCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	repairCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 	repairCmd.Flags().VarP(&repairOptions.MaxDuration, "duration", "d", "time budget per run (best effort/soft limit)")
@@ -528,7 +552,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
-			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{})
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer recoverOperationPanic(&ret, prog.log.With("op", "info"))
 
 			err := prog.InfoService.Info(ctx, resolvedPaths, infoOptions)
@@ -542,6 +566,7 @@ func newInfoCmd(ctx context.Context) *cobra.Command {
 	infoCmd.Flags().BoolVar(&infoOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
 	infoCmd.Flags().BoolVarP(&infoOptions.IncludeExternal, "include-external", "e", false, "include external PAR2 sets without a par2cron manifest")
 	infoCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
+	infoCmd.Flags().StringVar(&infoOptions.CacheDir, "cache", "", "directory for optional manifest cache (use same for all commands)")
 	infoCmd.Flags().VarP(&infoOptions.MaxDuration, "duration", "d", "target time budget for each verify run (soft limit)")
 	infoCmd.Flags().VarP(&infoOptions.MinAge, "age", "a", "target cycle length (time between re-verifications)")
 	infoCmd.Flags().VarP(&infoOptions.RunInterval, "calc-run-interval", "i", "how often you run par2cron verify")
@@ -567,14 +592,15 @@ func NewProgram(
 	r schema.CommandRunner,
 	b schema.BundleHandler,
 	p schema.Par2Handler,
+	c schema.CacheHandler,
 ) *Program {
 	log := logging.NewLogger(o)
 
 	return &Program{
-		CreationService:     create.NewService(fsys, log, r, b, p),
-		VerificationService: verify.NewService(fsys, log, r, b),
-		RepairService:       repair.NewService(fsys, log, r, b),
-		InfoService:         info.NewService(fsys, log, r, b),
+		CreationService:     create.NewService(fsys, log, r, b, p, c),
+		VerificationService: verify.NewService(fsys, log, r, b, c),
+		RepairService:       repair.NewService(fsys, log, r, b, c),
+		InfoService:         info.NewService(fsys, log, r, b, c),
 		BundlerService:      bundler.NewService(fsys, log, b, p),
 
 		log: log,
@@ -646,6 +672,7 @@ func main() {
 	cobra.OnFinalize(func() {
 		// https://github.com/spf13/cobra/issues/1893#issuecomment-1573951697
 		stopProfile()
+		stopProfileMem()
 	})
 
 	rootCmd := newRootCmd(ctx)

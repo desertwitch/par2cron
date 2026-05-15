@@ -135,6 +135,7 @@ verify:
   skip-not-created: true
   log-level: "warn"
   json: false
+  cache: "/tmp/cache"
 repair:
   args: ["-C"]
   verify: true
@@ -146,6 +147,7 @@ repair:
   json: true
   purge-backups: true
   restore-backups: true
+  cache: "/tmp/cache"
 info:
   duration: "1h"
   age: "14d"
@@ -153,7 +155,8 @@ info:
   include-external: true
   skip-not-created: false
   json: true
-  log-level: "error"`
+  log-level: "error"
+  cache: "/tmp/cache"`
 	require.NoError(t, afero.WriteFile(fs, "/par2cron.yaml", []byte(yamlContent), 0o644))
 
 	cfg, err := parseConfigFile(fs, "/par2cron.yaml")
@@ -444,6 +447,7 @@ func Test_configFileVerify_Merge_AllFields_Success(t *testing.T) {
 		SkipNotCreated:  new(true),
 		LogLevel:        &LogLevel,
 		WantJSON:        new(true),
+		CacheDir:        new("/tmp/cache"),
 	}
 
 	cfg := verify.Options{
@@ -468,6 +472,7 @@ func Test_configFileVerify_Merge_AllFields_Success(t *testing.T) {
 	require.True(t, cfg.SkipNotCreated)
 	require.Equal(t, slog.LevelDebug, logs.LogLevel.Value)
 	require.True(t, logs.WantJSON)
+	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 }
 
 // Expectation: External args should take precedence over YAML config for verify.
@@ -507,6 +512,7 @@ func Test_configFileVerify_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		MinAge:          &minAge,
 		IncludeExternal: new(true),
 		SkipNotCreated:  new(true),
+		CacheDir:        new("/tmp/cache"),
 	}
 
 	cfg := verify.Options{}
@@ -524,6 +530,7 @@ func Test_configFileVerify_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"age":              true,
 		"include-external": true,
 		"skip-not-created": true,
+		"cache":            true,
 	}
 
 	yamlCfg.Merge(&cfg, &logs, false, setFlags)
@@ -532,6 +539,7 @@ func Test_configFileVerify_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.Equal(t, "72h0m0s", cfg.MinAge.Value.String())
 	require.False(t, cfg.IncludeExternal)
 	require.False(t, cfg.SkipNotCreated)
+	require.Empty(t, cfg.CacheDir)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values for verify.
@@ -549,6 +557,7 @@ func Test_configFileVerify_Merge_NilFields_Success(t *testing.T) {
 		Par2Args:        []string{"-q"},
 		IncludeExternal: true,
 		SkipNotCreated:  true,
+		CacheDir:        "/tmp/cache",
 	}
 	_ = cfg.MinAge.Set("3d")
 	_ = cfg.RunInterval.Set("6h")
@@ -569,6 +578,7 @@ func Test_configFileVerify_Merge_NilFields_Success(t *testing.T) {
 	require.True(t, cfg.IncludeExternal)
 	require.True(t, cfg.SkipNotCreated)
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
+	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 }
 
 // Expectation: Args should be cloned, not referenced for verify.
@@ -617,6 +627,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 		PurgeBackups:         new(true),
 		RestoreBackups:       new(true),
 		Par2Verify:           new(true),
+		CacheDir:             new("/tmp/cache"),
 	}
 
 	cfg := repair.Options{
@@ -645,6 +656,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 	require.True(t, cfg.Par2Verify)
 	require.True(t, cfg.PurgeBackups)
 	require.True(t, cfg.RestoreBackups)
+	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 }
 
 // Expectation: External args should take precedence over YAML config for repair.
@@ -689,6 +701,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		PurgeBackups:         new(true),
 		RestoreBackups:       new(true),
 		Par2Verify:           new(true),
+		CacheDir:             new("/tmp/cache"),
 	}
 
 	cfg := repair.Options{
@@ -714,6 +727,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"attempt-unrepairables": true,
 		"purge-backups":         true,
 		"restore-backups":       true,
+		"cache":                 true,
 	}
 
 	yamlCfg.Merge(&cfg, &logs, false, setFlags)
@@ -727,6 +741,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.False(t, cfg.Par2Verify)
 	require.False(t, cfg.PurgeBackups)
 	require.False(t, cfg.RestoreBackups)
+	require.Empty(t, cfg.CacheDir)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values for repair.
@@ -744,6 +759,7 @@ func Test_configFileRepair_Merge_NilFields_Success(t *testing.T) {
 		Par2Args:       []string{"-q"},
 		MinTestedCount: 5,
 		SkipNotCreated: true,
+		CacheDir:       "/tmp/cache",
 	}
 
 	logs := logging.Options{
@@ -761,6 +777,7 @@ func Test_configFileRepair_Merge_NilFields_Success(t *testing.T) {
 	require.True(t, cfg.SkipNotCreated)
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
 	require.False(t, logs.WantJSON)
+	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 }
 
 // Expectation: Args should be cloned, not referenced for repair.
@@ -810,6 +827,7 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 		IncludeExternal: new(true),
 		SkipNotCreated:  new(true),
 		WantJSON:        new(true),
+		CacheDir:        new("/tmp/cache"),
 	}
 
 	cfg := info.Options{}
@@ -831,6 +849,7 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 	require.True(t, cfg.IncludeExternal)
 	require.True(t, cfg.SkipNotCreated)
 	require.True(t, logs.WantJSON)
+	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 }
 
 // Expectation: CLI flags should take precedence over YAML config for info.
@@ -851,6 +870,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		IncludeExternal: new(true),
 		SkipNotCreated:  new(true),
 		WantJSON:        new(true),
+		CacheDir:        new("/tmp/cache"),
 	}
 
 	cfg := info.Options{}
@@ -871,6 +891,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"include-external": true,
 		"skip-not-created": true,
 		"json":             true,
+		"cache":            true,
 	}
 
 	yamlCfg.Merge(&cfg, &logs, false, setFlags)
@@ -881,6 +902,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.False(t, cfg.IncludeExternal)
 	require.False(t, cfg.SkipNotCreated)
 	require.False(t, logs.WantJSON)
+	require.Empty(t, cfg.CacheDir)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values for info.
@@ -894,7 +916,9 @@ func Test_configFileInfo_Merge_NilFields_Success(t *testing.T) {
 		MaxDuration: &maxDur,
 	}
 
-	cfg := info.Options{}
+	cfg := info.Options{
+		CacheDir: "/tmp/cache",
+	}
 	_ = cfg.MinAge.Set("3d")
 	_ = cfg.RunInterval.Set("6h")
 
@@ -911,4 +935,5 @@ func Test_configFileInfo_Merge_NilFields_Success(t *testing.T) {
 	require.Equal(t, "72h0m0s", cfg.MinAge.Value.String())
 	require.Equal(t, "6h0m0s", cfg.RunInterval.Value.String())
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
+	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 }

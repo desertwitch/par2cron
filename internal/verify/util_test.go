@@ -27,47 +27,49 @@ func Test_Service_Stats_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	timeA := time.Now().Add(-5 * time.Minute)
 	timeB := time.Now().Add(-10 * time.Minute)
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:           timeA,
-					Duration:       5 * time.Minute,
-					RepairNeeded:   false,
-					RepairPossible: true,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      timeA,
+				VerifyDuration:  5 * time.Minute,
+				RepairNeeded:    false,
+				RepairPossible:  true,
 			},
 		},
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:           timeB,
-					Duration:       10 * time.Minute,
-					RepairNeeded:   true,
-					RepairPossible: true,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      timeB,
+				VerifyDuration:  10 * time.Minute,
+				RepairNeeded:    true,
+				RepairPossible:  true,
 			},
 		},
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration:       0,
-					RepairNeeded:   true,
-					RepairPossible: false,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
+				RepairNeeded:    true,
+				RepairPossible:  false,
 			},
 		},
 		{
-			manifest: nil,
+			&schema.JobMeta{
+				HasManifest: false,
+			},
 		},
 	}
 
-	js := prog.Stats(jobs)
+	js := prog.Stats(metas)
 
 	require.Equal(t, 4, js.JobCount)
 	require.Equal(t, 2, js.KnownCount)
@@ -95,9 +97,9 @@ func Test_Service_Stats_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	js := prog.Stats([]*Job{})
+	js := prog.Stats([]*JobMeta{})
 
 	require.Zero(t, js.JobCount)
 	require.Zero(t, js.KnownCount)
@@ -123,20 +125,22 @@ func Test_Service_Stats_WithUnknownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
-		{manifest: nil},
+	metas := []*JobMeta{
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 5 * time.Minute,
-				},
+			&schema.JobMeta{},
+		},
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  5 * time.Minute,
 			},
 		},
 	}
 
-	js := prog.Stats(jobs)
+	js := prog.Stats(metas)
 
 	require.Equal(t, 2, js.JobCount)
 	require.Equal(t, 1, js.KnownCount)
@@ -158,91 +162,38 @@ func Test_Service_Stats_IdentifyLargestDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	job1 := &Job{
-		par2Path: "/data/job1" + schema.Par2Extension,
-		manifest: &schema.Manifest{
-			Verification: &schema.VerificationManifest{
-				Duration: 5 * time.Minute,
-			},
+	meta1 := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:        "/data/job1" + schema.Par2Extension,
+			HasManifest:     true,
+			HasVerification: true,
+			VerifyDuration:  5 * time.Minute,
 		},
 	}
-
-	job2 := &Job{
-		par2Path: "/data/job2" + schema.Par2Extension,
-		manifest: &schema.Manifest{
-			Verification: &schema.VerificationManifest{
-				Duration: 20 * time.Minute,
-			},
+	meta2 := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:        "/data/job2" + schema.Par2Extension,
+			HasManifest:     true,
+			HasVerification: true,
+			VerifyDuration:  20 * time.Minute,
 		},
 	}
+	metas := []*JobMeta{meta1, meta2}
 
-	jobs := []*Job{job1, job2}
-
-	js := prog.Stats(jobs)
+	js := prog.Stats(metas)
 
 	require.Equal(t, 20*time.Minute, js.LargestDuration)
-	require.Equal(t, job2, js.LargestJob)
-}
-
-// Expectation: The manifest should be returned correctly when it exists.
-func Test_Job_Manifest_WithManifest_Success(t *testing.T) {
-	t.Parallel()
-
-	manifest := &schema.Manifest{
-		Verification: &schema.VerificationManifest{
-			Duration: 5 * time.Minute,
-		},
-	}
-	job := &Job{manifest: manifest}
-
-	result := job.Manifest()
-
-	require.Equal(t, manifest, result)
-}
-
-// Expectation: Nil should be returned when no manifest exists.
-func Test_Job_Manifest_NoManifest_Success(t *testing.T) {
-	t.Parallel()
-
-	job := &Job{manifest: nil}
-
-	result := job.Manifest()
-
-	require.Nil(t, result)
-}
-
-// Expectation: The par2 path should be returned correctly.
-func Test_Job_Par2Path_Success(t *testing.T) {
-	t.Parallel()
-
-	expectedPath := "/data/test" + schema.Par2Extension
-	job := &Job{par2Path: expectedPath}
-
-	result := job.Par2Path()
-
-	require.Equal(t, expectedPath, result)
-}
-
-// Expectation: An empty string should be returned when no path is set.
-func Test_Job_Par2Path_Empty_Success(t *testing.T) {
-	t.Parallel()
-
-	job := &Job{par2Path: ""}
-
-	result := job.Par2Path()
-
-	require.Empty(t, result)
+	require.Equal(t, meta2.JobMeta, js.LargestJob)
 }
 
 // Expecation: The correct priority should be returned.
 func Test_Job_queuePriority_NoManifest_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{manifest: nil}
-
-	priority := job.queuePriority()
+	meta := &JobMeta{&schema.JobMeta{}}
+	priority := meta.queuePriority()
 
 	require.Equal(t, prioNoManifest, priority)
 }
@@ -251,11 +202,12 @@ func Test_Job_queuePriority_NoManifest_Success(t *testing.T) {
 func Test_Job_queuePriority_NoVerification_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{
-		manifest: &schema.Manifest{},
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest: true,
+		},
 	}
-
-	priority := job.queuePriority()
+	priority := meta.queuePriority()
 
 	require.Equal(t, prioNoVerification, priority)
 }
@@ -264,15 +216,14 @@ func Test_Job_queuePriority_NoVerification_Success(t *testing.T) {
 func Test_Job_queuePriority_NeedsRepair_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{
-		manifest: &schema.Manifest{
-			Verification: &schema.VerificationManifest{
-				RepairNeeded: true,
-			},
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest:     true,
+			HasVerification: true,
+			RepairNeeded:    true,
 		},
 	}
-
-	priority := job.queuePriority()
+	priority := meta.queuePriority()
 
 	require.Equal(t, prioNeedsRepair, priority)
 }
@@ -281,15 +232,14 @@ func Test_Job_queuePriority_NeedsRepair_Success(t *testing.T) {
 func Test_Job_queuePriority_Normal_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{
-		manifest: &schema.Manifest{
-			Verification: &schema.VerificationManifest{
-				RepairNeeded: false,
-			},
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest:     true,
+			HasVerification: true,
+			RepairNeeded:    false,
 		},
 	}
-
-	priority := job.queuePriority()
+	priority := meta.queuePriority()
 
 	require.Equal(t, prioOther, priority)
 }
@@ -298,9 +248,8 @@ func Test_Job_queuePriority_Normal_Success(t *testing.T) {
 func Test_Job_lastVerified_NoManifest_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{manifest: nil}
-
-	t0 := job.lastVerified()
+	meta := &JobMeta{&schema.JobMeta{}}
+	t0 := meta.lastVerified()
 
 	require.Zero(t, t0)
 }
@@ -310,15 +259,14 @@ func Test_Job_lastVerified_WithVerification_Success(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	job := &Job{
-		manifest: &schema.Manifest{
-			Verification: &schema.VerificationManifest{
-				Time: now,
-			},
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest:     true,
+			HasVerification: true,
+			VerifyTime:      now,
 		},
 	}
-
-	t0 := job.lastVerified()
+	t0 := meta.lastVerified()
 
 	require.Equal(t, now, t0)
 }
@@ -327,9 +275,8 @@ func Test_Job_lastVerified_WithVerification_Success(t *testing.T) {
 func Test_Job_lastDuration_NoManifest_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{manifest: nil}
-
-	duration := job.lastDuration()
+	meta := &JobMeta{&schema.JobMeta{}}
+	duration := meta.lastDuration()
 
 	require.Zero(t, duration)
 }
@@ -338,15 +285,14 @@ func Test_Job_lastDuration_NoManifest_Success(t *testing.T) {
 func Test_Job_lastDuration_WithVerification_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{
-		manifest: &schema.Manifest{
-			Verification: &schema.VerificationManifest{
-				Duration: 5 * time.Minute,
-			},
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest:     true,
+			HasVerification: true,
+			VerifyDuration:  5 * time.Minute,
 		},
 	}
-
-	duration := job.lastDuration()
+	duration := meta.lastDuration()
 
 	require.Equal(t, 5*time.Minute, duration)
 }
@@ -355,11 +301,8 @@ func Test_Job_lastDuration_WithVerification_Success(t *testing.T) {
 func Test_Job_lastDurationStr_NoManifest_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{
-		manifest: nil,
-	}
-
-	result := job.lastDurationStr()
+	meta := &JobMeta{&schema.JobMeta{}}
+	result := meta.lastDurationStr()
 
 	require.Equal(t, "?", result)
 }
@@ -368,11 +311,12 @@ func Test_Job_lastDurationStr_NoManifest_Success(t *testing.T) {
 func Test_Job_lastDurationStr_NoVerification_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{
-		manifest: &schema.Manifest{},
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest: true,
+		},
 	}
-
-	result := job.lastDurationStr()
+	result := meta.lastDurationStr()
 
 	require.Equal(t, "?", result)
 }
@@ -381,15 +325,14 @@ func Test_Job_lastDurationStr_NoVerification_Success(t *testing.T) {
 func Test_Job_lastDurationStr_WithVerification_Success(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{
-		manifest: &schema.Manifest{
-			Verification: &schema.VerificationManifest{
-				Duration: 5 * time.Minute,
-			},
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest:     true,
+			HasVerification: true,
+			VerifyDuration:  5 * time.Minute,
 		},
 	}
-
-	result := job.lastDurationStr()
+	result := meta.lastDurationStr()
 
 	require.NotEqual(t, "?", result)
 	require.Equal(t, "5m0s", result)
@@ -399,12 +342,11 @@ func Test_Job_lastDurationStr_WithVerification_Success(t *testing.T) {
 func Test_filterByAge_NoMinAge_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
-		{par2Path: "/data/test1" + schema.Par2Extension},
-		{par2Path: "/data/test2" + schema.Par2Extension},
+	metas := []*JobMeta{
+		{&schema.JobMeta{Par2Path: "/data/test1" + schema.Par2Extension}},
+		{&schema.JobMeta{Par2Path: "/data/test2" + schema.Par2Extension}},
 	}
-
-	filtered := filterByAge(jobs, 0)
+	filtered := filterByAge(metas, 0)
 
 	require.Len(t, filtered, 2)
 }
@@ -416,43 +358,42 @@ func Test_filterByAge_WithMinAge_Success(t *testing.T) {
 	oldTime := time.Now().Add(-48 * time.Hour)
 	recentTime := time.Now().Add(-1 * time.Hour)
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/old" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time: oldTime,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/old" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      oldTime,
 			},
 		},
 		{
-			par2Path: "/data/recent" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time: recentTime,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/recent" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      recentTime,
 			},
 		},
 	}
-
-	filtered := filterByAge(jobs, 24*time.Hour)
+	filtered := filterByAge(metas, 24*time.Hour)
 
 	require.Len(t, filtered, 1)
-	require.Equal(t, "/data/old"+schema.Par2Extension, filtered[0].par2Path)
+	require.Equal(t, "/data/old"+schema.Par2Extension, filtered[0].Par2Path)
 }
 
 // Expectation: Jobs without manifest should always be returned.
 func Test_filterByAge_NoVerification_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test" + schema.Par2Extension,
-			manifest: nil,
+			&schema.JobMeta{
+				Par2Path: "/data/test" + schema.Par2Extension,
+			},
 		},
 	}
-
-	filtered := filterByAge(jobs, 24*time.Hour)
+	filtered := filterByAge(metas, 24*time.Hour)
 
 	require.Len(t, filtered, 1)
 }
@@ -461,12 +402,11 @@ func Test_filterByAge_NoVerification_Success(t *testing.T) {
 func Test_filterByDuration_NoMaxDuration_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
-		{par2Path: "/data/test1" + schema.Par2Extension},
-		{par2Path: "/data/test2" + schema.Par2Extension},
+	metas := []*JobMeta{
+		{&schema.JobMeta{Par2Path: "/data/test1" + schema.Par2Extension}},
+		{&schema.JobMeta{Par2Path: "/data/test2" + schema.Par2Extension}},
 	}
-
-	filtered := filterByDuration(jobs, 0)
+	filtered := filterByDuration(metas, 0)
 
 	require.Len(t, filtered, 2)
 }
@@ -475,18 +415,17 @@ func Test_filterByDuration_NoMaxDuration_Success(t *testing.T) {
 func Test_filterByDuration_FirstJobAlwaysIncluded_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/large" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 10 * time.Hour,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/large" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  10 * time.Hour,
 			},
 		},
 	}
-
-	filtered := filterByDuration(jobs, 1*time.Hour)
+	filtered := filterByDuration(metas, 1*time.Hour)
 
 	require.Len(t, filtered, 1)
 }
@@ -495,34 +434,33 @@ func Test_filterByDuration_FirstJobAlwaysIncluded_Success(t *testing.T) {
 func Test_filterByDuration_FitsMultiple_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/job1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 30 * time.Minute,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/job1" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  30 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/job2" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 20 * time.Minute,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/job2" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  20 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/job3" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 15 * time.Minute,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/job3" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  15 * time.Minute,
 			},
 		},
 	}
-
-	filtered := filterByDuration(jobs, 1*time.Hour)
+	filtered := filterByDuration(metas, 1*time.Hour)
 
 	require.Len(t, filtered, 2)
 }
@@ -531,115 +469,114 @@ func Test_filterByDuration_FitsMultiple_Success(t *testing.T) {
 func Test_filterByDuration_UnknownDurationAlwaysIncluded_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/job1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 30 * time.Minute,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/job1" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  30 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/unknown1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/unknown1" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 		{
-			par2Path: "/data/unknown2" + schema.Par2Extension,
-			manifest: nil,
+			&schema.JobMeta{
+				Par2Path: "/data/unknown2" + schema.Par2Extension,
+			},
 		},
 		{
-			par2Path: "/data/job2" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 45 * time.Minute,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/job2" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  45 * time.Minute,
 			},
 		},
 	}
-
-	filtered := filterByDuration(jobs, 1*time.Hour)
+	filtered := filterByDuration(metas, 1*time.Hour)
 
 	require.Len(t, filtered, 3)
-	require.Equal(t, "/data/job1"+schema.Par2Extension, filtered[0].par2Path)
-	require.Equal(t, "/data/unknown1"+schema.Par2Extension, filtered[1].par2Path)
-	require.Equal(t, "/data/unknown2"+schema.Par2Extension, filtered[2].par2Path)
+	require.Equal(t, "/data/job1"+schema.Par2Extension, filtered[0].Par2Path)
+	require.Equal(t, "/data/unknown1"+schema.Par2Extension, filtered[1].Par2Path)
+	require.Equal(t, "/data/unknown2"+schema.Par2Extension, filtered[2].Par2Path)
 }
 
 // Expectation: Unknown duration jobs should be included even when they would exceed max duration.
 func Test_filterByDuration_UnknownDurationExceedingLimit_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/job1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 50 * time.Minute,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/job1" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  50 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/unknown" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/unknown" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 		{
-			par2Path: "/data/job2" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 20 * time.Minute,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/job2" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  20 * time.Minute,
 			},
 		},
 	}
-
-	filtered := filterByDuration(jobs, 1*time.Hour)
+	filtered := filterByDuration(metas, 1*time.Hour)
 
 	require.Len(t, filtered, 2)
-	require.Equal(t, "/data/job1"+schema.Par2Extension, filtered[0].par2Path)
-	require.Equal(t, "/data/unknown"+schema.Par2Extension, filtered[1].par2Path)
+	require.Equal(t, "/data/job1"+schema.Par2Extension, filtered[0].Par2Path)
+	require.Equal(t, "/data/unknown"+schema.Par2Extension, filtered[1].Par2Path)
 }
 
 // Expectation: The correct sorting should be done according to priority.
 func Test_sortJobs_Success(t *testing.T) {
 	t.Parallel()
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/normal" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					RepairNeeded: false,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/normal" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				RepairNeeded:    false,
 			},
 		},
 		{
-			par2Path: "/data/needs-repair" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					RepairNeeded: true,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/needs-repair" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				RepairNeeded:    true,
 			},
 		},
 		{
-			par2Path: "/data/no-manifest" + schema.Par2Extension,
-			manifest: nil,
+			&schema.JobMeta{
+				Par2Path: "/data/no-manifest" + schema.Par2Extension,
+			},
 		},
 	}
+	sortJobs(metas)
 
-	sortJobs(jobs)
-
-	require.Equal(t, "/data/no-manifest"+schema.Par2Extension, jobs[0].par2Path)
-	require.Equal(t, "/data/needs-repair"+schema.Par2Extension, jobs[1].par2Path)
-	require.Equal(t, "/data/normal"+schema.Par2Extension, jobs[2].par2Path)
+	require.Equal(t, "/data/no-manifest"+schema.Par2Extension, metas[0].Par2Path)
+	require.Equal(t, "/data/needs-repair"+schema.Par2Extension, metas[1].Par2Path)
+	require.Equal(t, "/data/normal"+schema.Par2Extension, metas[2].Par2Path)
 }
 
 // Expectation: Jobs with the same priority should be sorted by last verified time.
@@ -649,31 +586,30 @@ func Test_sortJobs_SamePriority_SortByTime_Success(t *testing.T) {
 	oldTime := time.Now().Add(-48 * time.Hour)
 	recentTime := time.Now().Add(-24 * time.Hour)
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/recent" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         recentTime,
-					RepairNeeded: false,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/recent" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      recentTime,
+				RepairNeeded:    false,
 			},
 		},
 		{
-			par2Path: "/data/old" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         oldTime,
-					RepairNeeded: false,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/old" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      oldTime,
+				RepairNeeded:    false,
 			},
 		},
 	}
+	sortJobs(metas)
 
-	sortJobs(jobs)
-
-	require.Equal(t, "/data/old"+schema.Par2Extension, jobs[0].par2Path)
-	require.Equal(t, "/data/recent"+schema.Par2Extension, jobs[1].par2Path)
+	require.Equal(t, "/data/old"+schema.Par2Extension, metas[0].Par2Path)
+	require.Equal(t, "/data/recent"+schema.Par2Extension, metas[1].Par2Path)
 }
 
 // Expectation: Jobs with the same priority and time should be sorted by path.
@@ -682,31 +618,31 @@ func Test_sortJobs_SamePriorityAndTime_SortByPath_Success(t *testing.T) {
 
 	sameTime := time.Now()
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/zebra" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         sameTime,
-					RepairNeeded: false,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/zebra" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      sameTime,
+				RepairNeeded:    false,
 			},
 		},
 		{
-			par2Path: "/data/apple" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         sameTime,
-					RepairNeeded: false,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/apple" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      sameTime,
+				RepairNeeded:    false,
 			},
 		},
 	}
 
-	sortJobs(jobs)
+	sortJobs(metas)
 
-	require.Equal(t, "/data/apple"+schema.Par2Extension, jobs[0].par2Path)
-	require.Equal(t, "/data/zebra"+schema.Par2Extension, jobs[1].par2Path)
+	require.Equal(t, "/data/apple"+schema.Par2Extension, metas[0].Par2Path)
+	require.Equal(t, "/data/zebra"+schema.Par2Extension, metas[1].Par2Path)
 }
 
 // Expectation: Complex sorting should respect priority first, then time, then path.
@@ -716,56 +652,55 @@ func Test_sortJobs_ComplexSorting_Success(t *testing.T) {
 	oldTime := time.Now().Add(-72 * time.Hour)
 	midTime := time.Now().Add(-48 * time.Hour)
 	recentTime := time.Now().Add(-24 * time.Hour)
-
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/normal-recent" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         recentTime,
-					RepairNeeded: false,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/normal-recent" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      recentTime,
+				RepairNeeded:    false,
 			},
 		},
 		{
-			par2Path: "/data/repair-old" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         oldTime,
-					RepairNeeded: true,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/repair-old" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      oldTime,
+				RepairNeeded:    true,
 			},
 		},
 		{
-			par2Path: "/data/no-manifest" + schema.Par2Extension,
-			manifest: nil,
-		},
-		{
-			par2Path: "/data/normal-old" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         oldTime,
-					RepairNeeded: false,
-				},
+			&schema.JobMeta{
+				Par2Path: "/data/no-manifest" + schema.Par2Extension,
 			},
 		},
 		{
-			par2Path: "/data/repair-mid" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Time:         midTime,
-					RepairNeeded: true,
-				},
+			&schema.JobMeta{
+				Par2Path:        "/data/normal-old" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      oldTime,
+				RepairNeeded:    false,
+			},
+		},
+		{
+			&schema.JobMeta{
+				Par2Path:        "/data/repair-mid" + schema.Par2Extension,
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyTime:      midTime,
+				RepairNeeded:    true,
 			},
 		},
 	}
-
-	sortJobs(jobs)
+	sortJobs(metas)
 
 	// Priority order: no manifest, needs repair (by time), normal (by time)
-	require.Equal(t, "/data/no-manifest"+schema.Par2Extension, jobs[0].par2Path)
-	require.Equal(t, "/data/repair-old"+schema.Par2Extension, jobs[1].par2Path)
-	require.Equal(t, "/data/repair-mid"+schema.Par2Extension, jobs[2].par2Path)
-	require.Equal(t, "/data/normal-old"+schema.Par2Extension, jobs[3].par2Path)
-	require.Equal(t, "/data/normal-recent"+schema.Par2Extension, jobs[4].par2Path)
+	require.Equal(t, "/data/no-manifest"+schema.Par2Extension, metas[0].Par2Path)
+	require.Equal(t, "/data/repair-old"+schema.Par2Extension, metas[1].Par2Path)
+	require.Equal(t, "/data/repair-mid"+schema.Par2Extension, metas[2].Par2Path)
+	require.Equal(t, "/data/normal-old"+schema.Par2Extension, metas[3].Par2Path)
+	require.Equal(t, "/data/normal-recent"+schema.Par2Extension, metas[4].Par2Path)
 }

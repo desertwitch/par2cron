@@ -343,7 +343,37 @@ func Test_Open_NegativeFileSize_Error(t *testing.T) {
 
 	_, err := Open(fs, "/bundle.par2")
 
-	require.ErrorContains(t, err, "file size < 0")
+	require.ErrorContains(t, err, "file size <= 0")
+}
+
+// Expectation: Open should reject a file with a zero reported size.
+func Test_Open_ZeroFileSize_Error(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(base, "/bundle.par2", []byte("data"), 0o644))
+
+	fs := &testFs{
+		Fs: base,
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
+			require.NoError(t, err)
+
+			return &testFile{
+				File: f,
+				statFunc: func() (os.FileInfo, error) {
+					info, err := f.Stat()
+					require.NoError(t, err)
+
+					return fileInfoWithSize{FileInfo: info, size: 0}, nil
+				},
+			}, nil
+		},
+	}
+
+	_, err := Open(fs, "/bundle.par2")
+
+	require.ErrorContains(t, err, "file size <= 0")
 }
 
 // Expectation: Open should reconstruct the index from intact packets when the on-disk index is corrupt.

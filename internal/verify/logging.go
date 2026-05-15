@@ -7,7 +7,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/schema"
 )
 
-func (prog *Service) verificationLogger(ctx context.Context, job *Job, path any) *logging.Logger {
+func (prog *Service) verificationLogger(ctx context.Context, job any, path any) *logging.Logger {
 	logElems := []any{}
 
 	if path != nil {
@@ -15,19 +15,42 @@ func (prog *Service) verificationLogger(ctx context.Context, job *Job, path any)
 	}
 
 	if job != nil {
-		logElems = append(logElems, "job", job.par2Path)
-
-		if ctx.Value(schema.PosKey) != nil {
-			logElems = append(logElems, "job_position", ctx.Value(schema.PosKey))
+		switch j := job.(type) {
+		case *schema.JobMeta:
+			logElems = append(logElems, "job", j.Par2Path)
+			if ctx.Value(schema.PosKey) != nil {
+				logElems = append(logElems, "job_position", ctx.Value(schema.PosKey))
+			}
+			if ctx.Value(schema.MposKey) != nil {
+				logElems = append(logElems, "job_position_sub", ctx.Value(schema.MposKey))
+			}
+			if ctx.Value(schema.PrioKey) != nil {
+				logElems = append(logElems, "job_priority", ctx.Value(schema.PrioKey))
+			}
+		case *JobMeta:
+			logElems = append(logElems, "job", j.Par2Path)
+			if ctx.Value(schema.PosKey) != nil {
+				logElems = append(logElems, "job_position", ctx.Value(schema.PosKey))
+			}
+			if ctx.Value(schema.MposKey) != nil {
+				logElems = append(logElems, "job_position_sub", ctx.Value(schema.MposKey))
+			}
+			if ctx.Value(schema.PrioKey) != nil {
+				logElems = append(logElems, "job_priority", ctx.Value(schema.PrioKey))
+			}
+		case *Job:
+			logElems = append(logElems, "job", j.par2Path)
+			if ctx.Value(schema.PosKey) != nil {
+				logElems = append(logElems, "job_position", ctx.Value(schema.PosKey))
+			}
+			if ctx.Value(schema.MposKey) != nil {
+				logElems = append(logElems, "job_position_sub", ctx.Value(schema.MposKey))
+			}
+			if ctx.Value(schema.PrioKey) != nil {
+				logElems = append(logElems, "job_priority", ctx.Value(schema.PrioKey))
+			}
+			logElems = append(logElems, "args", j.par2Args)
 		}
-		if ctx.Value(schema.MposKey) != nil {
-			logElems = append(logElems, "job_position_sub", ctx.Value(schema.MposKey))
-		}
-		if ctx.Value(schema.PrioKey) != nil {
-			logElems = append(logElems, "job_priority", ctx.Value(schema.PrioKey))
-		}
-
-		logElems = append(logElems, "args", job.par2Args)
 	}
 
 	return prog.log.With(logElems...)

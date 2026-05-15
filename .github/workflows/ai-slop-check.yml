@@ -1,0 +1,19 @@
+name: ai-slop-check
+on:
+  push:
+    branches:
+      - master
+      - main
+      - devel
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run checks
+        run: make check-slop

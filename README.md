@@ -7,7 +7,7 @@
 
 <div align="center">
     <a href="https://github.com/desertwitch/par2cron/releases"><img alt="Release" src="https://img.shields.io/github/release/desertwitch/par2cron.svg"></a>
-    <a href="https://go.dev/"><img alt="Go Version" src="https://img.shields.io/badge/Go-%3E%3D%201.26.1-%23007d9c"></a>
+    <a href="https://go.dev/"><img alt="Go Version" src="https://img.shields.io/badge/Go-%3E%3D%201.26.0-%23007d9c"></a>
     <a href="https://pkg.go.dev/github.com/desertwitch/par2cron"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/desertwitch/par2cron.svg"></a>
     <a href="https://goreportcard.com/report/github.com/desertwitch/par2cron"><img alt="Go Report" src="https://goreportcard.com/badge/github.com/desertwitch/par2cron"></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/desertwitch/par2cron"></a>
@@ -56,6 +56,8 @@
   - [Marker configuration](#marker-configuration)
 - [Ignore Files](#ignore-files)
 - [Configuration](#configuration)
+- [Performance](#performance)
+  - [Manifest cache](#manifest-cache)
 - [Limitations](#limitations)
 - [License](#license)
 
@@ -157,6 +159,7 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron verify`       | Verifies existing PAR2 sets in a directory tree        |
 | `par2cron repair`       | Repairs corrupted files using PAR2 recovery data       |
 | `par2cron info`         | Shows verification cycle and configuration statistics  |
+| `par2cron bundle`       | Commands for interacting with par2cron's bundle format |
 | `par2cron check-config` | Validates a par2cron YAML configuration file           |
 
 ### `par2cron create`
@@ -213,6 +216,7 @@ Verify sets not verified < 7 days, run around 2 hours:
 
 Flags:
   -a, --age duration                 minimum time between re-verifications (skip if verified within this period)
+      --cache string                 directory for optional manifest cache (use same for all commands)
   -i, --calc-run-interval duration   how often you run par2cron verify (for backlog calculations) (default 24h)
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            time budget per run (best effort/soft limit)
@@ -248,6 +252,7 @@ Repair repairable, verify after, run for around 1 hour:
 
 Flags:
   -u, --attempt-unrepairables   attempt to repair PAR2 sets marked as unrepairable
+      --cache string            directory for optional manifest cache (use same for all commands)
   -c, --config string           path to a par2cron YAML configuration file
   -d, --duration duration       time budget per run (best effort/soft limit)
   -h, --help                    help for repair
@@ -281,6 +286,7 @@ Output results as JSON (stdout/standard output):
 
 Flags:
   -a, --age duration                 target cycle length (time between re-verifications)
+      --cache string                 directory for optional manifest cache (use same for all commands)
   -i, --calc-run-interval duration   how often you run par2cron verify (default 24h)
   -c, --config string                path to a par2cron YAML configuration file
   -d, --duration duration            target time budget for each verify run (soft limit)
@@ -416,7 +422,7 @@ with standard PAR2 software and par2cron's `verify` and `repair` operations.
 | `Pictures.par2.json`       |                           |
 | `Pictures.par2.lock`       |                           |
 
-The bundle format uses [application-specific packet types](/internal/bundle/_specification.txt) as permitted by the
+The bundle format uses [application-specific packet types](/docs/bundle_specification.txt) as permitted by the
 PAR2 specification, so PAR2 tools simply skip over par2cron's metadata packets
 while still reading the embedded recovery data normally. The format is designed
 to be resilient against corruption and self-healing without user interaction.
@@ -727,6 +733,55 @@ You should verify the configuration using `par2cron check-config`, as malformed
 configuration will prevent the program from starting (bad invocation exit code).
 
 **For a full configuration example, refer to the [par2cron.yaml](par2cron.yaml) file.**
+
+## Performance
+
+As a cron-based tool, which for most will run at some point during the night,
+performance is not a high-priority concern. That being said, continued efforts
+are being made to reduce enumeration time and memory allocations. Ongoing work
+focuses mostly on reducing the time until par2cron can actually start working on
+enumerated "jobs", so that configured soft duration limits are more predictable
+and filesystem scanning times reduced.
+
+Performance profiling has shown that overall runtime is dominated by filesystem
+I/O during scanning for jobs: opening directories, reading entries, statting
+files, and closing file descriptors. CPU-side processing, including any binary
+packet parsing, manifest extraction, JSON decoding, and checksum work, accounts
+for only a comparatively small part of the profile. In practice, this means that
+the type and latency of the underlying storage has the largest influence on
+runtime: a spinning rust HDD will be many times slower than an NVMe SSD.
+
+PAR2 operations themselves are handled by the `par2` dependency rather than
+par2cron directly, and are therefore outside this project's scope of control.
+
+### Manifest cache
+
+By default, par2cron will always walk all target filesystems and load any found
+manifests directly from disk. As this is an I/O-dependent operation, it can
+accumulate on slower storage (spinning rust HDDs) and delay the time until
+par2cron can actually start working on enumerated jobs.
+
+The `verify`, `repair`, and `info` commands accept an optional `--cache`
+argument, specifying a cache directory shared between these commands. Ideally,
+this directory should reside on memory-backed or otherwise fast solid-state
+storage (for example an NVMe SSD).
+
+If the manifest cache is enabled, relevant parts of loaded manifests are instead
+stored in a compressed cache file, allowing repeated manifest loading and
+decoding from disk to be skipped. This can significantly speed up the filesystem
+scanning phase by reducing expensive random I/O access.
+
+Filesystem traversal itself will still occur to prevent stale cache entries, but
+this phase is typically helped considerably by aggressive kernel caching of
+directory metadata.
+
+As for the space required by the cache, at the time of writing roughly 25,000
+PAR2 sets (their manifests) resulted in a cache file of ~1.2 MB. In practice,
+cache size is therefore negligible compared to the performance benefit gained.
+
+> **Note:** When using `--cache`, it should be enabled for all applicable
+> commands and use the same directory path. This ensures all operations benefit
+> from the same cache and maximizes cache effectiveness.
 
 ## Limitations
 

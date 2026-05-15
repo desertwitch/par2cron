@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"time"
@@ -173,6 +174,20 @@ func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, opts Opti
 	return nil
 }
 
+func (prog *Service) openCacheJSON(rootDir string, opts Options, result *Result) schema.Cache {
+	cache := prog.cacher.NewCache(prog.fsys, opts.CacheDir, rootDir)
+
+	if opts.CacheDir == "" {
+		return cache
+	}
+
+	if err := cache.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		result.Warning = fmt.Sprintf("Manifest cache for '%s' could not be loaded: %v", rootDir, err)
+	}
+
+	return cache
+}
+
 func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options) (*Result, error) {
 	if opts.RunInterval.Value <= 0 {
 		return nil, fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, errNoCalcInterval)
@@ -180,7 +195,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 
 	now := time.Now()
 
-	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler)
+	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
 	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
 	result := &Result{
@@ -189,10 +204,12 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		Options: &opts,
 	}
 
-	jobs := []*verify.Job{}
+	metas := []*verify.JobMeta{}
 	errs := []error{}
 	for _, rootDir := range rootDirs {
-		js, err := vs.Enumerate(ctx, rootDir, va)
+		cache := prog.openCacheJSON(rootDir, opts, result)
+
+		meta, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
 				return nil, fmt.Errorf("failed to enumerate jobs: %w", err)
@@ -201,13 +218,19 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 			errs = append(errs, err)
 		}
 
-		jobs = append(jobs, js...)
+		cache.PruneUnwalked()
+		// We don't save the cache so there cannot be races with verification.
+		// An info could finish after an overlapping verification and discard
+		// the verification progress in a race, so we only let verification
+		// write to the cache (seeing info does not mutate manifests anyway).
+
+		metas = append(metas, meta...)
 	}
 	if err := errors.Join(errs...); err != nil {
 		result.Warning = fmt.Sprintf("Not all manifests could be read: %v", err)
 	}
 
-	js := vs.Stats(jobs)
+	js := vs.Stats(metas)
 	result.Summary = &Summary{
 		JobCount:      js.JobCount,
 		KnownCount:    js.KnownCount,
@@ -243,7 +266,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 	}
 
 	if opts.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
-		result.CycleInfo = prog.buildCycleInfo(js, jobs, opts, now)
+		result.CycleInfo = prog.buildCycleInfo(js, metas, opts, now)
 	}
 
 	return result, nil
@@ -281,7 +304,7 @@ func (prog *Service) buildDurationInfo(js verify.Stats, opts Options) *DurationI
 
 	if js.LargestDuration > opts.MaxDuration.Value {
 		info.Warning = fmt.Sprintf("Largest job (%s) exceeds max_duration; will overshoot soft limit", util.FmtDur(js.LargestDuration))
-		info.LargestJob = filepath.Base(js.LargestJob.Par2Path())
+		info.LargestJob = filepath.Base(js.LargestJob.Par2Path)
 	}
 
 	return info
@@ -310,16 +333,16 @@ func (prog *Service) buildBacklogInfo(js verify.Stats, opts Options) *BacklogInf
 	return info
 }
 
-func (prog *Service) buildCycleInfo(js verify.Stats, jobs []*verify.Job, opts Options, now time.Time) *CycleInfo {
+func (prog *Service) buildCycleInfo(js verify.Stats, jobs []*verify.JobMeta, opts Options, now time.Time) *CycleInfo {
 	cycleStart := now.Add(-opts.MinAge.Value)
 
 	var verifiedCount int
 	var verifiedDuration time.Duration
 	for _, job := range jobs {
-		if job.Manifest() != nil && job.Manifest().Verification != nil {
-			if job.Manifest().Verification.Time.After(cycleStart) {
+		if job.HasVerification {
+			if job.VerifyTime.After(cycleStart) {
 				verifiedCount++
-				verifiedDuration += job.Manifest().Verification.Duration
+				verifiedDuration += job.VerifyDuration
 			}
 		}
 	}

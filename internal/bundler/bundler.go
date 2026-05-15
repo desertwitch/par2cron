@@ -158,6 +158,7 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 
 func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
+	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	var partialErrors int
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
@@ -173,11 +174,11 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 
 		if !util.IsPar2Index(d.Name()) {
 			return nil
-		}
+		} // --- End of Hot Path ---
 		if util.IsPar2Bundle(d.Name()) {
 			return nil
 		}
-		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
+		if checker.ShouldIgnore(par2path) {
 			logger := prog.bundleLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 
@@ -212,10 +213,10 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 
 func (prog *Service) packProcessManifest(ctx context.Context, par2path string, opts Options) (*Job, error) {
 	manifestPath := par2path + schema.ManifestExtension
-	logger := prog.bundleLogger(ctx, nil, manifestPath)
 
 	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
 		if !opts.IncludeExternal {
+			logger := prog.bundleLogger(ctx, nil, manifestPath)
 			logger.Debug("No manifest found (skipping)")
 
 			return nil, schema.ErrSilentSkip
@@ -232,6 +233,7 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 	unlock, err := util.AcquireLock(prog.fsys, par2path+schema.LockExtension, false)
 	if err != nil {
 		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger := prog.bundleLogger(ctx, nil, manifestPath)
 			logger.Warn("Manifest is locked by another instance (skipping)")
 
 			return nil, schema.ErrSilentSkip
@@ -241,8 +243,9 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
-		logger.Error("Failed to read par2cron manifest (skipping)", "error", err)
 		unlock()
+		logger := prog.bundleLogger(ctx, nil, manifestPath)
+		logger.Error("Failed to read par2cron manifest (skipping)", "error", err)
 
 		return nil, schema.ErrNonFatal
 	}
@@ -251,6 +254,7 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(data, mf); err != nil {
 		if opts.SkipNotCreated {
+			logger := prog.bundleLogger(ctx, nil, manifestPath)
 			logger.Debug("No unmarshalable manifest (skipping; --skip-not-created)")
 
 			return nil, schema.ErrSilentSkip
@@ -265,6 +269,7 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 	}
 
 	if opts.SkipNotCreated && mf.Creation == nil {
+		logger := prog.bundleLogger(ctx, nil, manifestPath)
 		logger.Debug("No creation manifest (skipping; --skip-not-created)")
 
 		return nil, schema.ErrSilentSkip
@@ -276,8 +281,6 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 }
 
 func (prog *Service) packBundle(ctx context.Context, job *Job) error {
-	logger := prog.bundleLogger(ctx, job, nil)
-
 	// Lock the files (in-flight bundle is locked in Pack function)
 	unlock, err := util.AcquireLock(prog.fsys, job.lockPath, false)
 	if err != nil {
@@ -295,6 +298,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to parse index par2: %w", err)
 	}
 
+	logger := prog.bundleLogger(ctx, job, nil)
 	logger.Debug("Parsed PAR2 index file", "sets", len(p.Sets))
 	if len(p.Sets) != 1 || p.Sets[0].MainPacket == nil {
 		return errors.New("failed to parse index par2: malformed file")
@@ -348,6 +352,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 
 func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
 	jobs := []*Job{}
+	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
 	err := prog.walker.WalkDir(rootDir, func(par2path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
@@ -362,11 +367,11 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 
 		if !util.IsPar2Index(d.Name()) {
 			return nil
-		}
+		} // --- End of Hot Path ---
 		if !util.IsPar2Bundle(d.Name()) {
 			return nil
 		}
-		if util.ShouldIgnorePath(prog.fsys, par2path, rootDir) {
+		if checker.ShouldIgnore(par2path) {
 			logger := prog.bundleLogger(ctx, nil, par2path)
 			logger.Debug("A path was skipped due to a present ignore-file")
 
@@ -385,7 +390,6 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 }
 
 func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
-	logger := prog.bundleLogger(ctx, job, nil)
 	bundlePath := job.par2Path
 
 	var cleanupPaths []string
@@ -413,11 +417,13 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 
 	if bun.IsRebuilt() {
 		if !job.force {
+			logger := prog.bundleLogger(ctx, job, nil)
 			logger.Error("Bundle was rebuilt from corruption, complete unpack cannot be guaranteed (and --force is not set)")
 
 			return errors.New("bundle is not guaranteed unpackable")
 		}
 
+		logger := prog.bundleLogger(ctx, job, nil)
 		logger.Warn("Bundle was rebuilt from corruption, complete unpack cannot be guaranteed (but --force is set)")
 	}
 
@@ -450,11 +456,13 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 			cleanupPaths = append(cleanupPaths, files...)
 			cleanupPaths = append(cleanupPaths, lockFile)
 
+			logger := prog.bundleLogger(ctx, job, nil)
 			logger.Error("Some files in the bundle are corrupted (and --force is not set)", "error", err)
 
 			return fmt.Errorf("failed to unpack bundle: %w", err)
 		}
 
+		logger := prog.bundleLogger(ctx, job, nil)
 		logger.Warn("Some files in the bundle are corrupted (but --force is set)", "error", err)
 		logger.Warn("Not removing bundle file after unclean unpack (needs manual deletion)")
 	} else {

@@ -2,9 +2,12 @@ package verify
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,6 +25,7 @@ func createWithManifest(t *testing.T, fs afero.Fs, path string) {
 	t.Helper()
 
 	mf := schema.NewManifest(filepath.Base(path))
+	mf.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("par2data")))
 
 	mf.Creation = &schema.CreationManifest{}
 	mf.Creation.Time = time.Now()
@@ -32,6 +36,27 @@ func createWithManifest(t *testing.T, fs afero.Fs, path string) {
 	require.NoError(t, fs.MkdirAll(filepath.Dir(path), 0o755))
 	require.NoError(t, afero.WriteFile(fs, path+schema.Par2Extension, []byte("par2data"), 0o644))
 	require.NoError(t, afero.WriteFile(fs, path+schema.Par2Extension+schema.ManifestExtension, by, 0o644))
+}
+
+// countingFailOpenFs wraps an afero.Fs and fails Open calls for files matching failPattern
+// only after the first N successful opens.
+type countingFailOpenFs struct {
+	afero.Fs
+
+	FailPattern string
+	FailAfterN  int
+	counter     *int
+}
+
+func (f *countingFailOpenFs) Open(name string) (afero.File, error) {
+	if strings.Contains(name, f.FailPattern) {
+		*f.counter++
+		if *f.counter > f.FailAfterN {
+			return nil, errors.New("simulated read failure")
+		}
+	}
+
+	return f.Fs.Open(name)
 }
 
 // Expectation: Important constants should not have changed.
@@ -91,6 +116,232 @@ func Test_NewJob_Bundle_Success(t *testing.T) {
 	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, job.lockPath)
 }
 
+// Expectation: openCache should not attempt to load when CacheDir is empty.
+func Test_Service_openCache_NoCacheDir_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: ""}
+	prog.openCache(t.Context(), "/data", opts)
+
+	require.False(t, loadCalled)
+}
+
+// Expectation: openCache should attempt to load when CacheDir is set.
+func Test_Service_openCache_WithCacheDir_LoadsCacheFromDisk_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	prog.openCache(t.Context(), "/data", opts)
+
+	require.True(t, loadCalled)
+}
+
+// Expectation: openCache should log an error when cache loading fails with a non-ErrNotExist error.
+func Test_Service_openCache_LoadError_LogsError_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("error")
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					return errors.New("disk I/O error")
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	cache := prog.openCache(t.Context(), "/data", opts)
+
+	require.NotNil(t, cache)
+	require.Contains(t, logBuf.String(), "Failed to load manifest cache")
+}
+
+// Expectation: openCache should silently ignore ErrNotExist when loading the cache.
+func Test_Service_openCache_LoadErrNotExist_NoLog_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("error")
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					return fs.ErrNotExist
+				},
+			}
+		},
+	}
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	cache := prog.openCache(t.Context(), "/data", opts)
+
+	require.NotNil(t, cache)
+	require.NotContains(t, logBuf.String(), "Failed to load manifest cache")
+}
+
+// Expectation: saveCache should not attempt to save when CacheDir is empty.
+func Test_Service_saveCache_NoCacheDir_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var saveCalled bool
+	cache := &testutil.MockCache{
+		SaveFunc: func() error {
+			saveCalled = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	opts := Options{CacheDir: ""}
+	prog.saveCache(t.Context(), cache, opts, "/data")
+
+	require.False(t, saveCalled)
+}
+
+// Expectation: saveCache should attempt to save when CacheDir is set.
+func Test_Service_saveCache_WithCacheDir_SavesCacheToDisk_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var saveCalled bool
+	cache := &testutil.MockCache{
+		SaveFunc: func() error {
+			saveCalled = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	opts := Options{CacheDir: "/cache"}
+	prog.saveCache(t.Context(), cache, opts, "/data")
+
+	require.True(t, saveCalled)
+}
+
+// Expectation: saveCache should log an error when cache saving fails.
+func Test_Service_saveCache_SaveError_LogsError_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("error")
+
+	cache := &testutil.MockCache{
+		SaveFunc: func() error {
+			return errors.New("disk full")
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	opts := Options{CacheDir: "/cache"}
+	prog.saveCache(t.Context(), cache, opts, "/data")
+
+	require.Contains(t, logBuf.String(), "Failed to save manifest cache")
+}
+
 // Expectation: The program should run the verification with the correct outcome.
 func Test_Service_Verify_Success(t *testing.T) {
 	t.Parallel()
@@ -115,7 +366,7 @@ func Test_Service_Verify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -149,7 +400,7 @@ func Test_Service_Verify_MultiRoot_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data", "/data2"}, args)
 	require.NoError(t, err)
@@ -184,7 +435,7 @@ func Test_Service_Verify_DurationExceeded_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	require.NoError(t, args.MaxDuration.Set("10ms"))
@@ -222,7 +473,7 @@ func Test_Service_Verify_FileLocked_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -252,7 +503,7 @@ func Test_Service_Verify_Generic_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -282,7 +533,7 @@ func Test_Service_Verify_CorruptionDetected_Repairable_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -312,7 +563,7 @@ func Test_Service_Verify_CorruptionDetected_Unrepairable_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -346,7 +597,7 @@ func Test_Service_Verify_MultipleJobs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -384,7 +635,7 @@ func Test_Service_Verify_MultipleJobs_OneFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -425,7 +676,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -467,7 +718,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_NoOtherJobs_Error(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -508,7 +759,7 @@ func Test_Service_Verify_MultipleJobs_ErrorOrdering_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitUnrepairable)
@@ -531,7 +782,7 @@ func Test_Service_Verify_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -558,12 +809,367 @@ func Test_Service_Verify_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(ctx, []string{"/data"}, args)
 
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+// Expectation: Verify should call PruneUnwalked on the cache after enumeration.
+func Test_Service_Verify_PrunesCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var pruneCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				PruneUnwalkedFunc: func() int {
+					pruneCalled = true
+
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.True(t, pruneCalled)
+}
+
+// Expectation: Verify should update the cache after verification.
+func Test_Service_Verify_UpdatesCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	// Must be mutated in place in the cache:
+	cacheMeta := &schema.JobMeta{
+		Par2Path:    "/data/test" + schema.Par2Extension,
+		HasManifest: true,
+		HasCreation: false,
+	}
+
+	var getCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				GetFunc: func(key string) (*schema.JobMeta, bool) {
+					getCalled = true
+
+					return cacheMeta, true
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.True(t, getCalled)
+	require.True(t, cacheMeta.HasCreation)
+}
+
+// Expectation: Verify should save the cache after processing when CacheDir is set.
+func Test_Service_Verify_SavesCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var saveCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				SaveFunc: func() error {
+					saveCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.True(t, saveCalled)
+}
+
+// Expectation: Verify should not save the cache when CacheDir is empty.
+func Test_Service_Verify_NoCacheDir_DoesNotSave_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var saveCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				SaveFunc: func() error {
+					saveCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: ""}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.False(t, saveCalled)
+}
+
+// Expectation: Verify should proceed with a nil manifest when loadManifest returns (nil, nil) for a regular file.
+func Test_Service_Verify_LoadManifestReturnsNil_ProceedsWithNilManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, []byte("not json"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var runCalled bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			runCalled = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.True(t, runCalled)
+	require.Contains(t, logBuf.String(), "Job completed with success")
+	require.Contains(t, logBuf.String(), "resetting manifest")
+}
+
+// Expectation: Verify should log a manifest failure and continue when loadManifest returns a non-lock error.
+func Test_Service_Verify_LoadManifestReadError_ContinuesWithError_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	createWithManifest(t, baseFs, "/data/test1")
+	createWithManifest(t, baseFs, "/data/test2")
+
+	// Make test1's manifest unreadable during loadManifest (but readable during Enumerate).
+	// We achieve this by making the manifest file readable initially (for Enumerate),
+	// then failing on the second read (for loadManifest).
+	var readCount int
+	manifestPath := "/data/test1" + schema.Par2Extension + schema.ManifestExtension
+	fs := &countingFailOpenFs{
+		Fs:          baseFs,
+		FailPattern: manifestPath,
+		FailAfterN:  1, // First read succeeds (Enumerate), second fails (loadManifest).
+		counter:     &readCount,
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var runCount int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			runCount++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
+
+	// One job should have run (test2), the other failed during manifest load.
+	require.Equal(t, 1, runCount)
+	require.Contains(t, logBuf.String(), "Manifest failure (will retry next run)")
+	require.Contains(t, logBuf.String(), "Job completed with success")
+}
+
+// Expectation: Verify should not load the cache when CacheDir is empty.
+func Test_Service_Verify_WithoutCacheDir_NotLoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: ""}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.False(t, loadCalled)
+}
+
+// Expectation: Verify should load the cache when CacheDir is set.
+func Test_Service_Verify_WithCacheDir_LoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.True(t, loadCalled)
 }
 
 // Expectation: The correct job and its manifest should be returned.
@@ -581,14 +1187,14 @@ func Test_Service_Enumerate_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
+	require.True(t, jobs[0].HasManifest)
 }
 
 // Expectation: The correct job and a nil manifest should be returned on invalid manifest.
@@ -607,15 +1213,15 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
+	require.False(t, jobs[0].HasManifest)
 	require.Contains(t, logBuf.String(), "resetting manifest")
 
 	// Should not be deleted yet (will be overwritten on success).
@@ -640,15 +1246,15 @@ func Test_Service_Enumerate_NoManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
-	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[0].par2Path)
+	require.True(t, jobs[0].HasManifest)
+	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: A partial failure should be returned when reading the manifest fails.
@@ -671,10 +1277,10 @@ func Test_Service_Enumerate_ReadManifestFailure_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Enumerate(t.Context(), "/data", args)
+	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Contains(t, logBuf.String(), "Failed to read par2cron manifest")
@@ -696,10 +1302,10 @@ func Test_Service_Enumerate_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)
@@ -723,14 +1329,14 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/subdir/notignored"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/subdir/notignored"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: Elements in directories with an ignore-all file should be skipped recursively.
@@ -751,14 +1357,14 @@ func Test_Service_Enumerate_IgnoreAllFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/normal/test"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/normal/test"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: Subdirectories with an ignore-all file should skip the entire directory tree.
@@ -781,15 +1387,15 @@ func Test_Service_Enumerate_IgnoreAllFile_SkipsRecursive_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 2)
-	require.Equal(t, "/data/subdir/test"+schema.Par2Extension, jobs[0].par2Path)
-	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[1].par2Path)
+	require.Equal(t, "/data/subdir/test"+schema.Par2Extension, jobs[0].Par2Path)
+	require.Equal(t, "/data/test"+schema.Par2Extension, jobs[1].Par2Path)
 }
 
 // Expectation: PAR2 files without manifest should be included when --include-external is set.
@@ -807,17 +1413,17 @@ func Test_Service_Enumerate_IncludeExternal_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
 		IncludeExternal: true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
+	require.False(t, jobs[0].HasManifest)
 }
 
 // Expectation: PAR2 files without manifest should be skipped when --include-external is unset.
@@ -836,17 +1442,17 @@ func Test_Service_Enumerate_IncludeExternal_Unset_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
 		IncludeExternal: false,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/with-manifest"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/with-manifest"+schema.Par2Extension, jobs[0].Par2Path)
 	require.Contains(t, logBuf.String(), "skipping")
 }
 
@@ -872,17 +1478,17 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
 		SkipNotCreated: true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/with-creation"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/with-creation"+schema.Par2Extension, jobs[0].Par2Path)
 	require.Contains(t, logBuf.String(), "skipping; --skip-not-created")
 }
 
@@ -902,13 +1508,13 @@ func Test_Service_Enumerate_SkipNotCreated_InvalidManifest_Success(t *testing.T)
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
 		SkipNotCreated: true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)
@@ -936,18 +1542,18 @@ func Test_Service_Enumerate_NoSkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
 		SkipNotCreated: false,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
-	require.Nil(t, jobs[0].manifest.Creation)
+	require.True(t, jobs[0].HasManifest)
+	require.False(t, jobs[0].HasCreation)
 }
 
 // Expectation: Both --include-external=false and --skip-not-created can be used together.
@@ -978,18 +1584,18 @@ func Test_Service_Enumerate_BothSkipOptions_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
 		IncludeExternal: false,
 		SkipNotCreated:  true,
 	}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Equal(t, "/data/full"+schema.Par2Extension, jobs[0].par2Path)
+	require.Equal(t, "/data/full"+schema.Par2Extension, jobs[0].Par2Path)
 }
 
 // Expectation: Context cancellation should be respected during enumeration.
@@ -1010,10 +1616,10 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Enumerate(ctx, "/data", args)
+	_, err := prog.Enumerate(ctx, "/data", args, &testutil.MockCache{})
 
 	require.ErrorIs(t, err, context.Canceled)
 }
@@ -1053,16 +1659,16 @@ func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.NotNil(t, jobs[0].manifest)
-	require.True(t, jobs[0].isBundle)
-	require.Contains(t, jobs[0].par2Path, schema.BundleExtension)
+	require.True(t, jobs[0].HasManifest)
+	require.True(t, jobs[0].IsBundle)
+	require.Contains(t, jobs[0].Par2Path, schema.BundleExtension)
 }
 
 // Expectation: A nil manifest should be returned when the bundle manifest cannot be read.
@@ -1095,15 +1701,15 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
-	require.True(t, jobs[0].isBundle)
+	require.False(t, jobs[0].HasManifest)
+	require.True(t, jobs[0].IsBundle)
 	require.Contains(t, logBuf.String(), "resetting manifest")
 }
 
@@ -1137,15 +1743,15 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
-	require.Nil(t, jobs[0].manifest)
-	require.True(t, jobs[0].isBundle)
+	require.False(t, jobs[0].HasManifest)
+	require.True(t, jobs[0].IsBundle)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }
 
@@ -1170,10 +1776,10 @@ func Test_Service_Enumerate_Bundle_OpenFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	_, err := prog.Enumerate(t.Context(), "/data", args)
+	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Contains(t, logBuf.String(), "Failed to open bundle")
@@ -1213,10 +1819,10 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)
@@ -1253,14 +1859,602 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_InvalidManifest_Success(t *tes
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
 	require.NoError(t, err)
 	require.Empty(t, jobs)
 	require.Contains(t, logBuf.String(), "No unmarshalable manifest")
+}
+
+// Expectation: Enumerate should use a cached entry instead of reading the manifest from disk.
+func Test_Service_Enumerate_CacheHit_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	cachedMeta := &schema.JobMeta{
+		Par2Path:    "/data/test" + schema.Par2Extension,
+		HasManifest: true,
+		HasCreation: true,
+	}
+
+	cache := &testutil.MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			if key == "/data/test"+schema.Par2Extension {
+				return cachedMeta, true
+			}
+
+			return nil, false
+		},
+	}
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, cachedMeta, jobs[0].JobMeta)
+}
+
+// Expectation: Enumerate should skip a cached entry when SkipNotCreated is set and HasCreation is false.
+func Test_Service_Enumerate_CacheHit_SkipNotCreated_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	cachedMeta := &schema.JobMeta{
+		Par2Path:    "/data/test" + schema.Par2Extension,
+		HasManifest: true,
+		HasCreation: false,
+	}
+
+	cache := &testutil.MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			if key == "/data/test"+schema.Par2Extension {
+				return cachedMeta, true
+			}
+
+			return nil, false
+		},
+	}
+
+	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "skipping; --skip-not-created")
+}
+
+// Expectation: Enumerate should call Set on the cache for uncached entries.
+func Test_Service_Enumerate_CacheMiss_SetsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	var setCalled bool
+	var setKey string
+	cache := &testutil.MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			return nil, false
+		},
+		SetFunc: func(key string, meta *schema.JobMeta) {
+			setCalled = true
+			setKey = key
+		},
+	}
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.True(t, setCalled)
+	require.Equal(t, "/data/test"+schema.Par2Extension, setKey)
+}
+
+// Expectation: Enumerate should use a cached bundle entry instead of opening the bundle from disk.
+func Test_Service_Enumerate_Bundle_CacheHit_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var openCalled bool
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return nil, errors.New("should not be called")
+		},
+	}
+
+	cachedMeta := &schema.JobMeta{
+		Par2Path:    "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		HasManifest: true,
+		HasCreation: true,
+		IsBundle:    true,
+	}
+
+	cache := &testutil.MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			if key == cachedMeta.Par2Path {
+				return cachedMeta, true
+			}
+
+			return nil, false
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, cachedMeta, jobs[0].JobMeta)
+	require.True(t, jobs[0].IsBundle)
+	require.False(t, openCalled)
+}
+
+// Expectation: Enumerate should skip a cached bundle entry when SkipNotCreated is set and HasCreation is false.
+func Test_Service_Enumerate_Bundle_CacheHit_SkipNotCreated_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	cachedMeta := &schema.JobMeta{
+		Par2Path:    "/data/test" + schema.BundleExtension + schema.Par2Extension,
+		HasManifest: true,
+		HasCreation: false,
+		IsBundle:    true,
+	}
+
+	cache := &testutil.MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			if key == cachedMeta.Par2Path {
+				return cachedMeta, true
+			}
+
+			return nil, false
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "skipping; --skip-not-created")
+}
+
+// Expectation: Enumerate should call Set on the cache for an uncached bundle entry.
+func Test_Service_Enumerate_Bundle_CacheMiss_SetsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var setCalled bool
+	var setKey string
+	cache := &testutil.MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			return nil, false
+		},
+		SetFunc: func(key string, meta *schema.JobMeta) {
+			setCalled = true
+			setKey = key
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.True(t, setCalled)
+	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, setKey)
+}
+
+// Expectation: loadManifest should return nil manifest when the manifest file does not exist on disk.
+func Test_Service_loadManifest_FileNotFound_ReturnsNilManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.Par2Extension,
+			HasManifest: true,
+		},
+	}
+
+	mf, err := prog.loadManifest(t.Context(), meta)
+
+	require.NoError(t, err)
+	require.Nil(t, mf)
+	require.Contains(t, logBuf.String(), "resetting manifest")
+}
+
+// Expectation: loadManifest should return nil manifest when the manifest contains invalid JSON.
+func Test_Service_loadManifest_InvalidJSON_ReturnsNilManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, []byte("not json"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.Par2Extension,
+			HasManifest: true,
+		},
+	}
+
+	mf, err := prog.loadManifest(t.Context(), meta)
+
+	require.NoError(t, err)
+	require.Nil(t, mf)
+	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
+}
+
+// Expectation: loadManifest should return an error when the manifest file cannot be read due to a non-NotExist error.
+func Test_Service_loadManifest_ReadError_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, []byte("manifest"), 0o644))
+
+	fs := &testutil.FailingOpenFs{
+		Fs:          baseFs,
+		FailPattern: schema.ManifestExtension,
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.Par2Extension,
+			HasManifest: true,
+		},
+	}
+
+	mf, err := prog.loadManifest(t.Context(), meta)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to read")
+	require.Nil(t, mf)
+}
+
+// Expectation: loadManifest should return a valid manifest when the file is present and well-formed.
+func Test_Service_loadManifest_ValidManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.Par2Extension,
+			HasManifest: true,
+		},
+	}
+
+	mf, err := prog.loadManifest(t.Context(), meta)
+
+	require.NoError(t, err)
+	require.NotNil(t, mf)
+	require.NotNil(t, mf.Creation)
+}
+
+// Expectation: loadBundleManifest should return nil manifest when the bundle manifest cannot be read.
+func Test_Service_loadBundleManifest_ManifestReadFails_ReturnsNilManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return nil, errors.New("corrupt manifest")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.BundleExtension + schema.Par2Extension,
+			HasManifest: true,
+			IsBundle:    true,
+		},
+	}
+
+	mf, err := prog.loadBundleManifest(t.Context(), meta)
+
+	require.NoError(t, err)
+	require.Nil(t, mf)
+	require.Contains(t, logBuf.String(), "resetting manifest")
+}
+
+// Expectation: loadBundleManifest should return nil manifest when the bundle manifest is invalid JSON.
+func Test_Service_loadBundleManifest_InvalidJSON_ReturnsNilManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return []byte("not json"), nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.BundleExtension + schema.Par2Extension,
+			HasManifest: true,
+			IsBundle:    true,
+		},
+	}
+
+	mf, err := prog.loadBundleManifest(t.Context(), meta)
+
+	require.NoError(t, err)
+	require.Nil(t, mf)
+	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
+}
+
+// Expectation: loadBundleManifest should return an error when the bundle cannot be opened.
+func Test_Service_loadBundleManifest_OpenFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return nil, errors.New("corrupt file")
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.BundleExtension + schema.Par2Extension,
+			HasManifest: true,
+			IsBundle:    true,
+		},
+	}
+
+	mf, err := prog.loadBundleManifest(t.Context(), meta)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to open")
+	require.Nil(t, mf)
+}
+
+// Expectation: loadBundleManifest should return a valid manifest when the bundle is well-formed.
+func Test_Service_loadBundleManifest_ValidManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Creation = schema.NewCreationManifest()
+	manifestData, err := json.MarshalIndent(mf, "", "  ")
+	require.NoError(t, err)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestData, nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.BundleExtension + schema.Par2Extension,
+			HasManifest: true,
+			IsBundle:    true,
+		},
+	}
+
+	result, err := prog.loadBundleManifest(t.Context(), meta)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.Creation)
 }
 
 // Expectation: The verification should pass and a manifest be created.
@@ -1284,7 +2478,7 @@ func Test_Service_RunVerify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -1305,6 +2499,41 @@ func Test_Service_RunVerify_Success(t *testing.T) {
 
 	manifestExists, _ := afero.Exists(fs, job.manifestPath)
 	require.True(t, manifestExists)
+}
+
+// Expectation: RunVerify should return an error when the PAR2 file cannot be hashed.
+func Test_Service_RunVerify_HashFileFails_Error(t *testing.T) {
+	t.Parallel()
+
+	// Do not create the PAR2 file so hashing fails.
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     nil,
+	}
+
+	err := prog.RunVerify(t.Context(), job, true)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to hash par2")
+	require.Contains(t, logBuf.String(), "Failed to hash PAR2")
 }
 
 // Expectation: The verification should use the correct arguments.
@@ -1333,7 +2562,7 @@ func Test_Service_RunVerify_CorrectArgs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -1379,7 +2608,7 @@ func Test_Service_RunVerify_UpdatesVerificationFields_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	oldTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	job := &Job{
@@ -1442,7 +2671,7 @@ func Test_Service_RunVerify_KeepCreateManifest_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -1493,7 +2722,7 @@ func Test_Service_RunVerify_HashMismatch_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -1537,7 +2766,7 @@ func Test_Service_RunVerify_GenericError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -1576,7 +2805,7 @@ func Test_Service_RunVerify_ManifestWriteError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -1637,7 +2866,7 @@ func Test_Service_RunVerify_Bundle_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.SHA256 = "abc123"
@@ -1713,7 +2942,7 @@ func Test_Service_RunVerify_Bundle_ManifestWriteError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler)
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.SHA256 = "abc123"
@@ -1749,7 +2978,7 @@ func Test_Service_parseExitCode_CodeSuccess_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1778,7 +3007,7 @@ func Test_Service_parseExitCode_CodeRepairPossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1808,7 +3037,7 @@ func Test_Service_parseExitCode_CodeRepairImpossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1838,7 +3067,7 @@ func Test_Service_parseExitCode_UnhandledCode_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -1865,14 +3094,14 @@ func Test_Service_considerBacklog_InsufficientCapacity_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 10 * time.Hour,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  10 * time.Hour,
 			},
 		},
 	}
@@ -1882,7 +3111,7 @@ func Test_Service_considerBacklog_InsufficientCapacity_Success(t *testing.T) {
 	_ = args.MaxDuration.Set("1h")
 	_ = args.RunInterval.Set("24h")
 
-	prog.considerBacklog(jobs, args)
+	prog.considerBacklog(metas, args)
 
 	require.Contains(t, logBuf.String(), "Backlog is growing indefinitely")
 }
@@ -1901,17 +3130,19 @@ func Test_Service_considerBacklog_NoDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
 			},
 		},
 		{
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
 			},
 		},
 	}
@@ -1921,7 +3152,7 @@ func Test_Service_considerBacklog_NoDuration_Success(t *testing.T) {
 	_ = args.MaxDuration.Set("1h")
 	_ = args.RunInterval.Set("24h")
 
-	prog.considerBacklog(jobs, args)
+	prog.considerBacklog(metas, args)
 
 	require.NotContains(t, logBuf.String(), "Backlog is growing indefinitely")
 }
@@ -1940,15 +3171,14 @@ func Test_Service_considerDurations_FirstJobUnknownDuration_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 	}
@@ -1956,7 +3186,7 @@ func Test_Service_considerDurations_FirstJobUnknownDuration_Success(t *testing.T
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.Contains(t, logBuf.String(), "First job has (still) unknown duration")
 }
@@ -1975,15 +3205,14 @@ func Test_Service_considerDurations_FirstJobExceedsDuration_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 2 * time.Hour,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  2 * time.Hour,
 			},
 		},
 	}
@@ -1991,7 +3220,7 @@ func Test_Service_considerDurations_FirstJobExceedsDuration_Success(t *testing.T
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.Contains(t, logBuf.String(), "First job is estimated to exceed --duration")
 }
@@ -2010,23 +3239,21 @@ func Test_Service_considerDurations_SubsequentJobsUnknownDuration_Success(t *tes
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 30 * time.Minute,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  30 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/test2" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 	}
@@ -2034,7 +3261,7 @@ func Test_Service_considerDurations_SubsequentJobsUnknownDuration_Success(t *tes
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.Contains(t, logBuf.String(), "Some jobs have a (still) unknown duration")
 }
@@ -2053,23 +3280,21 @@ func Test_Service_considerDurations_AllJobsKnownDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test1" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 30 * time.Minute,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  30 * time.Minute,
 			},
 		},
 		{
-			par2Path: "/data/test2" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 20 * time.Minute,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  20 * time.Minute,
 			},
 		},
 	}
@@ -2077,7 +3302,7 @@ func Test_Service_considerDurations_AllJobsKnownDuration_Success(t *testing.T) {
 	args := Options{}
 	_ = args.MaxDuration.Set("1h")
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.NotContains(t, logBuf.String(), "unknown duration")
 	require.NotContains(t, logBuf.String(), "exceed --duration")
@@ -2097,22 +3322,21 @@ func Test_Service_considerDurations_NoMaxDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{
+	metas := []*JobMeta{
 		{
-			par2Path: "/data/test" + schema.Par2Extension,
-			manifest: &schema.Manifest{
-				Verification: &schema.VerificationManifest{
-					Duration: 0,
-				},
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
 			},
 		},
 	}
 
 	args := Options{}
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 
 	require.NotContains(t, logBuf.String(), "unknown duration")
 	require.NotContains(t, logBuf.String(), "exceed --duration")
@@ -2132,11 +3356,11 @@ func Test_Service_considerDurations_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
-	jobs := []*Job{}
+	metas := []*JobMeta{}
 	args := Options{}
 
-	prog.considerDurations(jobs, args)
+	prog.considerDurations(metas, args)
 	require.Empty(t, logBuf.String())
 }

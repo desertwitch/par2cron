@@ -28,6 +28,21 @@ type BundleHandler interface {
 	Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
 }
 
+type CacheHandler interface {
+	NewCache(fsys afero.Fs, cacheDir string, cacheName string) Cache
+}
+
+type Cache interface {
+	All() []*JobMeta
+	Get(key string) (*JobMeta, bool)
+	Len() int
+	Load() error
+	PruneUnwalked() int
+	ResetWalked()
+	Save() error
+	Set(key string, meta *JobMeta)
+}
+
 type Bundle interface {
 	Close() error
 	IsRebuilt() bool

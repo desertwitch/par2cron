@@ -3,7 +3,9 @@ package info
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"testing"
 	"time"
 
@@ -15,6 +17,144 @@ import (
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
+
+// Expectation: openCacheJSON should not attempt to load when CacheDir is empty.
+func Test_Service_openCacheJSON_NoCacheDir_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: ""}
+	prog.openCacheJSON("/data", opts, &Result{})
+
+	require.False(t, loadCalled)
+}
+
+// Expectation: openCacheJSON should attempt to load when CacheDir is set.
+func Test_Service_openCacheJSON_WithCacheDir_LoadsCacheFromDisk_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	prog.openCacheJSON("/data", opts, &Result{})
+
+	require.True(t, loadCalled)
+}
+
+// Expectation: openCacheJSON should log an error when cache loading fails with a non-ErrNotExist error.
+func Test_Service_openCacheJSON_LoadError_LogsError_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &logBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("error")
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					return errors.New("disk I/O error")
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	result := &Result{}
+	cache := prog.openCacheJSON("/data", opts, result)
+
+	require.NotNil(t, cache)
+	require.NotEmpty(t, result.Warning)
+}
+
+// Expectation: openCacheJSON should silently ignore ErrNotExist when loading the cache.
+func Test_Service_openCacheJSON_LoadErrNotExist_NoLog_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &logBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("error")
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					return fs.ErrNotExist
+				},
+			}
+		},
+	}
+
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	opts := Options{CacheDir: "/cache"}
+	result := &Result{}
+	cache := prog.openCacheJSON("/data", opts, result)
+
+	require.NotNil(t, cache)
+	require.Empty(t, result.Warning)
+}
 
 // Expectation: No specified run interval should return an error.
 func Test_Service_PrintJSON_NoRunInterval_Error(t *testing.T) {
@@ -32,7 +172,7 @@ func Test_Service_PrintJSON_NoRunInterval_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	err := prog.PrintJSON(t.Context(), []string{"/data"}, args)
@@ -57,7 +197,7 @@ func Test_Service_PrintJSON_NoKnownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -103,7 +243,7 @@ func Test_Service_PrintJSON_WithOptions_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -142,7 +282,7 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -184,7 +324,7 @@ func Test_Service_PrintJSON_WithJobs_ZeroLastVerified_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -226,7 +366,7 @@ func Test_Service_PrintJSON_WithAgeFlag_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -266,7 +406,7 @@ func Test_Service_PrintJSON_WithDurationFlag_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -306,7 +446,7 @@ func Test_Service_PrintJSON_HealthyBacklog_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -347,7 +487,7 @@ func Test_Service_PrintJSON_UnhealthyBacklog_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -389,7 +529,7 @@ func Test_Service_PrintJSON_HealthyBacklog_UnknownDurations_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{IncludeExternal: true}
 	_ = args.RunInterval.Set("24h")
@@ -428,7 +568,7 @@ func Test_Service_PrintJSON_LargeJobWarning_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -468,7 +608,7 @@ func Test_Service_PrintJSON_AgeLessThanInterval_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -506,7 +646,7 @@ func Test_Service_PrintJSON_CycleInfo_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -549,7 +689,7 @@ func Test_Service_PrintJSON_CycleInfo_UnknownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{IncludeExternal: true}
 	_ = args.RunInterval.Set("24h")
@@ -583,7 +723,7 @@ func Test_Service_PrintJSON_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -616,7 +756,7 @@ func Test_Service_PrintJSON_AllSections_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -661,7 +801,7 @@ func Test_Service_PrintJSON_MinimalSections_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{}
 	_ = args.RunInterval.Set("24h")
@@ -679,6 +819,167 @@ func Test_Service_PrintJSON_MinimalSections_Success(t *testing.T) {
 	require.Nil(t, result.CycleInfo)
 }
 
+// Expectation: PrintJSON should not load the cache when CacheDir is empty.
+func Test_Service_PrintJSON_WithoutCacheDir_NotLoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	args := Options{CacheDir: ""}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
+
+	require.False(t, loadCalled)
+}
+
+// Expectation: PrintJSON should load the cache when CacheDir is set.
+func Test_Service_PrintJSON_WithCacheDir_LoadsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var loadCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				LoadFunc: func() error {
+					loadCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	args := Options{CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
+
+	require.True(t, loadCalled)
+}
+
+// Expectation: PrintJSON should call PruneUnwalked on the cache after enumeration.
+func Test_Service_PrintJSON_PrunesCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var pruneCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				PruneUnwalkedFunc: func() int {
+					pruneCalled = true
+
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	args := Options{CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
+
+	require.True(t, pruneCalled)
+}
+
+// Expectation: PrintJSON should not save the cache (to avoid races with verification).
+func Test_Service_PrintJSON_DoesNotSaveCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var saveCalled bool
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				SaveFunc: func() error {
+					saveCalled = true
+
+					return nil
+				},
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	args := Options{CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
+
+	require.False(t, saveCalled)
+}
+
 // Expectation: The AgeInfo should be built with correct values.
 func Test_Service_buildAgeInfo_Success(t *testing.T) {
 	t.Parallel()
@@ -693,7 +994,7 @@ func Test_Service_buildAgeInfo_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -724,7 +1025,7 @@ func Test_Service_buildAgeInfo_AgeLessThanInterval_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -755,7 +1056,7 @@ func Test_Service_buildAgeInfo_MinRequiredDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Millisecond,
@@ -785,7 +1086,7 @@ func Test_Service_buildAgeInfo_RequiredDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 7 * time.Hour,
@@ -816,7 +1117,7 @@ func Test_Service_buildDurationInfo_SingleRun_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration:   30 * time.Minute,
@@ -850,7 +1151,7 @@ func Test_Service_buildDurationInfo_MultipleRuns_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration:   3 * time.Hour,
@@ -884,12 +1185,12 @@ func Test_Service_buildDurationInfo_LargeJobWarning_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration:   2 * time.Hour,
 		LargestDuration: 2 * time.Hour,
-		LargestJob:      verify.NewJob("/data/large.par2", verify.Options{}, nil, false),
+		LargestJob:      schema.NewJobMeta("/data/large.par2", nil, false),
 		KnownCount:      1,
 	}
 
@@ -917,7 +1218,7 @@ func Test_Service_buildDurationInfo_NoWarning_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration:   30 * time.Minute,
@@ -949,7 +1250,7 @@ func Test_Service_buildBacklogInfo_Healthy_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -984,7 +1285,7 @@ func Test_Service_buildBacklogInfo_Unhealthy_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 10 * time.Hour,
@@ -1019,7 +1320,7 @@ func Test_Service_buildBacklogInfo_UnknownJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -1051,7 +1352,7 @@ func Test_Service_buildBacklogInfo_NoWarningWhenHealthy_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	js := verify.Stats{
 		TotalDuration: 1 * time.Hour,
@@ -1085,7 +1386,7 @@ func Test_Service_buildCycleInfo_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	now := time.Now()
 
@@ -1095,8 +1396,8 @@ func Test_Service_buildCycleInfo_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
 	}
 
 	js := verify.Stats{
@@ -1109,7 +1410,7 @@ func Test_Service_buildCycleInfo_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 1, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1134,7 +1435,7 @@ func Test_Service_buildCycleInfo_OutsideWindow_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	now := time.Now()
 
@@ -1144,8 +1445,8 @@ func Test_Service_buildCycleInfo_OutsideWindow_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
 	}
 
 	js := verify.Stats{
@@ -1158,7 +1459,7 @@ func Test_Service_buildCycleInfo_OutsideWindow_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 0, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1180,7 +1481,7 @@ func Test_Service_buildCycleInfo_UnknownJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	now := time.Now()
 
@@ -1190,9 +1491,9 @@ func Test_Service_buildCycleInfo_UnknownJobs_Success(t *testing.T) {
 		Duration: 5 * time.Minute,
 	}
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, nil, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
+		verify.NewJobMeta(schema.NewJobMeta("/data/test2"+schema.Par2Extension, nil, false)),
 	}
 
 	js := verify.Stats{
@@ -1206,7 +1507,7 @@ func Test_Service_buildCycleInfo_UnknownJobs_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 1, info.UnknownCount)
 }
@@ -1225,14 +1526,14 @@ func Test_Service_buildCycleInfo_NoVerification_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	now := time.Now()
 
 	manifest := schema.NewManifest("test" + schema.Par2Extension)
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, manifest, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
 	}
 
 	js := verify.Stats{
@@ -1245,7 +1546,7 @@ func Test_Service_buildCycleInfo_NoVerification_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 0, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1265,12 +1566,12 @@ func Test_Service_buildCycleInfo_NilManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	now := time.Now()
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test"+schema.Par2Extension, verify.Options{}, nil, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, nil, false)),
 	}
 
 	js := verify.Stats{
@@ -1283,7 +1584,7 @@ func Test_Service_buildCycleInfo_NilManifest_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 0, info.VerifiedCount)
 	require.Equal(t, 1, info.TotalCount)
@@ -1303,7 +1604,7 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	now := time.Now()
 
@@ -1321,11 +1622,11 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 
 	manifest3 := schema.NewManifest("test3" + schema.Par2Extension)
 
-	jobs := []*verify.Job{
-		verify.NewJob("/data/test1"+schema.Par2Extension, verify.Options{}, manifest1, false),
-		verify.NewJob("/data/test2"+schema.Par2Extension, verify.Options{}, manifest2, false),
-		verify.NewJob("/data/test3"+schema.Par2Extension, verify.Options{}, manifest3, false),
-		verify.NewJob("/data/test4"+schema.Par2Extension, verify.Options{}, nil, false),
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest1, false)),
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest2, false)),
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest3, false)),
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, nil, false)),
 	}
 
 	js := verify.Stats{
@@ -1339,7 +1640,7 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 	_ = args.RunInterval.Set("24h")
 	_ = args.MinAge.Set("7d")
 
-	info := prog.buildCycleInfo(js, jobs, args, now)
+	info := prog.buildCycleInfo(js, metas, args, now)
 
 	require.Equal(t, 1, info.VerifiedCount)
 	require.Equal(t, 4, info.TotalCount)
