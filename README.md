@@ -39,6 +39,8 @@
   - [`par2cron check-config`](#par2cron-check-config)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
+- [Configuration](#configuration)
+- [Crontab Orchestration](#crontab-orchestration)
 - [State Management](#state-management)
   - [Creation as Bundle](#creation-as-bundle)
 - [Creation Arguments](#creation-arguments)
@@ -54,10 +56,11 @@
 - [Marker Files](#marker-files)
   - [Marker filename](#marker-filename)
   - [Marker configuration](#marker-configuration)
+- [Verification Scheduling](#verification-scheduling)
 - [Ignore Files](#ignore-files)
-- [Configuration](#configuration)
 - [Performance](#performance)
   - [Manifest cache](#manifest-cache)
+- [Integrations](#integrations)
 - [Limitations](#limitations)
 - [License](#license)
 
@@ -349,6 +352,12 @@ rebuilding corrupted or missing manifests (read more about manifests below)
 wherever possible. Failure-related exit codes usually directly relate to
 encountered errors requiring some degree of manual inspection by the user.
 
+Interrupting par2cron mid-operation using `SIGTERM` or `SIGINT` (CTRL+C) is
+generally safe and will not leave your files in a broken state. The currently
+processing job will be aborted (when it is safe to do so), in-flight PAR2 sets
+will be cleaned up, with the next run picking the job up again. Completed work
+is not lost, with each job being a self-contained processing unit.
+
 ## Output Streams
 
 As par2cron needs to coordinate between itself and the `par2` program, their
@@ -365,6 +374,50 @@ error (`stderr`), and the JSON-encoded result to standard output (`stdout`).
 As a general rule of thumb this can be condensed into:
 - Structured *logging* goes to standard error (`stderr`)
 - Command-related *output* goes to standard output (`stdout`)
+
+## Configuration
+
+A configuration file can be given to par2cron, which is reusable and replaces
+the need to achieve complex setups through the command-line arguments entirely.
+
+A short example configuration (YAML) could look as follows:
+```YAML
+create:
+  args: ["-r15", "-n1"]
+  glob: "*"
+  mode: "folder"
+  duration: "1h"
+  bundle: false
+
+verify:
+  age: "7d"
+  duration: "2h"
+  cache: "/tmp/par2cron-cache"
+
+repair:
+  verify: true
+  purge-backups: true
+  cache: "/tmp/par2cron-cache"
+```
+
+**For a full commented configuration, refer to the [par2cron.yaml](par2cron.yaml) file.**
+
+You should verify the configuration using `par2cron check-config`, as malformed
+configuration will prevent the program from starting (bad invocation exit code).
+
+## Crontab Orchestration
+
+A [simple setup](#quick-start) involves just placing the wanted commands in your
+crontab. Most commonly you would run `create`, `verify` and `repair` with a mix
+of the `--age` and `--duration` flags. More complex setups, especially if
+wanting notifications, could make use of shell scripting or `systemd` units to
+wrap the wanted commands and evaluate their exit codes.
+
+As par2cron can operate concurrently on the same directory tree, overlapping
+cronjobs (e.g. `create` bleeding into `verify`) will not interfere with each
+other, but leaving some time between the scheduled commands is recommended. Jobs
+locked by another instance will just be skipped over and picked up again at the
+next possible time. This is achieved with kernel-enforced file locking syscalls.
 
 ## State Management
 
@@ -713,6 +766,47 @@ The directives are designed to be easy to remember, although for the rare case
 that you should need such a marker configuration [a little cheat-sheet](QUICKGUIDE)
 is to be recommended, because YAML errors will result in a non-zero exit code.
 
+## Verification Scheduling
+
+| Priority | Description                          |
+| :------- | :----------------------------------- |
+| 0        | No manifest (newly discovered)       |
+| 1        | Never verified                       |
+| 2        | Flagged as needing repair            |
+| 3        | Regular (oldest verification first)  |
+
+When running with `--age` and `--duration`, par2cron does not simply verify sets
+in the order it finds them. Instead, it builds a prioritized work queue from all
+discovered PAR2 sets and fits as much work as possible into the configured time
+budget.
+
+Jobs are first filtered by age, skipping any PAR2 set verified more recently
+than the `--age` threshold. The remaining jobs are then sorted by priority: PAR2
+sets without a manifest are processed first, followed by those never verified,
+then those flagged as needing repair, and finally regular sets ordered by how
+long ago they were last verified (oldest first).
+
+Once sorted, the queue is trimmed to fit the `--duration` budget. The first job
+is always taken regardless of its estimated duration (preventing starvation of
+large PAR2 sets that would otherwise never be picked). Remaining jobs are fitted
+by their last known verification duration, skipping jobs that would exceed the
+budget while still considering smaller ones further down the queue. Jobs with no
+known duration (never verified before) are always included, as establishing
+their duration baseline takes priority.
+
+If the total estimated duration of all due jobs exceeds what can be completed
+within `--age` divided by the run interval (`--calc-run-interval`), a backlog
+warning is emitted. This signals that the verification cycle cannot keep up and
+either `--age` or `--duration` needs adjusting. The `info` command provides a
+detailed analysis of your chosen arguments and can be helpful for tracking
+verification progress and backlog health.
+
+As `--duration` is a soft limit, users needing a hard limit can wrap par2cron in
+[timeout(1)](https://man7.org/linux/man-pages/man1/timeout.1.html) which sends
+`SIGTERM` upon expiration; while safe to do, this is not recommended for most
+use cases as it may prevent par2cron from completing its current job and will
+result in a non-zero exit code.
+
 ## Ignore Files
 
 A situation may arise where you want to exclude a folder (or directory tree)
@@ -723,16 +817,6 @@ sets that you do not want verified or otherwise interacted with by the program.
 
 - `.par2cron-ignore` (ignore this folder)
 - `.par2cron-ignore-all` (ignore this folder and subfolders)
-
-## Configuration
-
-A configuration file can be given to par2cron, which is reusable and replaces
-the need to achieve complex setups through the command-line arguments entirely.
-
-You should verify the configuration using `par2cron check-config`, as malformed
-configuration will prevent the program from starting (bad invocation exit code).
-
-**For a full configuration example, refer to the [par2cron.yaml](par2cron.yaml) file.**
 
 ## Performance
 
@@ -782,6 +866,14 @@ cache size is therefore negligible compared to the performance benefit gained.
 > **Note:** When using `--cache`, it should be enabled for all applicable
 > commands and use the same directory path. This ensures all operations benefit
 > from the same cache and maximizes cache effectiveness.
+
+## Integrations
+
+- [par2cron for UNRAID](https://github.com/desertwitch/par2cron-unRAID) is a
+batteries-included plugin solution for the Unraid operating system, shipping
+with a web interface and taking care of all par2cron service orchestration as
+well as notifications. It can be installed through Unraid's "Community
+Applications" (Apps tab) ecosystem.
 
 ## Limitations
 
