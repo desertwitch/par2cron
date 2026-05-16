@@ -609,14 +609,8 @@ func NewProgram(
 
 func recoverOperationPanic(ret *error, log *logging.Logger) {
 	if r := recover(); r != nil {
-		stack := string(debug.Stack())
-
 		log.Error("Operation crashed due to a panic (report to developers)",
-			"panic", r, "stack", stack)
-
-		fmt.Fprintf(log.Options.Stdout,
-			"Operation crashed due to a panic (report to developers): \n\n%v\n\n", r)
-		fmt.Fprintln(log.Options.Stdout, stack)
+			"panic", r, "stack", string(debug.Stack()))
 
 		*ret = schema.ErrExitUnclassified
 	}
