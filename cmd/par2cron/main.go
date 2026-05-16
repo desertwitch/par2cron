@@ -609,8 +609,15 @@ func NewProgram(
 
 func recoverOperationPanic(ret *error, log *logging.Logger) {
 	if r := recover(); r != nil {
+		stack := string(debug.Stack())
+
 		log.Error("Operation crashed due to a panic (report to developers)",
-			"panic", r, "stack", string(debug.Stack()))
+			"panic", r, "stack", stack)
+
+		fmt.Fprintf(log.Options.Stdout,
+			"Operation crashed due to a panic (report to developers): \n\n%v\n\n", r)
+		fmt.Fprintln(log.Options.Stdout, stack)
+
 		*ret = schema.ErrExitUnclassified
 	}
 }
@@ -659,7 +666,8 @@ func main() {
 	var exitCode int
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "panic: %v\n\n", r)
+			fmt.Fprintf(os.Stderr,
+				"Program crashed due to a panic (report to developers): \n\n%v\n\n", r)
 			debug.PrintStack()
 			exitCode = schema.ExitCodeUnclassified
 		}
