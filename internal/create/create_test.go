@@ -1002,6 +1002,35 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// Expectation: Directories whose names match the pattern should be skipped.
+func Test_Service_Enumerate_MisleadingDirectory_Skipped_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder1", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder1/"+createMarkerPathPrefix, []byte(""), 0o644))
+
+	// Create a directory named _par2cron - it should be skipped.
+	require.NoError(t, fs.MkdirAll("/data/folder2/"+createMarkerPathPrefix, 0o755))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-r10"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Contains(t, jobs[0].markerPath, "folder1")
+}
+
 // Expectation: The creation mode "folder" should be respected.
 func Test_Service_createPar2_FolderMode_Success(t *testing.T) {
 	t.Parallel()

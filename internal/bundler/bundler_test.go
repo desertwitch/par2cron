@@ -632,6 +632,41 @@ func Test_Service_packEnumerate_MultipleJobs_Success(t *testing.T) {
 	require.Len(t, jobs, 2)
 }
 
+// Expectation: Directories whose names match the pattern should be skipped.
+func Test_Service_packEnumerate_MisleadingDirectory_Skipped_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	// A real PAR2 file with a valid manifest.
+	require.NoError(t, afero.WriteFile(fs, "/data/real"+schema.Par2Extension, []byte("par2data"), 0o644))
+	mf := &schema.Manifest{Name: "real" + schema.Par2Extension, Creation: &schema.CreationManifest{}}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/real"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	// A directory whose name looks like a PAR2 index file - it should be skipped.
+	// Its sidecar manifest would make it a valid pack job if processed as a file.
+	require.NoError(t, fs.MkdirAll("/data/fake"+schema.Par2Extension, 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/fake"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	jobs, err := prog.packEnumerate(t.Context(), "/data", Options{})
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "/data/real"+schema.Par2Extension, jobs[0].par2Path)
+}
+
 // Expectation: The function should return a job when a valid manifest exists.
 func Test_Service_packProcessManifest_Success(t *testing.T) {
 	t.Parallel()
@@ -1650,6 +1685,35 @@ func Test_Service_unpackEnumerate_NoJobs_Success(t *testing.T) {
 	jobs, err := prog.unpackEnumerate(t.Context(), "/data", Options{})
 	require.NoError(t, err)
 	require.Empty(t, jobs)
+}
+
+// Expectation: Directories whose names match the pattern should be skipped.
+func Test_Service_unpackEnumerate_MisleadingDirectory_Skipped_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	// A real bundle file.
+	require.NoError(t, afero.WriteFile(fs, "/data/real"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	// A directory whose name looks like a bundle file - it should be skipped.
+	require.NoError(t, fs.MkdirAll("/data/fake"+schema.BundleExtension+schema.Par2Extension, 0o755))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	jobs, err := prog.unpackEnumerate(t.Context(), "/data", Options{})
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "/data/real"+schema.BundleExtension+schema.Par2Extension, jobs[0].par2Path)
 }
 
 // Expectation: The function should unpack a bundle and remove the bundle file.
