@@ -29,7 +29,7 @@ func Benchmark_Enumerate_HotPath(b *testing.B) {
 			if err != nil {
 				return err
 			}
-			if !util.IsPar2Index(d.Name()) {
+			if d.IsDir() || !util.IsPar2Index(d.Name()) {
 				return nil
 			}
 

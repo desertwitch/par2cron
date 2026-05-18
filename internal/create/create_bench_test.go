@@ -29,7 +29,7 @@ func Benchmark_Enumerate_HotPath(b *testing.B) {
 			if err != nil {
 				return err
 			}
-			if !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
+			if d.IsDir() || !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
 				return nil
 			}
 
