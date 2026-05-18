@@ -254,7 +254,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 			return nil
 		}
 
-		if !util.IsPar2Index(d.Name()) {
+		if d.IsDir() || !util.IsPar2Index(d.Name()) {
 			return nil
 		} // --- End of Hot Path ---
 		if checker.ShouldIgnore(par2path) {

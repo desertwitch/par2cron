@@ -175,6 +175,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 
 	if len(metas) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(metas)),
+			"knownDuration", knownDuration(metas).String(),
 			"maxDuration", opts.MaxDuration.Value.String())
 		results.Selected = len(metas)
 	} else {
@@ -297,7 +298,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 			return nil
 		}
 
-		if !util.IsPar2Index(d.Name()) {
+		if d.IsDir() || !util.IsPar2Index(d.Name()) {
 			return nil
 		} // --- End of Hot Path ---
 		if checker.ShouldIgnore(par2path) {

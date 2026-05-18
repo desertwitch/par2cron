@@ -172,7 +172,7 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 			return nil
 		}
 
-		if !util.IsPar2Index(d.Name()) {
+		if d.IsDir() || !util.IsPar2Index(d.Name()) {
 			return nil
 		} // --- End of Hot Path ---
 		if util.IsPar2Bundle(d.Name()) {
@@ -365,7 +365,7 @@ func (prog *Service) unpackEnumerate(ctx context.Context, rootDir string, opts O
 			return nil
 		}
 
-		if !util.IsPar2Index(d.Name()) {
+		if d.IsDir() || !util.IsPar2Index(d.Name()) {
 			return nil
 		} // --- End of Hot Path ---
 		if !util.IsPar2Bundle(d.Name()) {

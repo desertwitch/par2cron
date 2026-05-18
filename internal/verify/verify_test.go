@@ -1624,6 +1624,38 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// Expectation: Directories whose names match the pattern should be skipped.
+func Test_Service_Enumerate_MisleadingDirectory_Skipped_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	// Create a directory named like a PAR2 index file, plus a manifest file
+	// that would match if the directory entry were not filtered out.
+	require.NoError(t, fs.MkdirAll("/data/fake"+schema.Par2Extension, 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/fake"+schema.Par2Extension+schema.ManifestExtension, []byte("{}"), 0o644))
+
+	// A real PAR2 file for comparison.
+	createWithManifest(t, fs, "/data/real")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "/data/real"+schema.Par2Extension, jobs[0].Par2Path)
+}
+
 // Expectation: The correct job and its manifest should be returned for a bundle.
 func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	t.Parallel()

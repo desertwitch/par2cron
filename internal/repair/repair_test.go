@@ -1672,6 +1672,50 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// Expectation: Directories whose names match the pattern should be skipped.
+func Test_Service_Enumerate_MisleadingDirectory_Skipped_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	// A manifest that qualifies as a repair candidate.
+	mf := schema.NewManifest("real" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+		CountCorrupted: 2,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	// A real PAR2 file that is a repair candidate.
+	require.NoError(t, afero.WriteFile(fs, "/data/real"+schema.Par2Extension, []byte("par2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/real"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	// A directory whose name looks like a PAR2 index file - it should be skipped.
+	// Its sidecar manifest would make it a valid repair candidate if processed as a file.
+	require.NoError(t, fs.MkdirAll("/data/fake"+schema.Par2Extension, 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/fake"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 2}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, "/data/real"+schema.Par2Extension, jobs[0].Par2Path)
+}
+
 // Expectation: The correct repair job should be returned for a bundle with a repairable manifest.
 func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	t.Parallel()

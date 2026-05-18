@@ -280,7 +280,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 			return nil
 		}
 
-		if !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
+		if d.IsDir() || !strings.HasPrefix(d.Name(), createMarkerPathPrefix) {
 			return nil
 		} // --- End of Hot Path ---
 		if checker.ShouldIgnore(path) {

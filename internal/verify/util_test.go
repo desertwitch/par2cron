@@ -704,3 +704,83 @@ func Test_sortJobs_ComplexSorting_Success(t *testing.T) {
 	require.Equal(t, "/data/normal-old"+schema.Par2Extension, metas[3].Par2Path)
 	require.Equal(t, "/data/normal-recent"+schema.Par2Extension, metas[4].Par2Path)
 }
+
+// Expectation: All known durations should be added together correctly.
+func Test_knownDuration_Success(t *testing.T) {
+	t.Parallel()
+
+	metas := []*JobMeta{
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  5 * time.Minute,
+			},
+		},
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  10 * time.Minute,
+			},
+		},
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  30 * time.Second,
+			},
+		},
+	}
+
+	duration := knownDuration(metas)
+
+	require.Equal(t, 15*time.Minute+30*time.Second, duration)
+}
+
+// Expectation: Zero and negative durations should be ignored.
+func Test_knownDuration_IgnoresZeroAndNegativeDurations_Success(t *testing.T) {
+	t.Parallel()
+
+	metas := []*JobMeta{
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  5 * time.Minute,
+			},
+		},
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  0,
+			},
+		},
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: true,
+				VerifyDuration:  -5 * time.Minute,
+			},
+		},
+		{
+			&schema.JobMeta{
+				HasManifest:     false,
+				HasVerification: true,
+				VerifyDuration:  5 * time.Minute,
+			},
+		},
+		{
+			&schema.JobMeta{
+				HasManifest:     true,
+				HasVerification: false,
+				VerifyDuration:  5 * time.Minute,
+			},
+		},
+	}
+
+	duration := knownDuration(metas)
+
+	require.Equal(t, 5*time.Minute, duration)
+}
