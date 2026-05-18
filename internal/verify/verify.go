@@ -175,6 +175,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 
 	if len(metas) > 0 {
 		logger.Info(fmt.Sprintf("Starting to process %d jobs...", len(metas)),
+			"knownDuration", knownDuration(metas).String(),
 			"maxDuration", opts.MaxDuration.Value.String())
 		results.Selected = len(metas)
 	} else {

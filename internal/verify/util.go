@@ -187,3 +187,15 @@ func filterByDuration(metas []*JobMeta, maxDuration time.Duration) []*JobMeta {
 
 	return selected
 }
+
+func knownDuration(metas []*JobMeta) time.Duration {
+	var duration time.Duration
+
+	for _, meta := range metas {
+		if meta.HasManifest && meta.HasVerification && meta.VerifyDuration > 0 {
+			duration += meta.VerifyDuration
+		}
+	}
+
+	return duration
+}
