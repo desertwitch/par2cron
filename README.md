@@ -37,6 +37,7 @@
   - [`par2cron info`](#par2cron-info)
   - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron check-config`](#par2cron-check-config)
+  - [`par2cron tool`](#par2cron-tool)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
 - [Configuration](#configuration)
