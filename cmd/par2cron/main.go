@@ -716,6 +716,7 @@ func main() {
 	})
 
 	rootCmd := newRootCmd(ctx)
+	// _ = doc.GenMarkdownTree(rootCmd, "./docs/")
 	err := rootCmd.Execute()
 	exitCode = schema.ExitCodeFor(err)
 }

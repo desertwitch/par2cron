@@ -17,7 +17,7 @@ Quick Start:
   3. PAR2 sets are created, verified and repaired automatically
 
 See 'par2cron <command> --help' for command-specific information.
-Documentation: https://github.com/desertwitch/par2cron`
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const checkConfigUsage = "check-config <file>"
 
@@ -61,7 +61,7 @@ To exclude directories from this operation, put ignore files:
   ".par2cron-ignore" - ignore directory
   ".par2cron-ignore-all" - ignore directory and subdirectories
 
-Documentation: https://github.com/desertwitch/par2cron`
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const createHelpExample = `
 Use configuration file instead of CLI arguments:
@@ -179,7 +179,9 @@ without user interaction upon detecting corrupted metadata.
 Normally bundle files are packed during "create" operations
 where --bundle was given or set as a marker directive. Some
 situations may require to pack existing PAR2 sets or unpack
-existing par2cron bundles, which these commands offer to do.`
+existing par2cron bundles, which these commands offer to do.
+
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const bundlePackUsage = "pack [flags] <dir>... "
 
@@ -191,7 +193,9 @@ Walks the given directories and replaces existing PAR2 sets
 with a single bundle file. This can be helpful for switching
 already created PAR2 sets to the bundle format introduced in
 later releases of par2cron. For new sets, the create command
-should be used with --bundle or respective marker directives.`
+should be used with --bundle or respective marker directives.
+
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const bundleUnpackUsage = "unpack [flags] <dir>... "
 
@@ -207,7 +211,9 @@ can be helpful for returning bundles to the default PAR2 format.
 By default bundles will only unpack when it can be guaranteed
 that all original files can be replicated and are not corrupted.
 In some cases it may be needed to unpack corrupted bundles, this
-is achievable (as a last resort) by using the --force argument.`
+is achievable (as a last resort) by using the --force argument.
+
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const toolUsage = "tool"
 
