@@ -17,6 +17,7 @@ Quick Start:
   3. PAR2 sets are created, verified and repaired automatically
 
 See 'par2cron <command> --help' for command-specific information.
+
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ### Options
