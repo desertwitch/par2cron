@@ -16,6 +16,10 @@ that all original files can be replicated and are not corrupted.
 In some cases it may be needed to unpack corrupted bundles, this
 is achievable (as a last resort) by using the --force argument.
 
+To exclude directories from this operation, put ignore files:
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
+
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```

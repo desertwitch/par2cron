@@ -15,8 +15,8 @@ will be attempted, but beware this may lead to non-zero exit
 codes if the underlying data should really not be repairable.
 
 To exclude directories from this operation, put ignore files:
-  ".par2cron-ignore" - ignore directory
-  ".par2cron-ignore-all" - ignore directory and subdirectories
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
 
 Full documentation at: https://github.com/desertwitch/par2cron
 

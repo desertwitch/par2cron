@@ -14,8 +14,8 @@ Otherwise, only PAR2 sets with an existing par2cron manifest are
 verified and all external PAR2 sets will be skipped over instead.
 
 To exclude directories from this operation, put ignore files:
-  ".par2cron-ignore" - ignore directory
-  ".par2cron-ignore-all" - ignore directory and subdirectories
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
 
 Full documentation at: https://github.com/desertwitch/par2cron
 

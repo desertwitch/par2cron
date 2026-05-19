@@ -12,6 +12,10 @@ already created PAR2 sets to the bundle format introduced in
 later releases of par2cron. For new sets, the create command
 should be used with --bundle or respective marker directives.
 
+To exclude directories from this operation, put ignore files:
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
+
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```

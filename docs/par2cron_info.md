@@ -10,8 +10,8 @@ Shows verification statistics and configuration information
 Use the same arguments/configuration as for "verify" command.
 
 To exclude directories from this operation, put ignore files:
-  ".par2cron-ignore" - ignore directory
-  ".par2cron-ignore-all" - ignore directory and subdirectories
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
 
 Full documentation at: https://github.com/desertwitch/par2cron
 
