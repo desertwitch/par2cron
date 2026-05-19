@@ -1,1 +1,1 @@
-../../docs/bundle_specification.txt
+../../docs/specs/bundle_specification.txt

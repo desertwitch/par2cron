@@ -37,6 +37,7 @@
   - [`par2cron info`](#par2cron-info)
   - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron check-config`](#par2cron-check-config)
+  - [`par2cron tool`](#par2cron-tool)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
 - [Configuration](#configuration)
@@ -156,14 +157,17 @@ make all
 
 The program is divided into separate commands to achieve its tasks:
 
-| Command                 | Purpose                                                |
-| :---------------------- | :----------------------------------------------------- |
-| `par2cron create`       | Creates PAR2 sets for directories with marker files    |
-| `par2cron verify`       | Verifies existing PAR2 sets in a directory tree        |
-| `par2cron repair`       | Repairs corrupted files using PAR2 recovery data       |
-| `par2cron info`         | Shows verification cycle and configuration statistics  |
-| `par2cron bundle`       | Commands for interacting with par2cron's bundle format |
-| `par2cron check-config` | Validates a par2cron YAML configuration file           |
+| Command                 | Purpose                                                 |
+| :---------------------- | :------------------------------------------------------ |
+| `par2cron create`       | Creates PAR2 sets for directories with marker files     |
+| `par2cron verify`       | Verifies existing PAR2 sets in a directory tree         |
+| `par2cron repair`       | Repairs corrupted files using PAR2 recovery data        |
+| `par2cron info`         | Shows verification cycle and configuration statistics   |
+| `par2cron bundle`       | Commands for interacting with par2cron's bundle format  |
+| `par2cron check-config` | Validates a par2cron YAML configuration file            |
+| `par2cron tool`         | Useful utility commands for interacting with PAR2 files |
+
+Detailed documentation for each command is available in the [docs/](docs/) directory.
 
 ### `par2cron create`
 
@@ -332,6 +336,20 @@ Flags:
   -h, --help   help for check-config
 ```
 
+### `par2cron tool`
+```
+Useful utility commands for interacting with PAR2 files
+
+Usage:
+  par2cron tool [command]
+
+Available Commands:
+  md5         Print MD5 hashes of files protected by PAR2 sets
+
+Flags:
+  -h, --help   help for tool
+```
+
 ## Exit Codes
 
 Granular codes allow for integration with scripts and notification services:
@@ -475,7 +493,7 @@ with standard PAR2 software and par2cron's `verify` and `repair` operations.
 | `Pictures.par2.json`       |                           |
 | `Pictures.par2.lock`       |                           |
 
-The bundle format uses [application-specific packet types](/docs/bundle_specification.txt) as permitted by the
+The bundle format uses [application-specific packet types](/docs/specs/bundle_specification.txt) as permitted by the
 PAR2 specification, so PAR2 tools simply skip over par2cron's metadata packets
 while still reading the embedded recovery data normally. The format is designed
 to be resilient against corruption and self-healing without user interaction.

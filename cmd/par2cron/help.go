@@ -17,7 +17,8 @@ Quick Start:
   3. PAR2 sets are created, verified and repaired automatically
 
 See 'par2cron <command> --help' for command-specific information.
-Documentation: https://github.com/desertwitch/par2cron`
+
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const checkConfigUsage = "check-config <file>"
 
@@ -58,10 +59,10 @@ not recurse into subdirectories. Recursion is possible using
 deep globs (**) or in recursive mode, refer to documentation.
 
 To exclude directories from this operation, put ignore files:
-  ".par2cron-ignore" - ignore directory
-  ".par2cron-ignore-all" - ignore directory and subdirectories
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
 
-Documentation: https://github.com/desertwitch/par2cron`
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const createHelpExample = `
 Use configuration file instead of CLI arguments:
@@ -87,8 +88,8 @@ Otherwise, only PAR2 sets with an existing par2cron manifest are
 verified and all external PAR2 sets will be skipped over instead.
 
 To exclude directories from this operation, put ignore files:
-  ".par2cron-ignore" - ignore directory
-  ".par2cron-ignore-all" - ignore directory and subdirectories
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
@@ -117,8 +118,8 @@ will be attempted, but beware this may lead to non-zero exit
 codes if the underlying data should really not be repairable.
 
 To exclude directories from this operation, put ignore files:
-  ".par2cron-ignore" - ignore directory
-  ".par2cron-ignore-all" - ignore directory and subdirectories
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
@@ -142,8 +143,8 @@ Shows verification statistics and configuration information
 Use the same arguments/configuration as for "verify" command.
 
 To exclude directories from this operation, put ignore files:
-  ".par2cron-ignore" - ignore directory
-  ".par2cron-ignore-all" - ignore directory and subdirectories
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
@@ -179,7 +180,9 @@ without user interaction upon detecting corrupted metadata.
 Normally bundle files are packed during "create" operations
 where --bundle was given or set as a marker directive. Some
 situations may require to pack existing PAR2 sets or unpack
-existing par2cron bundles, which these commands offer to do.`
+existing par2cron bundles, which these commands offer to do.
+
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const bundlePackUsage = "pack [flags] <dir>... "
 
@@ -191,7 +194,13 @@ Walks the given directories and replaces existing PAR2 sets
 with a single bundle file. This can be helpful for switching
 already created PAR2 sets to the bundle format introduced in
 later releases of par2cron. For new sets, the create command
-should be used with --bundle or respective marker directives.`
+should be used with --bundle or respective marker directives.
+
+To exclude directories from this operation, put ignore files:
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
+
+Full documentation at: https://github.com/desertwitch/par2cron`
 
 const bundleUnpackUsage = "unpack [flags] <dir>... "
 
@@ -207,4 +216,31 @@ can be helpful for returning bundles to the default PAR2 format.
 By default bundles will only unpack when it can be guaranteed
 that all original files can be replicated and are not corrupted.
 In some cases it may be needed to unpack corrupted bundles, this
-is achievable (as a last resort) by using the --force argument.`
+is achievable (as a last resort) by using the --force argument.
+
+To exclude directories from this operation, put ignore files:
+  - ".par2cron-ignore" (ignore directory)
+  - ".par2cron-ignore-all" (ignore directory and subdirectories)
+
+Full documentation at: https://github.com/desertwitch/par2cron`
+
+const toolUsage = "tool"
+
+const toolHelpShort = "Useful utility commands for interacting with PAR2 files"
+
+const toolMD5Usage = "md5 [flags] <par2file> [par2file...]"
+
+const toolMD5HelpShort = "Print MD5 hashes of files protected by PAR2 sets"
+
+const toolMD5HelpExample = `
+Print MD5 hashes for all PAR2 files in a directory:
+  par2cron tool md5 *.par2
+
+Save MD5 hashes to a combined checksum file:
+  par2cron tool md5 *.par2 > checksums.md5
+
+Verify protected files against their PAR2 checksums:
+  par2cron tool md5 *.par2 | md5sum -c
+
+Print MD5 hashes for a bundle or specific PAR2 file:
+  par2cron tool md5 bundle.p2c.par2`

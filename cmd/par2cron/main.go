@@ -48,6 +48,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/repair"
 	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/desertwitch/par2cron/internal/tool"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
 	"github.com/spf13/afero"
@@ -106,12 +107,11 @@ func wrapArgsError(validator cobra.PositionalArgs) cobra.PositionalArgs {
 // newRootCmd returns the primary [cobra.Command] pointer for the program.
 func newRootCmd(ctx context.Context) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:               rootUsage,
-		Short:             rootHelpShort,
-		Long:              rootHelpLong,
-		Version:           schema.ProgramVersion,
-		SilenceUsage:      true,
-		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
+		Use:          rootUsage,
+		Short:        rootHelpShort,
+		Long:         rootHelpLong,
+		Version:      schema.ProgramVersion,
+		SilenceUsage: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			pp, _ := cmd.Flags().GetString("pprof")
 			if pp != "" {
@@ -150,13 +150,51 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	createCmd := newCreateCmd(ctx)
 	verifyCmd := newVerifyCmd(ctx)
 	repairCmd := newRepairCmd(ctx)
+
 	infoCmd := newInfoCmd(ctx)
+	toolCmd := newToolCmd()
 	bundleCmd := newBundleCmd(ctx)
 	checkConfigCmd := newCheckConfigCmd(ctx)
 
-	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, bundleCmd, checkConfigCmd)
+	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, toolCmd, bundleCmd, checkConfigCmd)
 
 	return rootCmd
+}
+
+func newToolCmd() *cobra.Command {
+	toolCmd := &cobra.Command{
+		Use:   toolUsage,
+		Short: toolHelpShort,
+	}
+
+	toolMD5Cmd := newToolMD5Cmd()
+	toolCmd.AddCommand(toolMD5Cmd)
+
+	return toolCmd
+}
+
+func newToolMD5Cmd() *cobra.Command {
+	toolMD5Cmd := &cobra.Command{
+		Use:     toolMD5Usage,
+		Short:   toolMD5HelpShort,
+		Example: toolMD5HelpExample,
+		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
+		RunE: func(_ *cobra.Command, args []string) error {
+			err := tool.OutputMD5(
+				args,
+				afero.NewOsFs(),
+				os.Stdout,
+				os.Stderr,
+				&util.Par2Handler{})
+			if err != nil {
+				return fmt.Errorf("tool: md5: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	return toolMD5Cmd
 }
 
 func newBundleCmd(ctx context.Context) *cobra.Command {
@@ -678,6 +716,7 @@ func main() {
 	})
 
 	rootCmd := newRootCmd(ctx)
+	// _ = doc.GenMarkdownTree(rootCmd, "./docs/")
 	err := rootCmd.Execute()
 	exitCode = schema.ExitCodeFor(err)
 }
