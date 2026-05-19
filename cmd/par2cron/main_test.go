@@ -178,6 +178,32 @@ func Test_NewRootCmd_HasCheckConfigCommand_Success(t *testing.T) {
 	require.Equal(t, "check-config", checkConfigCmd.Name())
 }
 
+// Expectation: The root command should have a "tool" subcommand.
+func Test_NewRootCmd_HasToolCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	toolCmd, _, err := cmd.Find([]string{"tool"})
+
+	require.NoError(t, err)
+	require.NotNil(t, toolCmd)
+	require.Equal(t, "tool", toolCmd.Name())
+}
+
+// Expectation: The tool command should have a "md5" subcommand.
+func Test_NewToolCmd_HasMD5Command_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newToolCmd()
+
+	toolMD5Cmd, _, err := cmd.Find([]string{"md5"})
+
+	require.NoError(t, err)
+	require.NotNil(t, toolMD5Cmd)
+	require.Equal(t, "md5", toolMD5Cmd.Name())
+}
+
 // Expectation: The root command should have a "check-config" subcommand.
 func Test_NewRootCmd_HasBundleCommand_Success(t *testing.T) {
 	t.Parallel()

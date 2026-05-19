@@ -208,3 +208,24 @@ By default bundles will only unpack when it can be guaranteed
 that all original files can be replicated and are not corrupted.
 In some cases it may be needed to unpack corrupted bundles, this
 is achievable (as a last resort) by using the --force argument.`
+
+const toolUsage = "tool"
+
+const toolHelpShort = "Useful utility commands for interacting with PAR2 files"
+
+const toolMD5Usage = "md5 [flags] <par2file> [par2file...]"
+
+const toolMD5HelpShort = "Print MD5 hashes of files protected by PAR2 sets"
+
+const toolMD5HelpExample = `
+Print MD5 hashes for all PAR2 files in a directory:
+  par2cron tool md5 *.par2
+
+Save MD5 hashes to a combined checksum file:
+  par2cron tool md5 *.par2 > checksums.md5
+
+Verify protected files against their PAR2 checksums:
+  par2cron tool md5 *.par2 | md5sum -c
+
+Print MD5 hashes for a bundle or specific PAR2 file:
+  par2cron tool md5 bundle.p2c.par2`
