@@ -36,8 +36,8 @@
   - [`par2cron repair`](#par2cron-repair)
   - [`par2cron info`](#par2cron-info)
   - [`par2cron bundle`](#par2cron-bundle)
-  - [`par2cron check-config`](#par2cron-check-config)
   - [`par2cron tool`](#par2cron-tool)
+  - [`par2cron check-config`](#par2cron-check-config)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
 - [Configuration](#configuration)
@@ -164,8 +164,8 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron repair`       | Repairs corrupted files using PAR2 recovery data        |
 | `par2cron info`         | Shows verification cycle and configuration statistics   |
 | `par2cron bundle`       | Commands for interacting with par2cron's bundle format  |
-| `par2cron check-config` | Validates a par2cron YAML configuration file            |
 | `par2cron tool`         | Useful utility commands for interacting with PAR2 files |
+| `par2cron check-config` | Validates a par2cron YAML configuration file            |
 
 Detailed documentation for each command is available in the [docs/](docs/) directory.
 
@@ -319,6 +319,20 @@ Flags:
   -h, --help   help for bundle
 ```
 
+### `par2cron tool`
+```
+Useful utility commands for interacting with PAR2 files
+
+Usage:
+  par2cron tool [command]
+
+Available Commands:
+  md5         Print MD5 hashes of files protected by PAR2 sets
+
+Flags:
+  -h, --help   help for tool
+```
+
 ### `par2cron check-config`
 ```
 Validates the syntax of a par2cron YAML configuration
@@ -334,20 +348,6 @@ Validate a par2cron YAML configuration file:
 
 Flags:
   -h, --help   help for check-config
-```
-
-### `par2cron tool`
-```
-Useful utility commands for interacting with PAR2 files
-
-Usage:
-  par2cron tool [command]
-
-Available Commands:
-  md5         Print MD5 hashes of files protected by PAR2 sets
-
-Flags:
-  -h, --help   help for tool
 ```
 
 ## Exit Codes
