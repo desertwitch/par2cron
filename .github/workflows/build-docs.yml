@@ -5,6 +5,8 @@ on:
       - master
       - main
       - devel
+    paths:
+      - 'docs/**'
   pull_request:
 permissions:
   contents: read
@@ -26,6 +28,9 @@ jobs:
 
     - name: Clean the environment
       run: make clean
+
+    - name: Vendor the application
+      run: make vendor
 
     - name: Build the documentation
       run: make docs
