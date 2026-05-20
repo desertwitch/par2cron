@@ -176,7 +176,7 @@ Scans a directory tree for "_par2cron" marker files
 Creates PAR2 sets for directories containing a marker file
 
 Usage:
-  par2cron create [flags] <dir>... [-- par2-args...]
+  par2cron create [flags] <dir> [dir...] [-- par2-arg...]
 
 Examples:
 
@@ -208,7 +208,7 @@ Verifies all protected data using the existing PAR2 sets
 Corrupted/missing files are flagged for the repair operation
 
 Usage:
-  par2cron verify [flags] <dir>... [-- par2-args...]
+  par2cron verify [flags] <dir> [dir...] [-- par2-arg...]
 
 Examples:
 
@@ -244,7 +244,7 @@ Repair all data flagged as repairable during verification
 Uses existing PAR2 sets to recover corrupted/missing files
 
 Usage:
-  par2cron repair [flags] <dir>... [-- par2-args...]
+  par2cron repair [flags] <dir> [dir...] [-- par2-arg...]
 
 Examples:
 
@@ -278,7 +278,7 @@ Analyzes the directory tree for statistics about PAR2 sets
 Shows verification statistics and configuration information
 
 Usage:
-  par2cron info [flags] <dir>...
+  par2cron info [flags] <dir> [dir...]
 
 Examples:
 
@@ -339,7 +339,7 @@ Validates the syntax of a par2cron YAML configuration
 Use the command to check configurations before deploying
 
 Usage:
-  par2cron check-config <file> [flags]
+  par2cron check-config [flags] <file>
 
 Examples:
 
@@ -514,7 +514,7 @@ three calling par2cron operations. However, it is strongly recommended to
 set default `par2` arguments for the `create` command, to be reflecting your
 personal needs and situation. You can decide the default set of arguments to
 give to `par2` for any of the par2cron commands using either the configuration
-file or appending them as `[-- par2-args...]`:
+file or appending them as `[-- par2-arg...]`:
 
 ```bash
 par2cron create /mnt/storage -- -r15 -n1
