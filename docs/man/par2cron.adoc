@@ -298,7 +298,7 @@ Where applicable, use same configuration values for *info* as used for *verify*;
 this ensures that configuration analysis is done on actual verification
 arguments.
 
-== PASSING PAR2 ARGUMENTS
+== PAR2 ARGUMENTS
 
 The special separator `--` can be used at the end of any supporting command to
 pass raw arguments directly to the underlying *par2*(1) executable. These will
@@ -313,7 +313,7 @@ and 1 recovery file.
 Supported flags can be found at:
 https://github.com/Parchive/par2cmdline#par2cmdline
 
-== FILE SELECTION
+== CREATION MODES
 
 The *--mode* flag controls how many PAR2 sets are created:
 
