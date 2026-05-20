@@ -23,7 +23,7 @@ To exclude directories from this operation, put ignore files:
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```
-par2cron bundle unpack [flags] <dir>... 
+par2cron bundle unpack [flags] <dir> [dir...]
 ```
 
 ### Options

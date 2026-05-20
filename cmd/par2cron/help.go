@@ -20,7 +20,7 @@ See 'par2cron <command> --help' for command-specific information.
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
-const checkConfigUsage = "check-config <file>"
+const checkConfigUsage = "check-config [flags] <file>"
 
 const checkConfigHelpShort = "Validates a par2cron YAML configuration file"
 
@@ -36,14 +36,14 @@ const checkConfigHelpExample = `
 Validate a par2cron YAML configuration file:
   par2cron check-config /tmp/par2cron.yaml`
 
-const createUsage = "create [flags] <dir>... [-- par2-args...]"
+const createUsage = "create [flags] <dir> [dir...] [-- par2-arg...]"
 
 const createHelpShort = "Creates PAR2 sets for directories with marker files"
 
 const createHelpLong = `Scans a directory tree for "_par2cron" marker files
 Creates PAR2 sets for directories containing a marker file
 
-Marker file name can be used to change default [-- par2-args]
+Marker file name can be used to change given [-- par2-arg...]
 for individual jobs. Example: "_par2cron_r30" changes default
 arguments of "-r15 -n1" to "-r30 -n1". "_par2cron_q" changes
 default arguments "-r15 -n1" to "-r15 -n1 -q". If no default
@@ -74,7 +74,7 @@ Pass "-r15 -n1" (15% redundancy, 1 recovery file) to par2:
 Run for around 1 hour (as soft limit), hide created files:
   par2cron create -d 1h --hidden /mnt/storage`
 
-const verifyUsage = "verify [flags] <dir>... [-- par2-args...]"
+const verifyUsage = "verify [flags] <dir> [dir...] [-- par2-arg...]"
 
 const verifyHelpShort = "Verifies the existing PAR2 sets found in a directory tree"
 
@@ -103,7 +103,7 @@ Verify all sets, argument "-q" (quiet mode) for par2:
 Verify sets not verified < 7 days, run around 2 hours:
   par2cron verify -a 7d -d 2h /mnt/storage`
 
-const repairUsage = "repair [flags] <dir>... [-- par2-args...]"
+const repairUsage = "repair [flags] <dir> [dir...] [-- par2-arg...]"
 
 const repairHelpShort = "Repairs any corrupted files using the PAR2 recovery data"
 
@@ -133,7 +133,7 @@ Repair all sets, argument "-q" (quiet mode) for par2:
 Repair repairable, verify after, run for around 1 hour:
   par2cron repair -d 1h -v /mnt/storage`
 
-const infoUsage = "info [flags] <dir>..."
+const infoUsage = "info [flags] <dir> [dir...]"
 
 const infoHelpShort = "Shows verification cycle and configuration statistics"
 
@@ -184,7 +184,7 @@ existing par2cron bundles, which these commands offer to do.
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
-const bundlePackUsage = "pack [flags] <dir>... "
+const bundlePackUsage = "pack [flags] <dir> [dir...]"
 
 const bundlePackHelpShort = "Packs all existing PAR2 sets of a folder into bundles"
 
@@ -202,7 +202,7 @@ To exclude directories from this operation, put ignore files:
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
-const bundleUnpackUsage = "unpack [flags] <dir>... "
+const bundleUnpackUsage = "unpack [flags] <dir> [dir...]"
 
 const bundleUnpackHelpShort = "Unpacks all existing bundles of a folder into PAR2 sets"
 

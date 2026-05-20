@@ -21,7 +21,7 @@ To exclude directories from this operation, put ignore files:
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```
-par2cron repair [flags] <dir>... [-- par2-args...]
+par2cron repair [flags] <dir> [dir...] [-- par2-arg...]
 ```
 
 ### Examples

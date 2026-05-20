@@ -16,7 +16,7 @@ To exclude directories from this operation, put ignore files:
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```
-par2cron info [flags] <dir>...
+par2cron info [flags] <dir> [dir...]
 ```
 
 ### Examples

@@ -20,7 +20,7 @@ To exclude directories from this operation, put ignore files:
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```
-par2cron verify [flags] <dir>... [-- par2-args...]
+par2cron verify [flags] <dir> [dir...] [-- par2-arg...]
 ```
 
 ### Examples

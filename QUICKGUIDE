@@ -68,7 +68,7 @@ three calling par2cron operations. However, it is strongly recommended to
 set default par2 arguments for the "create" command, to be reflecting your
 personal needs and situation. You can decide the default set of arguments to
 give to par2 for any of the par2cron commands using either the configuration
-file or appending them as "[-- par2-args...]". An example of the latter below:
+file or appending them as "[-- par2-arg...]". An example of the latter below:
 
   par2cron create /mnt/storage -- -r15 -n1
   par2cron verify /mnt/storage -- -q

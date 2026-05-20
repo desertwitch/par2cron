@@ -6,21 +6,21 @@ par2cron - PAR2 integrity and self-repair engine
 
 == SYNOPSIS
 
-*par2cron create* [_flags_] _dir_... [-- _par2-args_...]
+*par2cron create* [_flags_] _dir_ [_dir_...] [-- _par2-arg_...]
 
-*par2cron verify* [_flags_] _dir_... [-- _par2-args_...]
+*par2cron verify* [_flags_] _dir_ [_dir_...] [-- _par2-arg_...]
 
-*par2cron repair* [_flags_] _dir_... [-- _par2-args_...]
+*par2cron repair* [_flags_] _dir_ [_dir_...] [-- _par2-arg_...]
 
-*par2cron info* [_flags_] _dir_...
+*par2cron info* [_flags_] _dir_ [_dir_...]
 
-*par2cron bundle pack* [_flags_] _dir_...
+*par2cron bundle pack* [_flags_] _dir_ [_dir_...]
 
-*par2cron bundle unpack* [_flags_] _dir_...
+*par2cron bundle unpack* [_flags_] _dir_ [_dir_...]
 
 *par2cron tool md5* [_flags_] _par2file_ [_par2file_...]
 
-*par2cron check-config* _yamlfile_
+*par2cron check-config* _file_
 
 == DESCRIPTION
 

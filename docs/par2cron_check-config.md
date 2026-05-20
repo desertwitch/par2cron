@@ -13,7 +13,7 @@ this command will exit with non-zero if the validation fails.
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```
-par2cron check-config <file> [flags]
+par2cron check-config [flags] <file>
 ```
 
 ### Examples
