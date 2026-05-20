@@ -232,7 +232,7 @@ configuration file values. Validate configuration files before deployment using
 *create.args* _list_::
   Arguments passed to *par2*(1) during creation (default: []).
 *create.glob* _string_::
-  Glob pattern for files to include (default: "pass:[*]").
+  Glob pattern for files to include (default: `pass:[*]`).
 *create.duration* _duration_::
   Time budget per run, soft limit (default: none).
 *create.mode* _string_::
