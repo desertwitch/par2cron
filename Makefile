@@ -8,7 +8,13 @@ VERSION := $(shell \
   if [ -n "$$tag" ]; then echo $$tag | sed 's/^v//'; \
   else git rev-parse --short=7 HEAD; fi)
 
-.PHONY: all $(BINARY) benchmark check check-slop clean debug generate help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
+A2X = a2x
+A2X_FLAGS = -a version=$(VERSION)
+MAN_DIR = ./docs/man/
+MAN_ADOC = $(MAN_DIR)/par2cron.adoc
+COMPLETIONS_DIR = ./docs/completions/
+
+.PHONY: all $(BINARY) benchmark check check-slop clean debug docs docs-clean docs-man docs-pdf docs-text docs-completions generate help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
@@ -47,11 +53,38 @@ check-slop: ## Checks relevant text files for punctuation used by AI
 	fi
 
 clean: ## Returns the application build stage to its original state (deleting files)
+	@$(MAKE) docs-clean
+	@rm -vfr dist || true
 	@rm -vf $(BINARY) || true
 
 debug: ## Builds the application in debug mode (with symbols, race checks, ...)
 	CGO_ENABLED=1 GOFLAGS="-mod=vendor" go build -ldflags="-X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)-DBG" -trimpath -race -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
+
+docs: ## Builds all documentation (manpages, PDF, plain text)
+	@$(MAKE) docs-man
+	@$(MAKE) docs-pdf
+	@$(MAKE) docs-text
+	@$(MAKE) docs-completions
+
+docs-clean: ## Removes generated documentation files
+	@rm -vf $(MAN_DIR)/*.pdf $(MAN_DIR)/*.text $(MAN_DIR)/*.1 $(MAN_DIR)/*.8 $(MAN_DIR)/*.xml || true
+	@rm -vf $(COMPLETIONS_DIR)/* || true
+
+docs-completions: ## Generates shell completion scripts
+	@mkdir -p $(COMPLETIONS_DIR)
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go run $(SRC_DIR) completion bash > $(COMPLETIONS_DIR)/par2cron.bash
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go run $(SRC_DIR) completion zsh > $(COMPLETIONS_DIR)/par2cron.zsh
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go run $(SRC_DIR) completion fish > $(COMPLETIONS_DIR)/par2cron.fish
+
+docs-man: ## Builds manpage documentation
+	$(A2X) $(A2X_FLAGS) -f manpage $(MAN_ADOC)
+
+docs-pdf: ## Builds PDF documentation
+	$(A2X) $(A2X_FLAGS) -f pdf $(MAN_ADOC)
+
+docs-text: ## Builds plain text documentation
+	$(A2X) $(A2X_FLAGS) -f text $(MAN_ADOC)
 
 generate: ## Re-generate the static files that are used in tests
 	@go generate ./...

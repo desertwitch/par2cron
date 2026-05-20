@@ -1,0 +1,430 @@
+= par2cron(1)
+
+== NAME
+
+par2cron - PAR2 integrity and self-repair engine
+
+== SYNOPSIS
+
+*par2cron create* [_flags_] _dir_... [-- _par2-args_...]
+
+*par2cron verify* [_flags_] _dir_... [-- _par2-args_...]
+
+*par2cron repair* [_flags_] _dir_... [-- _par2-args_...]
+
+*par2cron info* [_flags_] _dir_...
+
+*par2cron bundle pack* [_flags_] _dir_...
+
+*par2cron bundle unpack* [_flags_] _dir_...
+
+*par2cron tool md5* [_flags_] _par2file_ [_par2file_...]
+
+*par2cron check-config* _yamlfile_
+
+== DESCRIPTION
+
+par2cron wraps *par2*(1) to provide automated integrity creation, verification
+and repair for directory trees. It scans for marker files named *_par2cron*,
+creates PAR2 parity sets for directories containing them, and periodically
+verifies and repairs protected data. Designed for non-changing
+write-once-read-many (WORM) files such as media libraries or backups.
+
+All state is stored locally next to the protected files, eliminating the need
+for a central database and allowing protected directories to be moved between
+systems. Concurrent operation on the same directory tree is safe, using
+kernel-enforced file locking to prevent interference between instances.
+
+== COMMANDS
+
+=== par2cron create
+
+Creates PAR2 sets for directories with marker files.
+
+*-b, --bundle*::
+  Bundle PAR2 sets into one file.
+*-c, --config* _string_::
+  Path to YAML configuration file.
+*-d, --duration* _duration_::
+  Time budget per run (soft limit).
+*-g, --glob* _string_::
+  Glob pattern for files to include (default `pass:[*]`).
+*--hidden*::
+  Create PAR2 files as hidden (dotfiles).
+*--json*::
+  Output logs in JSON format.
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+*-m, --mode* _mode_::
+  Creation mode: folder, nested, file, recursive (default folder).
+*-v, --verify*::
+  Verify PAR2 sets after creation.
+
+=== par2cron verify
+
+Verifies the existing PAR2 sets found in a directory tree.
+
+*-a, --age* _duration_::
+  Minimum time between re-verifications.
+*--cache* _string_::
+  Manifest cache directory; best on fast storage.
+  Use same cache folder for all supporting operations.
+*-i, --calc-run-interval* _duration_::
+  Verify run interval for backlog calculations (default 24h).
+*-c, --config* _string_::
+  Path to YAML configuration file.
+*-d, --duration* _duration_::
+  Time budget per run (soft limit).
+*-e, --include-external*::
+  Include PAR2 sets without a par2cron manifest.
+*--json*::
+  Output logs in JSON format.
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+*--skip-not-created*::
+  Skip sets without a creation record.
+
+=== par2cron repair
+
+Repairs data flagged as needing repair during verification.
+
+*-u, --attempt-unrepairables*::
+  Attempt repair on sets marked unrepairable.
+*--cache* _string_::
+  Manifest cache directory; best on fast storage.
+  Use same cache folder for all supporting operations.
+*-c, --config* _string_::
+  Path to YAML configuration file.
+*-d, --duration* _duration_::
+  Time budget per run (soft limit).
+*--json*::
+  Output logs in JSON format.
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+*-t, --min-tested* _int_::
+  Require N corrupted verifications before repair.
+*-p, --purge-backups*::
+  Remove backup files after successful repair.
+*-r, --restore-backups*::
+  Restore backups after unsuccessful repair.
+*--skip-not-created*::
+  Skip sets without a creation record.
+*-v, --verify*::
+  Verify PAR2 sets after repair.
+
+=== par2cron info
+
+Shows verification cycle statistics and configuration analysis.
+
+*-a, --age* _duration_::
+  Target cycle length.
+*--cache* _string_::
+  Manifest cache directory; best on fast storage.
+  Use same cache folder for all supporting operations.
+*-i, --calc-run-interval* _duration_::
+  Verify run interval (default 24h).
+*-c, --config* _string_::
+  Path to YAML configuration file.
+*-d, --duration* _duration_::
+  Target time budget per verify run.
+*-e, --include-external*::
+  Include external PAR2 sets.
+*--json*::
+  Output in JSON format (result to stdout, logs to stderr).
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+*--skip-not-created*::
+  Skip sets without a creation record.
+
+=== par2cron bundle pack
+
+Packs all existing PAR2 sets of a folder into bundles.
+
+*-e, --include-external*::
+  Include PAR2 sets without a par2cron manifest.
+*--json*::
+  Output logs in JSON format.
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+*--skip-not-created*::
+  Skip sets without a creation record.
+
+=== par2cron bundle unpack
+
+Unpacks all existing bundles of a folder into PAR2 sets.
+
+*--force*::
+  Proceed regardless of errors or corruption.
+*--json*::
+  Output logs in JSON format.
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+
+=== par2cron tool md5
+
+Extracts and displays MD5 checksums from PAR2 files.
+
+=== par2cron check-config
+
+Validates a par2cron YAML configuration file.
+
+== EXIT CODES
+
+*0*::
+  Success. All operations completed successfully.
+*1*::
+  Partial failure. One or more tasks failed, but the process continued.
+*2*::
+  Bad invocation. Invalid command-line arguments or configuration error.
+*3*::
+  Repairable. Corruption detected, but parity data is sufficient to repair.
+*4*::
+  Unrepairable. Corruption detected that exceeds available redundancy.
+*5*::
+  Unclassified. An unexpected or unknown error occurred.
+*143*::
+  Interrupted. The operation was interrupted (SIGINT or SIGTERM).
+
+Interrupting par2cron with *SIGTERM* or *SIGINT* is safe. The current job is
+aborted when safe to do so, in-flight PAR2 sets are cleaned up, and the next
+run picks the job up again. Completed work is not lost.
+
+== OUTPUT STREAMS
+
+par2cron logs are written to standard error (*stderr*) using structured logging
+(text or JSON). Output from the *par2*(1) program is written to standard output
+(*stdout*). The *info* command writes its result to *stdout* and structured
+logs to *stderr*.
+
+== FILES
+
+*_par2cron*::
+  Marker file. Place in a directory to request PAR2 creation.
+  May contain YAML directives for per-job configuration overrides.
+*pass:[_par2cron_]<args>*::
+  Marker file with argument modifiers (e.g. *_par2cron_r30*).
+*.par2cron-ignore*::
+  Ignore file. Excludes the containing directory from all operations.
+*.par2cron-ignore-all*::
+  Recursive ignore file.
+  Excludes the containing directory and all subdirectories.
+*<name>.par2*::
+  PAR2 index file; created by *par2*(1).
+*<name>.vol__NN__+__NN__.par2*::
+  PAR2 recovery volumes; created by *par2*(1).
+*<name>.par2.json*::
+  par2cron manifest. Stores verification state, creation records and metadata.
+*<name>.par2.lock*::
+  par2cron lockfile. Prevents concurrent access to the same PAR2 set.
+*<name>.p2c.par2*::
+  par2cron bundle. Single file containing PAR2 data and embedded manifest.
+*par2cron.yaml*::
+  Global YAML configuration file. Optional and passed via *-c, --config*.
+
+== CONFIGURATION
+
+par2cron accepts an optional global YAML configuration file via *-c, --config*.
+The configuration is structured into sections matching the command names:
+*create*, *verify*, *repair*, and *info*. CLI flags take precedence over
+configuration file values. Validate configuration files before deployment using
+*par2cron check-config*.
+
+*create.args* _list_::
+  Arguments passed to *par2*(1) during creation (default: []).
+*create.glob* _string_::
+  Glob pattern for files to include (default: "pass:[*]").
+*create.duration* _duration_::
+  Time budget per run, soft limit (default: none).
+*create.mode* _string_::
+  Creation mode: folder, nested, file, recursive (default: "folder").
+*create.verify* _bool_::
+  Verify PAR2 sets after creation (default: false).
+*create.hidden* _bool_::
+  Create PAR2 files as hidden dotfiles (default: false).
+*create.bundle* _bool_::
+  Bundle PAR2 sets into single files (default: false).
+
+*verify.args* _list_::
+  Arguments passed to *par2*(1) during verification (default: []).
+*verify.age* _duration_::
+  Minimum time between re-verifications (default: none).
+*verify.duration* _duration_::
+  Time budget per run, soft limit (default: none).
+*verify.include-external* _bool_::
+  Include PAR2 sets without a par2cron manifest (default: false).
+*verify.skip-not-created* _bool_::
+  Skip sets without a creation record (default: false).
+*verify.calc-run-interval* _duration_::
+  Verify run interval for backlog calculations (default: "24h").
+*verify.cache* _string_::
+  Manifest cache directory (default: disabled).
+
+*repair.args* _list_::
+  Arguments passed to *par2*(1) during repair (default: []).
+*repair.verify* _bool_::
+  Verify PAR2 sets after repair (default: false).
+*repair.duration* _duration_::
+  Time budget per run, soft limit (default: none).
+*repair.min-tested* _int_::
+  Require N corrupted verifications before repair (default: 0).
+*repair.skip-not-created* _bool_::
+  Skip sets without a creation record (default: false).
+*repair.attempt-unrepairables* _bool_::
+  Attempt repair on sets marked unrepairable (default: false).
+*repair.purge-backups* _bool_::
+  Remove backup files after successful repair (default: false).
+*repair.restore-backups* _bool_::
+  Restore backups after unsuccessful repair (default: false).
+*repair.cache* _string_::
+  Manifest cache directory (default: disabled).
+
+*info.age* _duration_::
+  Target cycle length (default: none).
+*info.duration* _duration_::
+  Target time budget per verify run (default: none).
+*info.include-external* _bool_::
+  Include external PAR2 sets (default: false).
+*info.skip-not-created* _bool_::
+  Skip sets without a creation record (default: false).
+*info.calc-run-interval* _duration_::
+  Verify run interval (default: "24h").
+*info.cache* _string_::
+  Manifest cache directory (default: disabled).
+
+All sections also accept *log-level* (debug, info, warn, error) and *json*
+(bool) for log output control.
+
+Where applicable, use same configuration values for *info* as used for *verify*;
+this ensures that configuration analysis is done on actual verification
+arguments.
+
+== PASSING PAR2 ARGUMENTS
+
+The special separator `--` can be used at the end of any supporting command to
+pass raw arguments directly to the underlying *par2*(1) executable. These will
+be treated as the defaults for the respective operation, but can be overridden
+for individual creation jobs using the marker filename modifiers/configuration.
+
+Anything following `--` bypasses par2cron internal flag parsing and is appended
+verbatim to the *par2*(1) command line. For example, `par2cron create /data --
+-r15 -n1` forces *par2*(1) to use `-r15 -n1` creating sets with 15% redundancy
+and 1 recovery file.
+
+Supported flags can be found at:
+https://github.com/Parchive/par2cmdline#par2cmdline
+
+== FILE SELECTION
+
+The *--mode* flag controls how many PAR2 sets are created:
+
+*folder* (default)::
+  One PAR2 set for all matching files.
+*nested*::
+  One PAR2 set per folder containing matching files.
+*file*::
+  One PAR2 set per matching file.
+*recursive*::
+  One PAR2 set, delegating recursion to *par2*(1) via *-R*.
+
+In *folder* and *recursive* modes, the PAR2 set is placed in the marker
+directory. In *nested* mode, each PAR2 set is placed in the folder it protects.
+In *file* mode, each PAR2 set is placed next to the file it protects.
+
+The *--glob* flag controls which files are protected (default: `pass:[*]`).
+Shallow patterns (`pass:[*]`, `pass:[*.jpg]`) match within the marker directory
+only. Deep patterns containing `/` or `pass:[**]` cross directory boundaries,
+allowing *folder*, *nested* and *file* modes to match across subfolders. Deep
+patterns are not supported in *recursive* mode.
+
+== MARKER MODIFIERS
+
+Appending *par2*(1) arguments to the marker filename, separated by underscores,
+modifies the default creation arguments for that individual job.
+
+  _par2cron_r30::
+    Replaces *-rN* default with *-r30*.
+  _par2cron_q::
+    Adds *-q* to defaults.
+  _par2cron_r30_q::
+    Replaces *-rN* with *-r30* and adds *-q*.
+  _par2cron_R::
+    Adds *-R* and forces *recursive* creation mode.
+
+== MARKER CONFIGURATION
+
+Marker files may contain YAML directives to override defaults for individual
+creation jobs. All directives are optional.
+
+*name* _string_::
+  Override PAR2 set name. Does not apply in file mode.
+*args* _list_::
+  Replace default *par2*(1) arguments entirely.
+*glob* _string_::
+  Override glob pattern for file matching.
+*mode* _string_::
+  Override creation mode: folder, nested, file, recursive.
+*verify* _bool_::
+  Verify PAR2 set after creation.
+*hidden* _bool_::
+  Create PAR2 files as hidden dotfiles.
+*persist* _bool_::
+  Do not delete marker file after creation.
+*bundle* _bool_::
+  Bundle PAR2 set into a single file.
+
+== VERIFICATION SCHEDULING
+
+When running with *--age* and *--duration*, par2cron builds a prioritized work
+queue. Jobs are filtered by age, then sorted: no manifest (0), never verified
+(1), needing repair (2), regular by oldest verification (3). The queue is
+trimmed to fit *--duration*, with the first job always taken regardless of
+estimated duration to prevent starvation. A backlog warning is emitted when
+total work exceeds the capacity of *--age* divided by *--calc-run-interval*.
+*--duration* is a soft limit; for a hard limit, wrap par2cron in *timeout*(1).
+
+== EXAMPLES
+
+Basic crontab setup:
+
+  0 1 * * * par2cron create /mnt/storage
+  0 3 * * * par2cron verify /mnt/storage
+  0 5 * * * par2cron repair /mnt/storage
+
+Create with 15% redundancy and 1 recovery file:
+
+  par2cron create /mnt/storage -- -r15 -n1
+
+Verify with 7-day cycle, 2-hour soft budget:
+
+  par2cron verify -a 7d -d 2h /mnt/storage
+
+Repair only after 3 corrupted verifications, 1-hour budget:
+
+  par2cron repair -t 3 -d 1h /mnt/storage
+
+Use a global configuration file:
+
+  par2cron create -c /etc/par2cron.yaml /mnt/storage
+
+== LIMITATIONS
+
+par2cron is designed for non-changing data. Updated files are flagged as
+corruption; delete the PAR2 set and recreate via marker file to update.
+
+Symbolic links are not supported by *par2*(1) and are skipped with a warning.
+Glob patterns requiring symlink traversal are rejected.
+
+Shared network locations must only be accessed by one par2cron instance at a
+time. The lockfile mechanism is local to each computer.
+
+== SEE ALSO
+
+*par2*(1), *crontab*(5), *timeout*(1)
+
+https://github.com/desertwitch/par2cron
+
+== VERSION
+
+This document was last changed on: *{docdate} {doctime}*
+
+This document was built for program version (or commit): *{version}*

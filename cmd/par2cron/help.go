@@ -230,7 +230,7 @@ const toolHelpShort = "Useful utility commands for interacting with PAR2 files"
 
 const toolMD5Usage = "md5 [flags] <par2file> [par2file...]"
 
-const toolMD5HelpShort = "Print MD5 hashes of files protected by PAR2 sets"
+const toolMD5HelpShort = "Extracts and displays MD5 checksums from PAR2 files"
 
 const toolMD5HelpExample = `
 Print MD5 hashes for all PAR2 files in a directory:
