@@ -8,6 +8,7 @@ before:
     - make vendor
     - make lint
     - make test
+    - make docs
 
 builds:
   - id: par2cron
@@ -37,9 +38,22 @@ source:
 archives:
   -
     files:
+      - README.md
       - QUICKGUIDE
       - LICENSE
       - par2cron.yaml
+      - src: docs/man/par2cron.1
+        dst: man/par2cron.1
+      - src: docs/man/par2cron.pdf
+        dst: man/par2cron.pdf
+      - src: docs/man/par2cron.text
+        dst: man/par2cron.txt
+      - src: docs/completions/par2cron.bash
+        dst: completions/par2cron.bash
+      - src: docs/completions/par2cron.fish
+        dst: completions/par2cron.fish
+      - src: docs/completions/par2cron.zsh
+        dst: completions/par2cron.zsh
 
 signs:
   - artifacts: checksum

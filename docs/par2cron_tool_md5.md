@@ -1,6 +1,6 @@
 ## par2cron tool md5
 
-Print MD5 hashes of files protected by PAR2 sets
+Extracts and displays MD5 checksums from PAR2 files
 
 ```
 par2cron tool md5 [flags] <par2file> [par2file...]

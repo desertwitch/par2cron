@@ -1,11 +1,13 @@
+TODO
+dist/
+docs/completions
+docs/man/*
+!docs/man/*.adoc
 /config.yaml
 /coverage.tmp
 /coverage.txt
 /output*
 /par2cron
 /slack-desc
-TODO
 /vendor
 /update-devel.sh
-# Added by goreleaser init:
-dist/
