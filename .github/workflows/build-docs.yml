@@ -1,0 +1,31 @@
+name: build-docs
+on:
+  push:
+    branches:
+      - master
+      - main
+      - devel
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  par2cron:
+    name: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: 'go.mod'
+        cache: false
+
+    - name: Install Asciidoc
+      run: sudo apt-get update && sudo apt-get install -y asciidoc w3m
+
+    - name: Clean the environment
+      run: make clean
+
+    - name: Build the documentation
+      run: make docs
