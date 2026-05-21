@@ -118,13 +118,15 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 		js.JobCount, js.KnownCount, js.UnknownCount)
 	fmt.Fprintf(prog.log.Options.Stdout, "Total jobs status: %d healthy, %d repairable, %d unrepairable, %d unverified\n",
 		js.Healthies, js.Repairables, js.Unrepairables, js.Unverifieds)
-	fmt.Fprintf(prog.log.Options.Stdout, "Total verification time: %s\n", util.FmtDur(js.TotalDuration))
-	fmt.Fprintf(prog.log.Options.Stdout, "Average job duration: %s\n", util.FmtDur(js.AvgDuration))
+	fmt.Fprintf(prog.log.Options.Stdout, "\n")
+
+	fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Total verification time:", util.FmtDur(js.TotalDuration))
+	fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Average job duration:", util.FmtDur(js.AvgDuration))
 	if !js.FirstVerification.IsZero() {
-		fmt.Fprintf(prog.log.Options.Stdout, "First verification time: %s\n", js.FirstVerification.Format(time.RFC1123))
+		fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Earliest verification time:", js.FirstVerification.Format(time.RFC1123))
 	}
 	if !js.LastVerification.IsZero() {
-		fmt.Fprintf(prog.log.Options.Stdout, "Last verification time: %s\n", js.LastVerification.Format(time.RFC1123))
+		fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Latest verification time:", js.LastVerification.Format(time.RFC1123))
 	}
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
