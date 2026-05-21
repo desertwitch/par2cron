@@ -74,6 +74,9 @@ type Summary struct {
 	// TotalDuration is the sum of all known verification durations.
 	TotalDuration time.Duration `json:"total_duration_ns"`
 
+	// FirstVerification is the timestamp of the oldest verification.
+	FirstVerification *time.Time `json:"first_verification,omitempty"`
+
 	// LastVerification is the timestamp of the most recent verification.
 	LastVerification *time.Time `json:"last_verification,omitempty"`
 
@@ -243,6 +246,9 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		AvgDuration:   js.AvgDuration,
 	}
 
+	if !js.FirstVerification.IsZero() {
+		result.Summary.FirstVerification = &js.FirstVerification
+	}
 	if !js.LastVerification.IsZero() {
 		result.Summary.LastVerification = &js.LastVerification
 	}

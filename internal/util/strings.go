@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidscholberg/go-durationfmt"
 	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/hako/durafmt"
 )
 
 func IsPar2Index(path string) bool {
@@ -113,14 +113,7 @@ func TrimSuffixFold(s, suffix string) string {
 }
 
 func FmtDur(d time.Duration) string {
-	d = d.Round(time.Second)
-
-	str, err := durationfmt.Format(d, "%d days, %h hours %m minutes %s seconds")
-	if err != nil {
-		return "?"
-	}
-
-	return str
+	return durafmt.Parse(d.Round(time.Second)).String()
 }
 
 func IsGlobRecursive(pattern string) bool {

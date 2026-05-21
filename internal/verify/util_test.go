@@ -80,6 +80,7 @@ func Test_Service_Stats_Success(t *testing.T) {
 	require.Equal(t, 1, js.Unrepairables)
 	require.Equal(t, 15*time.Minute, js.TotalDuration)
 	require.Equal(t, 7*time.Minute+30*time.Second, js.AvgDuration)
+	require.True(t, js.FirstVerification.Equal(timeB))
 	require.True(t, js.LastVerification.Equal(timeA))
 }
 
