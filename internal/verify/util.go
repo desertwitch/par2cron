@@ -8,18 +8,19 @@ import (
 )
 
 type Stats struct {
-	JobCount         int
-	UnknownCount     int
-	KnownCount       int
-	Unverifieds      int
-	Healthies        int
-	Repairables      int
-	Unrepairables    int
-	AvgDuration      time.Duration
-	TotalDuration    time.Duration
-	LargestJob       *schema.JobMeta
-	LargestDuration  time.Duration
-	LastVerification time.Time
+	JobCount          int
+	UnknownCount      int
+	KnownCount        int
+	Unverifieds       int
+	Healthies         int
+	Repairables       int
+	Unrepairables     int
+	AvgDuration       time.Duration
+	TotalDuration     time.Duration
+	LargestJob        *schema.JobMeta
+	LargestDuration   time.Duration
+	FirstVerification time.Time
+	LastVerification  time.Time
 }
 
 func (prog *Service) Stats(metas []*JobMeta) Stats {
@@ -51,7 +52,10 @@ func (prog *Service) Stats(metas []*JobMeta) Stats {
 			js.Healthies++
 		}
 
-		if meta.HasVerification {
+		if meta.HasVerification && !meta.VerifyTime.IsZero() {
+			if js.FirstVerification.IsZero() || meta.VerifyTime.Before(js.FirstVerification) {
+				js.FirstVerification = meta.VerifyTime
+			}
 			if meta.VerifyTime.After(js.LastVerification) {
 				js.LastVerification = meta.VerifyTime
 			}

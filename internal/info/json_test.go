@@ -297,7 +297,9 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 	require.Equal(t, 1, result.Summary.JobCount)
 	require.Equal(t, 1, result.Summary.KnownCount)
 	require.Equal(t, 5*time.Minute, result.Summary.TotalDuration)
+	require.NotNil(t, result.Summary.FirstVerification)
 	require.NotNil(t, result.Summary.LastVerification)
+	require.NotZero(t, *result.Summary.FirstVerification)
 	require.NotZero(t, *result.Summary.LastVerification)
 }
 
@@ -339,6 +341,7 @@ func Test_Service_PrintJSON_WithJobs_ZeroLastVerified_Success(t *testing.T) {
 	require.Equal(t, 1, result.Summary.JobCount)
 	require.Equal(t, 1, result.Summary.KnownCount)
 	require.Equal(t, 5*time.Minute, result.Summary.TotalDuration)
+	require.Nil(t, result.Summary.FirstVerification)
 	require.Nil(t, result.Summary.LastVerification)
 }
 
