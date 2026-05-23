@@ -204,7 +204,20 @@ func Test_NewToolCmd_HasMD5Command_Success(t *testing.T) {
 	require.Equal(t, "md5", toolMD5Cmd.Name())
 }
 
-// Expectation: The root command should have a "check-config" subcommand.
+// Expectation: The root command should have a "gen-markdown" subcommand.
+func Test_NewRootCmd_HasGenMarkdownCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	genMarkdownCmd, _, err := cmd.Find([]string{"gen-markdown"})
+
+	require.NoError(t, err)
+	require.NotNil(t, genMarkdownCmd)
+	require.Equal(t, "gen-markdown", genMarkdownCmd.Name())
+}
+
+// Expectation: The root command should have a "bundle" subcommand.
 func Test_NewRootCmd_HasBundleCommand_Success(t *testing.T) {
 	t.Parallel()
 
