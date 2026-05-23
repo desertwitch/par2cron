@@ -10,11 +10,12 @@ VERSION := $(shell \
 
 A2X = a2x
 A2X_FLAGS = -a version=$(VERSION)
-MAN_DIR = ./docs/man/
+DOCS_DIR = ./docs
+MAN_DIR = $(DOCS_DIR)/man
 MAN_ADOC = $(MAN_DIR)/par2cron.adoc
-COMPLETIONS_DIR = ./docs/completions/
+COMPLETIONS_DIR = $(DOCS_DIR)/completions
 
-.PHONY: all $(BINARY) benchmark check check-slop clean debug docs docs-clean docs-man docs-pdf docs-text docs-completions generate help info lint test test-fuzz-quick test-fuzz-long test-coverage vendor
+.PHONY: all $(BINARY) benchmark check check-slop clean debug docs docs-clean docs-man docs-markdown docs-pdf docs-text docs-completions generate help info is-clean lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
@@ -61,11 +62,12 @@ debug: ## Builds the application in debug mode (with symbols, race checks, ...)
 	CGO_ENABLED=1 GOFLAGS="-mod=vendor" go build -ldflags="-X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)-DBG" -trimpath -race -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
 
-docs: ## Builds all documentation (manpages, PDF, plain text)
+docs: ## Builds all documentation (manpages, markdown, PDF, plain text)
 	@$(MAKE) docs-man
 	@$(MAKE) docs-pdf
 	@$(MAKE) docs-text
 	@$(MAKE) docs-completions
+	@$(MAKE) docs-markdown
 
 docs-clean: ## Removes generated documentation files
 	@rm -vf $(MAN_DIR)/*.pdf $(MAN_DIR)/*.text $(MAN_DIR)/*.1 $(MAN_DIR)/*.8 $(MAN_DIR)/*.xml || true
@@ -79,6 +81,9 @@ docs-completions: ## Generates shell completion scripts
 
 docs-man: ## Builds manpage documentation
 	$(A2X) $(A2X_FLAGS) -f manpage $(MAN_ADOC)
+
+docs-markdown: ## Generates the markdown documentation
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go run $(SRC_DIR) gen-markdown $(DOCS_DIR)
 
 docs-pdf: ## Builds PDF documentation
 	$(A2X) $(A2X_FLAGS) -f pdf $(MAN_ADOC)
@@ -95,6 +100,13 @@ help: ## Shows all build related commands of the Makefile
 info: ## Shows information about the application binaries that were built
 	@ldd $(BINARY) || true
 	@file $(BINARY)
+
+is-clean: ## Checks if the git tree is clean (e.g. before release)
+	@if ! git diff --quiet; then \
+		echo "ERROR: tree is not clean - commit the changes"; \
+		git diff --stat; \
+		exit 1; \
+	fi
 
 lint: ## Runs the linter on the application code
 	@golangci-lint cache clean

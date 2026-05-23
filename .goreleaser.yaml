@@ -9,6 +9,7 @@ before:
     - make lint
     - make test
     - make docs
+    - make is-clean
 
 builds:
   - id: par2cron

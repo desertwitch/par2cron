@@ -53,6 +53,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/verify"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 )
 
 var (
@@ -107,11 +108,12 @@ func wrapArgsError(validator cobra.PositionalArgs) cobra.PositionalArgs {
 // newRootCmd returns the primary [cobra.Command] pointer for the program.
 func newRootCmd(ctx context.Context) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:          rootUsage,
-		Short:        rootHelpShort,
-		Long:         rootHelpLong,
-		Version:      schema.ProgramVersion,
-		SilenceUsage: true,
+		Use:               rootUsage,
+		Short:             rootHelpShort,
+		Long:              rootHelpLong,
+		Version:           schema.ProgramVersion,
+		SilenceUsage:      true,
+		DisableAutoGenTag: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			pp, _ := cmd.Flags().GetString("pprof")
 			if pp != "" {
@@ -155,10 +157,27 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	toolCmd := newToolCmd()
 	bundleCmd := newBundleCmd(ctx)
 	checkConfigCmd := newCheckConfigCmd(ctx)
+	genMarkdownCmd := newGenMarkdownCmd(rootCmd)
 
-	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, toolCmd, bundleCmd, checkConfigCmd)
+	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, toolCmd, bundleCmd, checkConfigCmd, genMarkdownCmd)
 
 	return rootCmd
+}
+
+func newGenMarkdownCmd(rootCmd *cobra.Command) *cobra.Command {
+	return &cobra.Command{
+		Use:    "gen-markdown [flags] <dir>",
+		Short:  "Generates the markdown documentation",
+		Args:   wrapArgsError(cobra.MinimumNArgs(1)),
+		Hidden: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			if err := doc.GenMarkdownTree(rootCmd, args[0]); err != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
+			return nil
+		},
+	}
 }
 
 func newToolCmd() *cobra.Command {
@@ -716,7 +735,6 @@ func main() {
 	})
 
 	rootCmd := newRootCmd(ctx)
-	// _ = doc.GenMarkdownTree(rootCmd, "./docs/")
 	err := rootCmd.Execute()
 	exitCode = schema.ExitCodeFor(err)
 }
