@@ -168,7 +168,7 @@ func newGenMarkdownCmd(rootCmd *cobra.Command) *cobra.Command {
 	return &cobra.Command{
 		Use:    "gen-markdown [flags] <dir>",
 		Short:  "Generates the markdown documentation",
-		Args:   wrapArgsError(cobra.MinimumNArgs(1)),
+		Args:   wrapArgsError(cobra.ExactArgs(1)),
 		Hidden: true,
 		RunE: func(_ *cobra.Command, args []string) error {
 			if err := doc.GenMarkdownTree(rootCmd, args[0]); err != nil {
