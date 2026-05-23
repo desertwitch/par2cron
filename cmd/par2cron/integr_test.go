@@ -397,3 +397,48 @@ func Test_Integration_BundlePackUnpack_Repair_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "hello world\n", string(restored))
 }
+
+// Expectation: The "tool md5" command should output MD5 checksums for PAR2 files.
+//
+//nolint:paralleltest
+func Test_Integration_ToolMD5Cmd_Success(t *testing.T) {
+	dir := setupTestDir(t)
+
+	createCmd := newRootCmd(t.Context())
+	createCmd.SetArgs([]string{"create", dir})
+	require.NoError(t, createCmd.Execute())
+
+	matches, err := filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches, "expected par2 files to be created")
+
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs(append([]string{"tool", "md5"}, matches...))
+	require.NoError(t, cmd.Execute())
+}
+
+// Expectation: The "gen-markdown" command should generate markdown documentation.
+//
+//nolint:paralleltest
+func Test_Integration_GenMarkdownCmd_Success(t *testing.T) {
+	dir := t.TempDir()
+
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"gen-markdown", dir})
+	require.NoError(t, cmd.Execute())
+
+	matches, err := filepath.Glob(filepath.Join(dir, "*.md"))
+	require.NoError(t, err)
+	require.NotEmpty(t, matches, "expected markdown files to be generated")
+}
+
+// Expectation: The "gen-markdown" command should fail when given a non-existing directory.
+//
+//nolint:paralleltest
+func Test_Integration_GenMarkdownCmd_NonexistentDir_Error(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "nonexistent")
+
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"gen-markdown", dir})
+	require.ErrorIs(t, cmd.Execute(), schema.ErrExitBadInvocation)
+}
