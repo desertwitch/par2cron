@@ -272,6 +272,48 @@ func Test_Job_lastVerified_WithVerification_Success(t *testing.T) {
 	require.Equal(t, now, t0)
 }
 
+// Expectation: A dash should be printed if no manifest exists.
+func Test_Job_lastVerifiedStr_NoManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	meta := &JobMeta{&schema.JobMeta{}}
+	result := meta.lastVerifiedStr()
+
+	require.Equal(t, "-", result)
+}
+
+// Expectation: A dash should be printed if no verification exists.
+func Test_Job_lastVerifiedStr_NoVerification_Success(t *testing.T) {
+	t.Parallel()
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest: true,
+		},
+	}
+	result := meta.lastVerifiedStr()
+
+	require.Equal(t, "-", result)
+}
+
+// Expectation: The correct time string should be returned for the verification time.
+func Test_Job_lastVerifiedStr_WithVerification_Success(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	meta := &JobMeta{
+		&schema.JobMeta{
+			HasManifest:     true,
+			HasVerification: true,
+			VerifyTime:      now,
+		},
+	}
+	result := meta.lastVerifiedStr()
+
+	require.NotEqual(t, "-", result)
+	require.Equal(t, now.String(), result)
+}
+
 // Expectation: A zero duration should be returned when no manifest exists.
 func Test_Job_lastDuration_NoManifest_Success(t *testing.T) {
 	t.Parallel()
