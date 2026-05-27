@@ -237,7 +237,10 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 		}
 
 		logger = prog.verificationLogger(ctx, job, nil)
-		logger.Info("Job started", "estDuration", meta.lastDurationStr())
+		logger.Info("Job started",
+			"estDuration", meta.lastDurationStr(),
+			"lastVerified", meta.lastVerifiedStr(),
+		)
 
 		if err := prog.RunVerify(ctx, job, false); err == nil {
 			if job.manifest.Verification.ExitCode == schema.Par2ExitCodeSuccess {

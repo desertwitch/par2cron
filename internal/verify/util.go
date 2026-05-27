@@ -94,6 +94,14 @@ func (meta *JobMeta) lastVerified() time.Time {
 	return meta.VerifyTime
 }
 
+func (meta *JobMeta) lastVerifiedStr() string {
+	if !meta.HasManifest || !meta.HasVerification {
+		return "-"
+	}
+
+	return meta.VerifyTime.String()
+}
+
 func (meta *JobMeta) lastDuration() time.Duration {
 	if !meta.HasManifest || !meta.HasVerification {
 		return 0
