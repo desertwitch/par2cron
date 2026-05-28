@@ -312,6 +312,7 @@ Usage:
   par2cron bundle [command]
 
 Available Commands:
+  info        Prints bundle information to standard output
   pack        Packs all existing PAR2 sets of a folder into bundles
   unpack      Unpacks all existing bundles of a folder into PAR2 sets
 

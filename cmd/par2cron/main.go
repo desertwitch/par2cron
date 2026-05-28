@@ -225,8 +225,9 @@ func newBundleCmd(ctx context.Context) *cobra.Command {
 
 	bundlePackCmd := newBundlePackCmd(ctx)
 	bundleUnpackCmd := newBundleUnpackCmd(ctx)
+	bundleInfoCmd := newBundleInfoCmd()
 
-	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd)
+	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd, bundleInfoCmd)
 
 	return bundleCmd
 }
@@ -328,6 +329,41 @@ func newBundleUnpackCmd(ctx context.Context) *cobra.Command {
 	bundleUnpackCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return bundleUnpackCmd
+}
+
+func newBundleInfoCmd() *cobra.Command {
+	var logSettings logging.Options
+
+	fsys := afero.NewOsFs()
+
+	_ = logSettings.LogLevel.Set("info")
+	logSettings.Logout = io.Discard
+	logSettings.Stdout = os.Stdout
+	logSettings.Stderr = os.Stderr
+
+	bundleInfoCmd := &cobra.Command{
+		Use:     bundleInfoUsage,
+		Short:   bundleInfoHelpShort,
+		Example: bundleInfoHelpExample,
+		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
+		RunE: func(_ *cobra.Command, args []string) error {
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
+
+			var errs []error
+			for _, arg := range args {
+				if err := prog.BundlerService.OutputJSON(arg); err != nil {
+					errs = append(errs, fmt.Errorf("%s: %w", arg, err))
+				}
+			}
+			if len(errs) > 0 {
+				return fmt.Errorf("bundle: info: %w", errors.Join(errs...))
+			}
+
+			return nil
+		},
+	}
+
+	return bundleInfoCmd
 }
 
 func newCheckConfigCmd(_ context.Context) *cobra.Command {

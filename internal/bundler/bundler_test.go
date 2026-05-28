@@ -2143,3 +2143,344 @@ func Test_onlyContains_SingleJoined_Success(t *testing.T) {
 	err := errors.Join(bundle.ErrDataCorrupt)
 	require.True(t, onlyContains(err, bundle.ErrDataCorrupt))
 }
+
+// Expectation: The function should output valid JSON with bundle, manifest, and no errors.
+func Test_Service_OutputJSON_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	manifestJSON := []byte(`{"name":"test.par2"}`)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestJSON, nil
+		},
+		ValidateFunc: func(strict bool) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.NotNil(t, result["Bundle"])
+	require.NotNil(t, result["Manifest"])
+	require.Empty(t, result["ManifestError"])
+	require.Empty(t, result["ValidationError"])
+}
+
+// Expectation: The function should return an error when opening the bundle fails.
+func Test_Service_OutputJSON_OpenFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return nil, errors.New("corrupt file")
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.ErrorContains(t, err, "failed to open")
+}
+
+// Expectation: The function should include the manifest error in the output and return it.
+func Test_Service_OutputJSON_ManifestError_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return []byte(`{"name":"test.par2"}`), errors.New("manifest corrupt")
+		},
+		ValidateFunc: func(strict bool) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.ErrorContains(t, err, "manifest corrupt")
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.Equal(t, "manifest corrupt", result["ManifestError"])
+	require.NotNil(t, result["Manifest"])
+	require.NotEmpty(t, result["Manifest"])
+}
+
+// Expectation: The function should include the validation error in the output and return it.
+func Test_Service_OutputJSON_ValidationError_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	manifestJSON := []byte(`{"name":"test.par2"}`)
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return manifestJSON, nil
+		},
+		ValidateFunc: func(strict bool) error {
+			return errors.New("validation failed")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.ErrorContains(t, err, "validation failed")
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.Equal(t, "validation failed", result["ValidationError"])
+	require.NotNil(t, result["Manifest"])
+}
+
+// Expectation: Both manifest and validation errors should be joined and returned.
+func Test_Service_OutputJSON_BothErrors_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return nil, errors.New("manifest corrupt")
+		},
+		ValidateFunc: func(strict bool) error {
+			return errors.New("validation failed")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.ErrorContains(t, err, "manifest corrupt")
+	require.ErrorContains(t, err, "validation failed")
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.Equal(t, "manifest corrupt", result["ManifestError"])
+	require.Equal(t, "validation failed", result["ValidationError"])
+}
+
+// Expectation: A nil manifest with no error should produce null Manifest in JSON output.
+func Test_Service_OutputJSON_NilManifest_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return nil, nil
+		},
+		ValidateFunc: func(strict bool) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.Nil(t, result["Manifest"])
+	require.Empty(t, result["ManifestError"])
+}
+
+// Expectation: The function should pass strict=true to Validate.
+func Test_Service_OutputJSON_ValidateCalledStrict_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var capturedStrict bool
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return []byte(`{}`), nil
+		},
+		ValidateFunc: func(strict bool) error {
+			capturedStrict = strict
+
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.NoError(t, err)
+	require.True(t, capturedStrict)
+}
+
+// Expectation: Invalid JSON manifest bytes should result in null Manifest in the output.
+func Test_Service_OutputJSON_InvalidManifestJSON_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return []byte("not valid json"), nil
+		},
+		ValidateFunc: func(strict bool) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.NoError(t, err)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.Nil(t, result["Manifest"])
+	require.Empty(t, result["ManifestError"])
+}
