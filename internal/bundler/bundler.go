@@ -103,6 +103,7 @@ func (prog *Service) OutputJSON(bundlePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
 	}
+	defer bun.Close()
 
 	result := struct {
 		Bundle          any             `json:"Bundle"`
