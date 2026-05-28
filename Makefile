@@ -102,14 +102,9 @@ info: ## Shows information about the application binaries that were built
 	@file $(BINARY)
 
 is-clean: ## Checks if the git tree is clean (e.g. before release)
-	@if ! git diff --quiet; then \
+	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "ERROR: tree is not clean - commit the changes"; \
-		git diff --stat; \
-		exit 1; \
-	fi
-	@if [ -n "$$(git ls-files --others --exclude-standard)" ]; then \
-		echo "ERROR: tree contains untracked files"; \
-		git ls-files --others --exclude-standard; \
+		git status --short; \
 		exit 1; \
 	fi
 
