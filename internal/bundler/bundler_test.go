@@ -2186,10 +2186,10 @@ func Test_Service_OutputJSON_Success(t *testing.T) {
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
-	require.NotNil(t, result["Bundle"])
-	require.NotNil(t, result["Manifest"])
-	require.Empty(t, result["ManifestError"])
-	require.Empty(t, result["ValidationError"])
+	require.NotEmpty(t, result["Bundle"])
+	require.NotEmpty(t, result["Manifest"])
+	require.NotContains(t, result, "ManifestError")
+	require.NotContains(t, result, "ValidationError")
 }
 
 // Expectation: The function should return an error when opening the bundle fails.
@@ -2258,9 +2258,9 @@ func Test_Service_OutputJSON_ManifestError_Error(t *testing.T) {
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
-	require.Equal(t, "manifest corrupt", result["ManifestError"])
-	require.NotNil(t, result["Manifest"])
+	require.NotEmpty(t, result["Bundle"])
 	require.NotEmpty(t, result["Manifest"])
+	require.Equal(t, "manifest corrupt", result["ManifestError"])
 }
 
 // Expectation: The function should include the validation error in the output and return it.
@@ -2305,8 +2305,9 @@ func Test_Service_OutputJSON_ValidationError_Error(t *testing.T) {
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.NotEmpty(t, result["Bundle"])
+	require.NotEmpty(t, result["Manifest"])
 	require.Equal(t, "validation failed", result["ValidationError"])
-	require.NotNil(t, result["Manifest"])
 }
 
 // Expectation: Both manifest and validation errors should be joined and returned.
@@ -2325,7 +2326,7 @@ func Test_Service_OutputJSON_BothErrors_Error(t *testing.T) {
 
 	mockBundle := &testutil.MockBundle{
 		ManifestFunc: func() ([]byte, error) {
-			return nil, errors.New("manifest corrupt")
+			return []byte(`{"name":"test.par2"}`), errors.New("manifest corrupt")
 		},
 		ValidateFunc: func(strict bool) error {
 			return errors.New("validation failed")
@@ -2350,6 +2351,8 @@ func Test_Service_OutputJSON_BothErrors_Error(t *testing.T) {
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.NotEmpty(t, result["Bundle"])
+	require.NotEmpty(t, result["Manifest"])
 	require.Equal(t, "manifest corrupt", result["ManifestError"])
 	require.Equal(t, "validation failed", result["ValidationError"])
 }
@@ -2395,7 +2398,51 @@ func Test_Service_OutputJSON_NilManifest_Success(t *testing.T) {
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 	require.Nil(t, result["Manifest"])
-	require.Empty(t, result["ManifestError"])
+	require.NotContains(t, result, "ManifestError")
+}
+
+// Expectation: A nil manifest with an error should produce the expected JSON.
+func Test_Service_OutputJSON_NilManifestAndError_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return nil, errors.New("manifest corrupt")
+		},
+		ValidateFunc: func(strict bool) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"mock"}`),
+	}
+
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	require.ErrorContains(t, err, "manifest corrupt")
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+	require.Nil(t, result["Manifest"])
+	require.Equal(t, "manifest corrupt", result["ManifestError"])
 }
 
 // Expectation: The function should pass strict=true to Validate.
@@ -2477,10 +2524,10 @@ func Test_Service_OutputJSON_InvalidManifestJSON_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
 	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
-	require.NoError(t, err)
+	require.ErrorContains(t, err, "invalid JSON")
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 	require.Nil(t, result["Manifest"])
-	require.Empty(t, result["ManifestError"])
+	require.Equal(t, "invalid JSON", result["ManifestError"])
 }

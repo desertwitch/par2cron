@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -709,6 +710,38 @@ func Test_Bundle_ValidateManifest_ReadPacketFails_Error(t *testing.T) {
 
 	require.ErrorContains(t, err, "manifest packet at offset")
 	require.ErrorContains(t, err, "unexpected EOF")
+}
+
+// Expectation: MarshalJSON should serialize OpenError as its error string instead of an empty object.
+func Test_Bundle_MarshalJSON_OpenError(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+	b.OpenError = errors.New("index reconstructed")
+
+	raw, err := json.Marshal(b)
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+
+	require.Equal(t, "index reconstructed", decoded["OpenError"])
+}
+
+// Expectation: MarshalJSON should not serialize OpenError when nil.
+func Test_Bundle_MarshalJSON_NilOpenError(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+	require.NoError(t, b.OpenError)
+
+	raw, err := json.Marshal(b)
+	require.NoError(t, err)
+
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+
+	require.Nil(t, decoded["OpenError"])
 }
 
 // Expectation: readIndexPacket should parse a valid on-disk index packet at offset zero.

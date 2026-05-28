@@ -105,17 +105,21 @@ func (prog *Service) OutputJSON(bundlePath string) error {
 	}
 
 	result := struct {
-		Bundle          any
-		ValidationError string
-		Manifest        json.RawMessage
-		ManifestError   string
+		Bundle          any             `json:"Bundle"`
+		ValidationError string          `json:"ValidationError,omitempty"`
+		Manifest        json.RawMessage `json:"Manifest"`
+		ManifestError   string          `json:"ManifestError,omitempty"`
 	}{
 		Bundle: bun,
 	}
 
 	mf, mfErr := bun.Manifest()
-	if mf != nil && json.Valid(mf) {
-		result.Manifest = json.RawMessage(mf)
+	if mf != nil {
+		if json.Valid(mf) {
+			result.Manifest = json.RawMessage(mf)
+		} else {
+			mfErr = errors.Join(mfErr, errors.New("invalid JSON"))
+		}
 	}
 	if mfErr != nil {
 		result.ManifestError = mfErr.Error()
@@ -128,7 +132,7 @@ func (prog *Service) OutputJSON(bundlePath string) error {
 
 	enc := json.NewEncoder(prog.log.Options.Stdout)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(result); err != nil { //nolint:musttag
+	if err := enc.Encode(result); err != nil {
 		return fmt.Errorf("failed to encode: %w", err)
 	}
 
