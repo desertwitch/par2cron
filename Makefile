@@ -107,6 +107,11 @@ is-clean: ## Checks if the git tree is clean (e.g. before release)
 		git diff --stat; \
 		exit 1; \
 	fi
+	@if [ -n "$$(git ls-files --others --exclude-standard)" ]; then \
+		echo "ERROR: tree contains untracked files"; \
+		git ls-files --others --exclude-standard; \
+		exit 1; \
+	fi
 
 lint: ## Runs the linter on the application code
 	@golangci-lint cache clean
