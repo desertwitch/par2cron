@@ -102,6 +102,10 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 	var errs int
 
 	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
 		bun, err := prog.bundler.Open(prog.fsys, path)
 		if err != nil {
 			logger := prog.bundleLogger(ctx, nil, path)
@@ -158,7 +162,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 	}
 
 	if errs > 0 {
-		return fmt.Errorf("%w: %d errors",
+		return fmt.Errorf("%w: %d errors occcured",
 			schema.ErrExitPartialFailure, errs)
 	}
 

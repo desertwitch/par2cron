@@ -2603,3 +2603,27 @@ func Test_Service_OutputJSON_MultipleFiles_PartialError(t *testing.T) {
 	require.NoError(t, dec.Decode(&second))
 	require.Equal(t, "validation failed", second["ValidationError"])
 }
+
+// Expectation: Context cancellation should be respected before processing paths.
+func Test_Service_OutputJSON_CtxCancel_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON(ctx, []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, stdoutBuf.String())
+}
