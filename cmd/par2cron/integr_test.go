@@ -252,6 +252,29 @@ func Test_Integration_Cron_Complex_Success(t *testing.T) {
 	require.NoError(t, verifyCmd.Execute())
 }
 
+// Expectation: The "bundle info" command should show information about multiple bundles.
+//
+//nolint:paralleltest
+func Test_Integration_BundleInfo_Success(t *testing.T) {
+	dir := setupTestDir(t)
+
+	createCmd := newRootCmd(t.Context())
+	createCmd.SetArgs([]string{"create", dir})
+	require.NoError(t, createCmd.Execute())
+
+	bundlePackCmd := newRootCmd(t.Context())
+	bundlePackCmd.SetArgs([]string{"bundle", "pack", dir})
+	require.NoError(t, bundlePackCmd.Execute())
+
+	par2Files, err := filepath.Glob(filepath.Join(dir, "*.par2"))
+	require.NoError(t, err)
+	require.NotEmpty(t, par2Files)
+
+	bundleInfoCmd := newRootCmd(t.Context())
+	bundleInfoCmd.SetArgs([]string{"bundle", "info", par2Files[0], par2Files[0], par2Files[0]})
+	require.NoError(t, bundleInfoCmd.Execute())
+}
+
 // Expectation: The "verify" command should verify a packed PAR2 set without error.
 //
 //nolint:paralleltest

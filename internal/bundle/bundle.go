@@ -8,6 +8,7 @@ package bundle
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -48,6 +49,25 @@ type Bundle struct {
 
 	Index     IndexPacket
 	OpenError error
+}
+
+// MarshalJSON implements json.Marshaler for Bundle, serializing OpenError as its
+// error string rather than the default empty object that encoding/json produces
+// for the error interface. All other fields use default struct marshalling.
+func (b Bundle) MarshalJSON() ([]byte, error) {
+	type BundleAlias Bundle
+	aux := struct {
+		BundleAlias
+
+		OpenError string `json:"OpenError,omitempty"`
+	}{
+		BundleAlias: BundleAlias(b),
+	}
+	if b.OpenError != nil {
+		aux.OpenError = b.OpenError.Error()
+	}
+
+	return json.Marshal(aux) //nolint:musttag,wrapcheck
 }
 
 // Open opens a bundle file and reads the index packet. If the index packet is

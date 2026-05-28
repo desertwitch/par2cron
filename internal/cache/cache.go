@@ -17,7 +17,10 @@ import (
 	"github.com/spf13/afero"
 )
 
-const GobCacheExtension = ".gob.zst"
+const (
+	GobCacheVersion   = 1
+	GobCacheExtension = ".gob.zst"
+)
 
 type GobCache struct {
 	fsys afero.Fs
@@ -28,7 +31,7 @@ type GobCache struct {
 
 // NewGobCache creates a new GobCache with a hashed filename derived from cacheName.
 func NewGobCache(fsys afero.Fs, cacheDir string, cacheName string) *GobCache {
-	hash := sha256.Sum256([]byte(cacheName))
+	hash := sha256.Sum256(fmt.Appendf(nil, "v%d:%s", GobCacheVersion, cacheName))
 
 	cacheName = hex.EncodeToString(hash[:8]) + GobCacheExtension
 	cachePath := filepath.Join(cacheDir, cacheName)

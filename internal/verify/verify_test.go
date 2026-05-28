@@ -1172,6 +1172,58 @@ func Test_Service_Verify_WithCacheDir_LoadsCache_Success(t *testing.T) {
 	require.True(t, loadCalled)
 }
 
+// Expectation: The cache should not be updated when verification fails with an unknown exit code.
+func Test_Service_Verify_UnknownExitCode_CacheNotUpdated_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	createWithManifest(t, fs, "/data/test")
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, 5)
+		},
+	}
+
+	cacheMeta := &schema.JobMeta{
+		Par2Path:        "/data/test" + schema.Par2Extension,
+		HasManifest:     true,
+		HasVerification: true,
+		VerifyTime:      time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC),
+	}
+	cacheMetaOriginal := *cacheMeta
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				GetFunc: func(key string) (*schema.JobMeta, bool) {
+					if key == cacheMeta.Par2Path {
+						return cacheMeta, true
+					}
+
+					return nil, false
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
+
+	require.Equal(t, cacheMetaOriginal, *cacheMeta)
+	require.Contains(t, logBuf.String(), "Job failure (will retry next run)")
+}
+
 // Expectation: The correct job and its manifest should be returned.
 func Test_Service_Enumerate_Success(t *testing.T) {
 	t.Parallel()

@@ -205,6 +205,7 @@ type MockBundle struct {
 	IsRebuiltValue    *bool
 	ManifestFunc      func() ([]byte, error)
 	ManifestNameValue *string
+	MarshalJSONValue  []byte
 	UnpackFunc        func(fsys afero.Fs, destDir string, strict bool) ([]string, error)
 	UpdateFunc        func(manifest []byte) error
 	ValidateFunc      func(strict bool) error
@@ -270,6 +271,14 @@ func (m *MockBundle) IsRebuilt() bool {
 func (m *MockBundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
 	if m.UnpackFunc != nil {
 		return m.UnpackFunc(fsys, destDir, strict)
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundle) MarshalJSON() ([]byte, error) {
+	if m.MarshalJSONValue != nil {
+		return m.MarshalJSONValue, nil
 	}
 
 	return nil, errors.New("not implemented")

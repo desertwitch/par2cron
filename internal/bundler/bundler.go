@@ -98,6 +98,48 @@ func (prog *Service) Unpack(ctx context.Context, rootDirs []string, opts Options
 	return prog.processMode(ctx, rootDirs, opts, prog.unpackEnumerate, prog.unpackBundle)
 }
 
+func (prog *Service) OutputJSON(bundlePath string) error {
+	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	if err != nil {
+		return fmt.Errorf("failed to open: %w", err)
+	}
+	defer bun.Close()
+
+	result := struct {
+		Bundle          any             `json:"Bundle"`
+		ValidationError string          `json:"ValidationError,omitempty"`
+		Manifest        json.RawMessage `json:"Manifest"`
+		ManifestError   string          `json:"ManifestError,omitempty"`
+	}{
+		Bundle: bun,
+	}
+
+	mf, mfErr := bun.Manifest()
+	if mf != nil {
+		if json.Valid(mf) {
+			result.Manifest = json.RawMessage(mf)
+		} else {
+			mfErr = errors.Join(mfErr, errors.New("invalid JSON"))
+		}
+	}
+	if mfErr != nil {
+		result.ManifestError = mfErr.Error()
+	}
+
+	valErr := bun.Validate(true)
+	if valErr != nil {
+		result.ValidationError = valErr.Error()
+	}
+
+	enc := json.NewEncoder(prog.log.Options.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(result); err != nil {
+		return fmt.Errorf("failed to encode: %w", err)
+	}
+
+	return errors.Join(mfErr, valErr)
+}
+
 func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Options, ef enumFunc, rf runFunc) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()

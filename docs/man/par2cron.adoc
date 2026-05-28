@@ -18,6 +18,8 @@ par2cron - PAR2 integrity and self-repair engine
 
 *par2cron bundle unpack* [_flags_] _dir_ [_dir_...]
 
+*par2cron bundle info* [_flags_] _file_ [_file_...]
+
 *par2cron tool md5* [_flags_] _par2file_ [_par2file_...]
 
 *par2cron check-config* _file_
@@ -159,6 +161,10 @@ Unpacks all existing bundles of a folder into PAR2 sets.
   Output logs in JSON format.
 *-l, --log-level* _level_::
   Log level: debug, info, warn, error (default info).
+
+=== par2cron bundle info
+
+Prints bundle information to standard output.
 
 === par2cron tool md5
 

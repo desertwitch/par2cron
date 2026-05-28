@@ -224,6 +224,20 @@ To exclude directories from this operation, put ignore files:
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
+const bundleInfoUsage = "info [flags] <file> [file...]"
+
+const bundleInfoHelpShort = "Prints bundle information to standard output"
+
+const bundleInfoHelpExample = `
+Print information about a single bundle file:
+  par2cron bundle info /mnt/storage/bundle.p2c.par2
+
+Print information about multiple bundle files:
+  par2cron bundle info /mnt/storage/a.p2c.par2 /mnt/storage/b.p2c.par2
+
+Print information about bundle files in working directory:
+  par2cron bundle info *.p2c.par2`
+
 const toolUsage = "tool"
 
 const toolHelpShort = "Useful utility commands for interacting with PAR2 files"

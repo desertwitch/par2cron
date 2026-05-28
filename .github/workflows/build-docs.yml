@@ -34,3 +34,6 @@ jobs:
 
     - name: Build the documentation
       run: make docs
+
+    - name: Check if committed documentation needs updating
+      run: make is-clean

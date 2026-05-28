@@ -880,6 +880,33 @@ func Test_MockBundle_Unpack_WithFunc_Error(t *testing.T) {
 	require.Len(t, files, 2)
 }
 
+// Expectation: The mock bundle should return the provided MarshalJSON value.
+func Test_MockBundle_MarshalJSON_WithValue_Success(t *testing.T) {
+	t.Parallel()
+
+	expected := []byte(`{"mock":true}`)
+	b := &MockBundle{
+		MarshalJSONValue: expected,
+	}
+
+	data, err := b.MarshalJSON()
+
+	require.NoError(t, err)
+	require.Equal(t, expected, data)
+}
+
+// Expectation: The mock bundle should return an error when no MarshalJSON value is provided.
+func Test_MockBundle_MarshalJSON_NoValue_Error(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	_, err := b.MarshalJSON()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not implemented")
+}
+
 // Expectation: The fake dir entry should return the correct name.
 func Test_FakeDirEntry_Name_Success(t *testing.T) {
 	t.Parallel()
