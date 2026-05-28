@@ -356,7 +356,8 @@ func newBundleInfoCmd() *cobra.Command {
 				}
 			}
 			if len(errs) > 0 {
-				return fmt.Errorf("bundle: info: %w", errors.Join(errs...))
+				return fmt.Errorf("bundle: info: %w: %w",
+					schema.ErrExitPartialFailure, errors.Join(errs...))
 			}
 
 			return nil
