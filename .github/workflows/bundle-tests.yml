@@ -20,6 +20,7 @@ jobs:
       - run: make is-clean
 
   bundle-test:
+    needs: generate-check
     name: ${{ matrix.os }}-${{ matrix.action }}-${{ matrix.tool }}
     runs-on: ${{ matrix.runner }}
     strategy:
