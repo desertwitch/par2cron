@@ -2181,7 +2181,7 @@ func Test_Service_OutputJSON_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
 	require.NoError(t, err)
 
 	var result map[string]any
@@ -2214,8 +2214,8 @@ func Test_Service_OutputJSON_OpenFails_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
-	require.ErrorContains(t, err, "failed to open")
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 }
 
 // Expectation: The function should include the manifest error in the output and return it.
@@ -2253,8 +2253,8 @@ func Test_Service_OutputJSON_ManifestError_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
-	require.ErrorContains(t, err, "manifest corrupt")
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -2300,8 +2300,8 @@ func Test_Service_OutputJSON_ValidationError_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
-	require.ErrorContains(t, err, "validation failed")
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -2345,9 +2345,8 @@ func Test_Service_OutputJSON_BothErrors_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
-	require.ErrorContains(t, err, "manifest corrupt")
-	require.ErrorContains(t, err, "validation failed")
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -2392,7 +2391,7 @@ func Test_Service_OutputJSON_NilManifest_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
 	require.NoError(t, err)
 
 	var result map[string]any
@@ -2436,8 +2435,8 @@ func Test_Service_OutputJSON_NilManifestAndError_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
-	require.ErrorContains(t, err, "manifest corrupt")
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
@@ -2483,7 +2482,7 @@ func Test_Service_OutputJSON_ValidateCalledStrict_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
 	require.NoError(t, err)
 	require.True(t, capturedStrict)
 }
@@ -2523,11 +2522,84 @@ func Test_Service_OutputJSON_InvalidManifestJSON_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
-	err := prog.OutputJSON("/data/test" + schema.BundleExtension + schema.Par2Extension)
-	require.ErrorContains(t, err, "invalid JSON")
+	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
 	require.Nil(t, result["Manifest"])
 	require.Equal(t, "invalid JSON", result["ManifestError"])
+}
+
+// Expectation: Multiple paths should each produce a JSON object, with errors counted across all.
+func Test_Service_OutputJSON_MultipleFiles_PartialError(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: io.Discard,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	goodBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return []byte(`{"name":"good.par2"}`), nil
+		},
+		ValidateFunc: func(strict bool) error {
+			return nil
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"good"}`),
+	}
+
+	badBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return []byte(`{"name":"bad.par2"}`), nil
+		},
+		ValidateFunc: func(strict bool) error {
+			return errors.New("validation failed")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+		MarshalJSONValue: []byte(`{"bundle":"bad"}`),
+	}
+
+	call := 0
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			call++
+			if call == 1 {
+				return goodBundle, nil
+			}
+
+			return badBundle, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	err := prog.OutputJSON(t.Context(), []string{
+		"/data/good" + schema.BundleExtension + schema.Par2Extension,
+		"/data/bad" + schema.BundleExtension + schema.Par2Extension,
+	})
+	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
+	require.ErrorContains(t, err, "1 errors")
+
+	// Both JSON objects should be in the output (newline-delimited).
+	dec := json.NewDecoder(strings.NewReader(stdoutBuf.String()))
+
+	var first map[string]any
+	require.NoError(t, dec.Decode(&first))
+	require.NotContains(t, first, "ValidationError")
+
+	var second map[string]any
+	require.NoError(t, dec.Decode(&second))
+	require.Equal(t, "validation failed", second["ValidationError"])
 }

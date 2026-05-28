@@ -98,46 +98,71 @@ func (prog *Service) Unpack(ctx context.Context, rootDirs []string, opts Options
 	return prog.processMode(ctx, rootDirs, opts, prog.unpackEnumerate, prog.unpackBundle)
 }
 
-func (prog *Service) OutputJSON(bundlePath string) error {
-	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
-	if err != nil {
-		return fmt.Errorf("failed to open: %w", err)
-	}
-	defer bun.Close()
+func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
+	var errs int
 
-	result := struct {
-		Bundle          any             `json:"Bundle"`
-		ValidationError string          `json:"ValidationError,omitempty"`
-		Manifest        json.RawMessage `json:"Manifest"`
-		ManifestError   string          `json:"ManifestError,omitempty"`
-	}{
-		Bundle: bun,
-	}
+	for _, path := range paths {
+		bun, err := prog.bundler.Open(prog.fsys, path)
+		if err != nil {
+			logger := prog.bundleLogger(ctx, nil, path)
+			logger.Error("Failed to open bundle", "error", err)
+			errs++
 
-	mf, mfErr := bun.Manifest()
-	if mf != nil {
-		if json.Valid(mf) {
-			result.Manifest = json.RawMessage(mf)
-		} else {
-			mfErr = errors.Join(mfErr, errors.New("invalid JSON"))
+			continue
 		}
-	}
-	if mfErr != nil {
-		result.ManifestError = mfErr.Error()
+
+		result := struct {
+			Bundle          any             `json:"Bundle"`
+			ValidationError string          `json:"ValidationError,omitempty"`
+			Manifest        json.RawMessage `json:"Manifest"`
+			ManifestError   string          `json:"ManifestError,omitempty"`
+		}{
+			Bundle: bun,
+		}
+
+		mf, mfErr := bun.Manifest()
+		if mf != nil {
+			if json.Valid(mf) {
+				result.Manifest = json.RawMessage(mf)
+			} else {
+				mfErr = errors.Join(mfErr, errors.New("invalid JSON"))
+			}
+		}
+		if mfErr != nil {
+			result.ManifestError = mfErr.Error()
+			logger := prog.bundleLogger(ctx, nil, path)
+			logger.Error("Failed to validate manifest", "error", mfErr)
+		}
+
+		valErr := bun.Validate(true)
+		if valErr != nil {
+			result.ValidationError = valErr.Error()
+			logger := prog.bundleLogger(ctx, nil, path)
+			logger.Error("Failed to validate bundle", "error", valErr)
+		}
+
+		enc := json.NewEncoder(prog.log.Options.Stdout)
+		enc.SetIndent("", "  ")
+
+		encErr := enc.Encode(result)
+		if encErr != nil {
+			logger := prog.bundleLogger(ctx, nil, path)
+			logger.Error("Failed to encode bundle information", "error", encErr)
+		}
+
+		if mfErr != nil || valErr != nil || encErr != nil {
+			errs++
+		}
+
+		_ = bun.Close()
 	}
 
-	valErr := bun.Validate(true)
-	if valErr != nil {
-		result.ValidationError = valErr.Error()
+	if errs > 0 {
+		return fmt.Errorf("%w: %d errors",
+			schema.ErrExitPartialFailure, errs)
 	}
 
-	enc := json.NewEncoder(prog.log.Options.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(result); err != nil {
-		return fmt.Errorf("failed to encode: %w", err)
-	}
-
-	return errors.Join(mfErr, valErr)
+	return nil
 }
 
 func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Options, ef enumFunc, rf runFunc) (util.ResultTracker, error) {

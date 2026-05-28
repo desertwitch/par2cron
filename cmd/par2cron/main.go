@@ -225,7 +225,7 @@ func newBundleCmd(ctx context.Context) *cobra.Command {
 
 	bundlePackCmd := newBundlePackCmd(ctx)
 	bundleUnpackCmd := newBundleUnpackCmd(ctx)
-	bundleInfoCmd := newBundleInfoCmd()
+	bundleInfoCmd := newBundleInfoCmd(ctx)
 
 	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd, bundleInfoCmd)
 
@@ -331,7 +331,7 @@ func newBundleUnpackCmd(ctx context.Context) *cobra.Command {
 	return bundleUnpackCmd
 }
 
-func newBundleInfoCmd() *cobra.Command {
+func newBundleInfoCmd(ctx context.Context) *cobra.Command {
 	var logSettings logging.Options
 
 	fsys := afero.NewOsFs()
@@ -346,18 +346,15 @@ func newBundleInfoCmd() *cobra.Command {
 		Short:   bundleInfoHelpShort,
 		Example: bundleInfoHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "info"))
 
-			var errs []error
-			for _, arg := range args {
-				if err := prog.BundlerService.OutputJSON(arg); err != nil {
-					errs = append(errs, fmt.Errorf("%s: %w", arg, err))
-				}
-			}
-			if len(errs) > 0 {
-				return fmt.Errorf("bundle: info: %w: %w",
-					schema.ErrExitPartialFailure, errors.Join(errs...))
+			ctx := context.WithValue(ctx, schema.ModeKey, "info")
+
+			err := prog.BundlerService.OutputJSON(ctx, args)
+			if err != nil {
+				return fmt.Errorf("bundle: info: %w", err)
 			}
 
 			return nil
