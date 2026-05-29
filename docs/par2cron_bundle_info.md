@@ -2,6 +2,21 @@
 
 Prints bundle information to standard output
 
+### Synopsis
+
+Prints bundle information to standard output
+
+Parses bundles located at the provided file paths and outputs
+the bundle internal metadata and manifest. Returns an exit code
+zero in case that all bundles pass strict validation, otherwise
+a non zero exit code (depending on the failures encountered).
+
+The output of this command should not be used in scripting, as it
+may change between versions of par2cron. The bundle specification
+can be used to implement custom parsers to retrieve required data.
+
+Full documentation at: https://github.com/desertwitch/par2cron
+
 ```
 par2cron bundle info [flags] <file> [file...]
 ```
