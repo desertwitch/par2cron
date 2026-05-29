@@ -227,7 +227,7 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, opts Options
 			return results, fmt.Errorf("context error: %w", err)
 		}
 
-		if deadlineCtx != nil {
+		if i > 0 && deadlineCtx != nil {
 			if err := deadlineCtx.Err(); errors.Is(err, context.DeadlineExceeded) {
 				logger := prog.creationLogger(ctx, nil, nil)
 				logger.Warn("Exceeded the --duration budget (will continue next run)",
@@ -595,12 +595,6 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 
 		return err
 	}
-
-	// util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
-	// 	Time:     mf.Creation.Time,
-	// 	Path:     job.par2Path,
-	// 	Manifest: mf,
-	// }, prog.creationLogger(ctx, job, nil))
 
 	if sha256hash, err := util.HashFile(prog.fsys, job.par2Path); err != nil {
 		logger := prog.creationLogger(ctx, job, job.par2Path)

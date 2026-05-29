@@ -712,7 +712,7 @@ func Test_Service_Repair_MaxDuration_Success(t *testing.T) {
 		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
 			called++
 
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			return nil
 		},

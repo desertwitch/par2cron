@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"time"
-
-	"github.com/desertwitch/par2cron/internal/par2"
 )
 
 const (
@@ -17,9 +15,8 @@ type Manifest struct {
 	ProgramVersion  string `json:"program_version"`
 	ManifestVersion string `json:"manifest_version"`
 
-	Name     string            `json:"name"`
-	SHA256   string            `json:"sha256"`
-	Par2Data *Par2DataManifest `json:"par2_data,omitempty"`
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
 
 	Creation     *CreationManifest     `json:"creation,omitempty"`
 	Verification *VerificationManifest `json:"verification,omitempty"`
@@ -32,11 +29,6 @@ func NewManifest(par2Name string) *Manifest {
 		ManifestVersion: ManifestVersion,
 		Name:            par2Name,
 	}
-}
-
-type Par2DataManifest struct {
-	Time    time.Time     `json:"time"`
-	FileSet *par2.FileSet `json:"file_set,omitempty"`
 }
 
 type CreationManifest struct {

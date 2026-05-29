@@ -429,7 +429,7 @@ func Test_Service_Verify_DurationExceeded_Success(t *testing.T) {
 	runner := &testutil.MockRunner{
 		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
 			called++
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			return nil
 		},
@@ -438,7 +438,7 @@ func Test_Service_Verify_DurationExceeded_Success(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
-	require.NoError(t, args.MaxDuration.Set("10ms"))
+	require.NoError(t, args.MaxDuration.Set("1ms"))
 
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)

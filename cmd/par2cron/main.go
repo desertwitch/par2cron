@@ -344,6 +344,7 @@ func newBundleInfoCmd(ctx context.Context) *cobra.Command {
 	bundleInfoCmd := &cobra.Command{
 		Use:     bundleInfoUsage,
 		Short:   bundleInfoHelpShort,
+		Long:    bundleInfoHelpLong,
 		Example: bundleInfoHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns

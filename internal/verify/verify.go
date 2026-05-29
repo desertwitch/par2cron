@@ -197,7 +197,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			return results, fmt.Errorf("context error: %w", err)
 		}
 
-		if deadlineCtx != nil {
+		if i > 0 && deadlineCtx != nil {
 			if err := deadlineCtx.Err(); errors.Is(err, context.DeadlineExceeded) {
 				logger := prog.verificationLogger(ctx, nil, nil)
 				logger.Warn("Exceeded the --duration budget (will continue next run)",
@@ -616,14 +616,6 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	}
 
 	job.manifest.Verification.Count++
-
-	// if job.manifest.Par2Data == nil {
-	// 	util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
-	// 		Time:     job.manifest.Verification.Time,
-	// 		Path:     job.par2Path,
-	// 		Manifest: job.manifest,
-	// 	}, prog.verificationLogger(ctx, job, nil))
-	// }
 
 	if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
 		logger := prog.verificationLogger(ctx, job, job.manifestPath)
