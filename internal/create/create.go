@@ -596,12 +596,6 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 		return err
 	}
 
-	// util.Par2ToManifest(prog.fsys, util.Par2ToManifestOptions{
-	// 	Time:     mf.Creation.Time,
-	// 	Path:     job.par2Path,
-	// 	Manifest: mf,
-	// }, prog.creationLogger(ctx, job, nil))
-
 	if sha256hash, err := util.HashFile(prog.fsys, job.par2Path); err != nil {
 		logger := prog.creationLogger(ctx, job, job.par2Path)
 		logger.Warn("Failed to hash PAR2 for par2cron manifest (will retry on verify)", "error", err)
