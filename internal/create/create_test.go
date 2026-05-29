@@ -654,7 +654,7 @@ func Test_Service_Create_DurationExceeded_Success(t *testing.T) {
 		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
 			called++
 
-			time.Sleep(50 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			require.NoError(t, afero.WriteFile(fs, "/data/folder1/folder1"+schema.Par2Extension, []byte("par2data"), 0o644))
 
@@ -664,7 +664,7 @@ func Test_Service_Create_DurationExceeded_Success(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
-	require.NoError(t, args.MaxDuration.Set("10ms"))
+	require.NoError(t, args.MaxDuration.Set("1ms"))
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)

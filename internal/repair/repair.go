@@ -182,7 +182,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 			return results, fmt.Errorf("context error: %w", err)
 		}
 
-		if deadlineCtx != nil {
+		if i > 0 && deadlineCtx != nil {
 			if err := deadlineCtx.Err(); errors.Is(err, context.DeadlineExceeded) {
 				logger := prog.repairLogger(ctx, nil, nil)
 				logger.Warn("Exceeded the --duration budget (will continue next run)",
