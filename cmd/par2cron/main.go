@@ -361,6 +361,7 @@ func newBundleInfoCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 	}
+	bundleInfoCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return bundleInfoCmd
 }

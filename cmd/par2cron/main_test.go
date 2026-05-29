@@ -269,6 +269,24 @@ func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
 	require.Equal(t, "info", bundleCmd.Name())
 }
 
+// Expectation: The "bundle info" command should have a "log-level" flag.
+func Test_NewBundleInfoCmd_HasLogLevelFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleInfoCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("log-level")
+	flagval := flag.Value
+
+	require.NotNil(t, flag)
+	require.Equal(t, "level", flag.Value.Type())
+	require.Equal(t, "info", flag.DefValue)
+
+	logflag, ok := flagval.(*flags.LogLevel)
+	require.True(t, ok)
+	require.Equal(t, slog.LevelInfo, logflag.Value)
+}
+
 // Expectation: The "bundle pack" command should have flags.
 func Test_NewBundlePackCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()

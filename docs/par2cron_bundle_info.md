@@ -38,7 +38,8 @@ Print information about bundle files in working directory:
 ### Options
 
 ```
-  -h, --help   help for info
+  -h, --help              help for info
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
 ```
 
 ### Options inherited from parent commands

@@ -166,6 +166,9 @@ Unpacks all existing bundles of a folder into PAR2 sets.
 
 Prints bundle information to standard output.
 
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+
 === par2cron tool md5
 
 Extracts and displays MD5 checksums from PAR2 files.
