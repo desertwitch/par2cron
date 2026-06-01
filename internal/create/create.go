@@ -247,7 +247,7 @@ func (prog *Service) Create(ctx context.Context, rootDirs []string, opts Options
 		if err := prog.createPar2(ctx, job); err == nil {
 			logger.Info("Job completed with success")
 			results.Success++
-		} else if errors.Is(err, schema.ErrFileIsLocked) {
+		} else if util.OnlyContains(err, schema.ErrFileIsLocked) {
 			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++
 		} else {
@@ -468,7 +468,7 @@ func (prog *Service) createCombined(ctx context.Context, job *Job, elements []sc
 }
 
 func (prog *Service) createNested(ctx context.Context, job *Job, elements []schema.FsElement) error {
-	var errCount int
+	var errs []error
 
 	groups := make(map[string][]schema.FsElement)
 	order := make([]string, 0)
@@ -498,7 +498,7 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 		}
 
 		if err := prog.runCreate(ctx, &j, groups[dir]); err != nil {
-			errCount++
+			errs = append(errs, fmt.Errorf("%s: %w", j.par2Path, err))
 
 			continue
 		}
@@ -507,15 +507,16 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 		logger.Info("Succeeded to create PAR2")
 	}
 
-	if errCount > 0 {
-		return fmt.Errorf("%w: %d/%d failed", errSubjobFailure, errCount, len(order))
+	if len(errs) > 0 {
+		return fmt.Errorf("%w: %d/%d failed: %w",
+			errSubjobFailure, len(errs), len(order), errors.Join(errs...))
 	}
 
 	return nil
 }
 
 func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []schema.FsElement) error {
-	var errCount int
+	var errs []error
 
 	for i, f := range elements {
 		if err := ctx.Err(); err != nil {
@@ -533,7 +534,7 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 		}
 
 		if err := prog.runCreate(ctx, &j, je); err != nil {
-			errCount++
+			errs = append(errs, fmt.Errorf("%s: %w", j.par2Path, err))
 
 			continue
 		}
@@ -542,8 +543,9 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 		logger.Info("Succeeded to create PAR2")
 	}
 
-	if errCount > 0 {
-		return fmt.Errorf("%w: %d/%d failed", errSubjobFailure, errCount, len(elements))
+	if len(errs) > 0 {
+		return fmt.Errorf("%w: %d/%d failed: %w",
+			errSubjobFailure, len(errs), len(elements), errors.Join(errs...))
 	}
 
 	return nil
@@ -559,6 +561,14 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 
 	unlock, err := util.AcquireLock(prog.fsys, job.lockPath, false)
 	if err != nil {
+		logger := prog.creationLogger(ctx, job, job.lockPath)
+
+		if errors.Is(err, schema.ErrFileIsLocked) {
+			logger.Warn("File is locked by another instance (will retry next run)", "error", err)
+		} else {
+			logger.Error("Failed to lock before PAR2 creation (will retry next run)", "error", err)
+		}
+
 		return fmt.Errorf("failed to lock: %w", err)
 	}
 	defer unlock()
@@ -624,6 +634,8 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {
 			needsCleanup = true
+			logger := prog.creationLogger(ctx, job, job.par2Path)
+			logger.Error("Failed to verify created PAR2 files (will retry next run)", "error", err)
 
 			return fmt.Errorf("failed to verify par2: %w", err)
 		}

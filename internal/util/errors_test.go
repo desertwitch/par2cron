@@ -90,3 +90,50 @@ func Test_HighestError_Table_Error(t *testing.T) {
 		})
 	}
 }
+
+// Expectation: The function should return true when all errors match the sentinel.
+func Test_OnlyContains_AllMatch_Success(t *testing.T) {
+	t.Parallel()
+
+	err := errors.Join(schema.ErrFileIsLocked, schema.ErrFileIsLocked)
+	require.True(t, OnlyContains(err, schema.ErrFileIsLocked))
+}
+
+// Expectation: The function should return false when some errors do not match the sentinel.
+func Test_OnlyContains_SomeDontMatch_Success(t *testing.T) {
+	t.Parallel()
+
+	err := errors.Join(schema.ErrFileIsLocked, errors.New("other error"))
+	require.False(t, OnlyContains(err, schema.ErrFileIsLocked))
+}
+
+// Expectation: The function should return false for non-joined errors.
+func Test_OnlyContains_NonJoined_Success(t *testing.T) {
+	t.Parallel()
+
+	err := errors.New("single error")
+	require.False(t, OnlyContains(err, schema.ErrFileIsLocked))
+}
+
+// Expectation: The function should return true for non-joined errors of sentinel type.
+func Test_OnlyContains_NonJoined_Sentinel_Success(t *testing.T) {
+	t.Parallel()
+
+	err := schema.ErrFileIsLocked
+	require.True(t, OnlyContains(err, schema.ErrFileIsLocked))
+}
+
+// Expectation: The function should return true for a single joined error that matches.
+func Test_OnlyContains_SingleJoined_Success(t *testing.T) {
+	t.Parallel()
+
+	err := errors.Join(schema.ErrFileIsLocked)
+	require.True(t, OnlyContains(err, schema.ErrFileIsLocked))
+}
+
+// Expectation: The function should return false when the overall error is nil.
+func Test_OnlyContains_NilErr_Success(t *testing.T) {
+	t.Parallel()
+
+	require.False(t, OnlyContains(nil, schema.ErrFileIsLocked))
+}

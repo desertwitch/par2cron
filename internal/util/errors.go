@@ -37,3 +37,18 @@ func AsExitCode(err error) *int {
 
 	return nil
 }
+
+func OnlyContains(err, sentinel error) bool {
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return errors.Is(err, sentinel)
+	}
+
+	for _, e := range joined.Unwrap() {
+		if !errors.Is(e, sentinel) {
+			return false
+		}
+	}
+
+	return true
+}
