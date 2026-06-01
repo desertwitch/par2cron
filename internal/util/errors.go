@@ -39,16 +39,42 @@ func AsExitCode(err error) *int {
 }
 
 func OnlyContains(err, sentinel error) bool {
-	joined, ok := err.(interface{ Unwrap() []error })
-	if !ok {
-		return errors.Is(err, sentinel)
+	if err == nil {
+		return false
 	}
 
-	for _, e := range joined.Unwrap() {
-		if !errors.Is(e, sentinel) {
-			return false
+	for {
+		// If it's a joined error, every child must OnlyContain the sentinel.
+		if joined, ok := err.(interface{ Unwrap() []error }); ok {
+			errs := joined.Unwrap()
+
+			if len(errs) == 0 {
+				return false
+			}
+			for _, e := range errs {
+				if !OnlyContains(e, sentinel) {
+					return false
+				}
+			}
+
+			return true
 		}
+
+		// If it's a single-wrap error, peel one layer and keep going.
+		if single, ok := err.(interface{ Unwrap() error }); ok {
+			inner := single.Unwrap()
+
+			if inner == nil {
+				break
+			}
+			err = inner
+
+			continue
+		}
+
+		// Leaf node - does it match?
+		break
 	}
 
-	return true
+	return errors.Is(err, sentinel)
 }
