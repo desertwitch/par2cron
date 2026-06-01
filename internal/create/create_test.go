@@ -654,7 +654,7 @@ func Test_Service_Create_DurationExceeded_Success(t *testing.T) {
 		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
 			called++
 
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 
 			require.NoError(t, afero.WriteFile(fs, "/data/folder1/folder1"+schema.Par2Extension, []byte("par2data"), 0o644))
 
@@ -754,7 +754,7 @@ func Test_Service_Create_DurationExceeded_WithPriorError_Error(t *testing.T) {
 
 	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
-	require.NoError(t, args.MaxDuration.Set("10ms"))
+	require.NoError(t, args.MaxDuration.Set("1ms"))
 
 	_, err := prog.Create(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -835,6 +835,79 @@ func Test_Service_Create_RecursiveArgWithoutRecursiveMode_Error(t *testing.T) {
 	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
 	require.ErrorIs(t, err, errWrongModeArgument)
 	require.Contains(t, logBuf.String(), "par2 default argument -R needs par2cron default --mode recursive")
+}
+
+// Expectation: When all nested subjobs are locked, the job should be reported as unavailable.
+func Test_Service_Create_NestedMode_AllLocked_Unavailable(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/a", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/b", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/a/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/b/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return schema.ErrFileIsLocked
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "**/*"}
+	require.NoError(t, args.Par2Mode.Set(schema.CreateNestedMode))
+
+	_, err := prog.Create(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
+	require.NotContains(t, logBuf.String(), "Job failure")
+}
+
+// Expectation: When all individual (file mode) subjobs are locked, the job should be reported as unavailable.
+func Test_Service_Create_FileMode_AllLocked_Unavailable(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/"+createMarkerPathPrefix, []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file1.txt", []byte("content1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file2.txt", []byte("content2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return schema.ErrFileIsLocked
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
+	require.NoError(t, args.Par2Mode.Set(schema.CreateFileMode))
+
+	_, err := prog.Create(t.Context(), []string{"/data"}, args)
+	require.NoError(t, err)
+
+	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
+	require.NotContains(t, logBuf.String(), "Job failure")
 }
 
 // Expectation: The function should correctly find multiple marker files.
@@ -1664,7 +1737,7 @@ func Test_Service_createPar2_NestedMode_CreateFailure_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	require.ErrorIs(t, prog.createPar2(t.Context(), job), errSubjobFailure)
+	require.ErrorContains(t, prog.createPar2(t.Context(), job), "subjobs failed")
 	require.Equal(t, 2, called)
 
 	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
@@ -1871,7 +1944,7 @@ func Test_Service_createPar2_FileMode_CreateFailure_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	require.ErrorIs(t, prog.createPar2(t.Context(), job), errSubjobFailure)
+	require.ErrorContains(t, prog.createPar2(t.Context(), job), "subjobs failed")
 	require.Equal(t, 2, called)
 
 	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
@@ -2944,8 +3017,7 @@ func Test_Service_createNested_FirstFails_Error(t *testing.T) {
 	err := prog.createNested(t.Context(), job, files)
 	require.Equal(t, 2, called)
 
-	require.ErrorIs(t, err, errSubjobFailure)
-	require.Contains(t, err.Error(), "1/2 failed")
+	require.ErrorContains(t, err, "1/2 subjobs failed")
 	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
 }
 
@@ -3138,8 +3210,7 @@ func Test_Service_createIndividual_FirstFails_Error(t *testing.T) {
 	err := prog.createIndividual(t.Context(), job, files)
 	require.Equal(t, 2, called)
 
-	require.ErrorIs(t, err, errSubjobFailure)
-	require.Contains(t, err.Error(), "1/2 failed")
+	require.ErrorContains(t, err, "1/2 subjobs failed")
 	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
 }
 

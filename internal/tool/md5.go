@@ -1,23 +1,29 @@
 package tool
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"io"
 
 	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
-	"github.com/spf13/afero"
 )
 
-func OutputMD5(paths []string, fsys afero.Fs, stdout io.Writer, stderr io.Writer, par2er schema.Par2Handler) error {
-	var errors int
+func (prog *Service) OutputMD5(ctx context.Context, paths []string) error {
+	var errs []error
 	seen := make(map[par2.Hash]bool)
 
 	for _, path := range paths {
-		f, err := par2er.ParseFile(fsys, path, false)
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
+		f, err := prog.par2er.ParseFile(prog.fsys, path, false)
 		if err != nil {
-			errors++
-			fmt.Fprintf(stderr, "%s: %v\n", path, err)
+			logger := prog.toolLogger(ctx, path)
+			logger.Error("Failed to parse PAR2 file", "error", err)
+
+			errs = append(errs, fmt.Errorf("%s: %w", path, err))
 
 			continue
 		}
@@ -29,14 +35,14 @@ func OutputMD5(paths []string, fsys afero.Fs, stdout io.Writer, stderr io.Writer
 				}
 
 				seen[fp.FileID] = true
-				fmt.Fprintf(stdout, "%x  %s\n", fp.Hash, fp.Name)
+				fmt.Fprintf(prog.log.Options.Stdout, "%x  %s\n", fp.Hash, fp.Name)
 			}
 		}
 	}
 
-	if errors > 0 {
-		return fmt.Errorf("%w: %d files failed to parse",
-			schema.ErrExitPartialFailure, errors)
+	if len(errs) > 0 {
+		return fmt.Errorf("%w: %d/%d failed: %w",
+			schema.ErrExitPartialFailure, len(errs), len(paths), errors.Join(errs...))
 	}
 
 	return nil

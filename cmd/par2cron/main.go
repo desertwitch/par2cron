@@ -154,7 +154,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	repairCmd := newRepairCmd(ctx)
 
 	infoCmd := newInfoCmd(ctx)
-	toolCmd := newToolCmd()
+	toolCmd := newToolCmd(ctx)
 	bundleCmd := newBundleCmd(ctx)
 	checkConfigCmd := newCheckConfigCmd(ctx)
 	genMarkdownCmd := newGenMarkdownCmd(rootCmd)
@@ -180,31 +180,40 @@ func newGenMarkdownCmd(rootCmd *cobra.Command) *cobra.Command {
 	}
 }
 
-func newToolCmd() *cobra.Command {
+func newToolCmd(ctx context.Context) *cobra.Command {
 	toolCmd := &cobra.Command{
 		Use:   toolUsage,
 		Short: toolHelpShort,
 	}
 
-	toolMD5Cmd := newToolMD5Cmd()
+	toolMD5Cmd := newToolMD5Cmd(ctx)
 	toolCmd.AddCommand(toolMD5Cmd)
 
 	return toolCmd
 }
 
-func newToolMD5Cmd() *cobra.Command {
+func newToolMD5Cmd(ctx context.Context) *cobra.Command {
+	var logSettings logging.Options
+
+	fsys := afero.NewOsFs()
+
+	_ = logSettings.LogLevel.Set("info")
+	logSettings.Logout = os.Stderr
+	logSettings.Stdout = os.Stdout
+	logSettings.Stderr = os.Stderr
+
 	toolMD5Cmd := &cobra.Command{
 		Use:     toolMD5Usage,
 		Short:   toolMD5HelpShort,
 		Example: toolMD5HelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
-		RunE: func(_ *cobra.Command, args []string) error {
-			err := tool.OutputMD5(
-				args,
-				afero.NewOsFs(),
-				os.Stdout,
-				os.Stderr,
-				&util.Par2Handler{})
+		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
+			prog := NewProgram(fsys, logSettings, &util.CtxRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
+			defer recoverOperationPanic(&ret, prog.log.With("op", "tool", "mode", "md5"))
+
+			ctx := context.WithValue(ctx, schema.ModeKey, "md5")
+
+			err := prog.ToolService.OutputMD5(ctx, args)
 			if err != nil {
 				return fmt.Errorf("tool: md5: %w", err)
 			}
@@ -212,6 +221,7 @@ func newToolMD5Cmd() *cobra.Command {
 			return nil
 		},
 	}
+	toolMD5Cmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return toolMD5Cmd
 }
@@ -337,7 +347,7 @@ func newBundleInfoCmd(ctx context.Context) *cobra.Command {
 	fsys := afero.NewOsFs()
 
 	_ = logSettings.LogLevel.Set("info")
-	logSettings.Logout = io.Discard
+	logSettings.Logout = os.Stderr
 	logSettings.Stdout = os.Stdout
 	logSettings.Stderr = os.Stderr
 
@@ -361,6 +371,7 @@ func newBundleInfoCmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 	}
+	bundleInfoCmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return bundleInfoCmd
 }
@@ -674,6 +685,7 @@ type Program struct {
 	RepairService       *repair.Service
 	InfoService         *info.Service
 	BundlerService      *bundler.Service
+	ToolService         *tool.Service
 
 	log *logging.Logger
 }
@@ -694,6 +706,7 @@ func NewProgram(
 		RepairService:       repair.NewService(fsys, log, r, b, c),
 		InfoService:         info.NewService(fsys, log, r, b, c),
 		BundlerService:      bundler.NewService(fsys, log, b, p),
+		ToolService:         tool.NewService(fsys, log, b, p),
 
 		log: log,
 	}

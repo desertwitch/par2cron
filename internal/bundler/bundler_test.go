@@ -2104,46 +2104,6 @@ func Test_Service_unpackBundle_CleanupBundleFails_Success(t *testing.T) {
 	require.True(t, bundleExists)
 }
 
-// Expectation: The function should return true when all errors match the sentinel.
-func Test_onlyContains_AllMatch_Success(t *testing.T) {
-	t.Parallel()
-
-	err := errors.Join(bundle.ErrDataCorrupt, bundle.ErrDataCorrupt)
-	require.True(t, onlyContains(err, bundle.ErrDataCorrupt))
-}
-
-// Expectation: The function should return false when some errors do not match the sentinel.
-func Test_onlyContains_SomeDontMatch_Success(t *testing.T) {
-	t.Parallel()
-
-	err := errors.Join(bundle.ErrDataCorrupt, errors.New("other error"))
-	require.False(t, onlyContains(err, bundle.ErrDataCorrupt))
-}
-
-// Expectation: The function should return false for non-joined errors.
-func Test_onlyContains_NonJoined_Success(t *testing.T) {
-	t.Parallel()
-
-	err := errors.New("single error")
-	require.False(t, onlyContains(err, bundle.ErrDataCorrupt))
-}
-
-// Expectation: The function should return true for non-joined errors of sentinel type.
-func Test_onlyContains_NonJoined_Sentinel_Success(t *testing.T) {
-	t.Parallel()
-
-	err := bundle.ErrDataCorrupt
-	require.True(t, onlyContains(err, bundle.ErrDataCorrupt))
-}
-
-// Expectation: The function should return true for a single joined error that matches.
-func Test_onlyContains_SingleJoined_Success(t *testing.T) {
-	t.Parallel()
-
-	err := errors.Join(bundle.ErrDataCorrupt)
-	require.True(t, onlyContains(err, bundle.ErrDataCorrupt))
-}
-
 // Expectation: The function should output valid JSON with bundle, manifest, and no errors.
 func Test_Service_OutputJSON_Success(t *testing.T) {
 	t.Parallel()

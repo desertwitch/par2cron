@@ -195,13 +195,31 @@ func Test_NewRootCmd_HasToolCommand_Success(t *testing.T) {
 func Test_NewToolCmd_HasMD5Command_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newToolCmd()
+	cmd := newToolCmd(t.Context())
 
 	toolMD5Cmd, _, err := cmd.Find([]string{"md5"})
 
 	require.NoError(t, err)
 	require.NotNil(t, toolMD5Cmd)
 	require.Equal(t, "md5", toolMD5Cmd.Name())
+}
+
+// Expectation: The "tool md5" command should have a "log-level" flag.
+func Test_NewToolMD5Cmd_HasLogLevelFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newToolMD5Cmd(t.Context())
+
+	flag := cmd.Flags().Lookup("log-level")
+	flagval := flag.Value
+
+	require.NotNil(t, flag)
+	require.Equal(t, "level", flag.Value.Type())
+	require.Equal(t, "info", flag.DefValue)
+
+	logflag, ok := flagval.(*flags.LogLevel)
+	require.True(t, ok)
+	require.Equal(t, slog.LevelInfo, logflag.Value)
 }
 
 // Expectation: The root command should have a "gen-markdown" subcommand.
@@ -267,6 +285,24 @@ func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, bundleCmd)
 	require.Equal(t, "info", bundleCmd.Name())
+}
+
+// Expectation: The "bundle info" command should have a "log-level" flag.
+func Test_NewBundleInfoCmd_HasLogLevelFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleInfoCmd(t.Context())
+
+	flag := cmd.Flags().Lookup("log-level")
+	flagval := flag.Value
+
+	require.NotNil(t, flag)
+	require.Equal(t, "level", flag.Value.Type())
+	require.Equal(t, "info", flag.DefValue)
+
+	logflag, ok := flagval.(*flags.LogLevel)
+	require.True(t, ok)
+	require.Equal(t, slog.LevelInfo, logflag.Value)
 }
 
 // Expectation: The "bundle pack" command should have flags.

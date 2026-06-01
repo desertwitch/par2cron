@@ -516,7 +516,7 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 
 	files, err := bun.Unpack(prog.fsys, job.workingDir, false)
 	if err != nil {
-		if !onlyContains(err, bundle.ErrDataCorrupt) {
+		if !util.OnlyContains(err, bundle.ErrDataCorrupt) {
 			cleanupPaths = append(cleanupPaths, files...)
 			cleanupPaths = append(cleanupPaths, lockFile)
 
@@ -544,19 +544,4 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	}
 
 	return nil
-}
-
-func onlyContains(err, sentinel error) bool {
-	joined, ok := err.(interface{ Unwrap() []error })
-	if !ok {
-		return errors.Is(err, sentinel)
-	}
-
-	for _, e := range joined.Unwrap() {
-		if !errors.Is(e, sentinel) {
-			return false
-		}
-	}
-
-	return true
 }
