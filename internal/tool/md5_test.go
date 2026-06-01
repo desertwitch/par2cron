@@ -199,7 +199,7 @@ func Test_Service_OutputMD5_ParseError_SingleFile_Error(t *testing.T) {
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
-	require.Contains(t, err.Error(), "1 files failed to parse")
+	require.Contains(t, err.Error(), "1/1 failed")
 }
 
 // Expectation: OutputMD5 should write the error details to stderr when parsing fails.
@@ -251,7 +251,7 @@ func Test_Service_OutputMD5_ParseError_MultiplePaths_ContinuesProcessing_Error(t
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
-	require.Contains(t, err.Error(), "2 files failed to parse")
+	require.Contains(t, err.Error(), "2/3 failed")
 	require.Contains(t, stdout.String(), "ok.txt")
 	require.Contains(t, stderr.String(), "/bad1.par2")
 	require.Contains(t, stderr.String(), "/bad2.par2")
@@ -386,6 +386,6 @@ func Test_Service_OutputMD5_AllFilesFail_Error(t *testing.T) {
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
-	require.Contains(t, err.Error(), "3 files failed to parse")
+	require.Contains(t, err.Error(), "3/3 failed")
 	require.Empty(t, stdout.String())
 }

@@ -37,8 +37,8 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string) error {
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("%w: %d files failed to parse: %w",
-			schema.ErrExitPartialFailure, len(errs), errors.Join(errs...))
+		return fmt.Errorf("%w: %d/%d failed: %w",
+			schema.ErrExitPartialFailure, len(errs), len(paths), errors.Join(errs...))
 	}
 
 	return nil
