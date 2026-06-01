@@ -28,7 +28,6 @@ const (
 
 var (
 	errNoFilesToProtect  = errors.New("no files to protect")
-	errSubjobFailure     = errors.New("subjob failure")
 	errWrongModeArgument = errors.New("wrong mode for argument")
 
 	// https://github.com/bmatcuk/doublestar/blob/master/utils.go#L153
@@ -508,8 +507,8 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("%w: %d/%d failed: %w",
-			errSubjobFailure, len(errs), len(order), errors.Join(errs...))
+		return fmt.Errorf("%d/%d subjobs failed: %w",
+			len(errs), len(order), errors.Join(errs...))
 	}
 
 	return nil
@@ -544,8 +543,8 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("%w: %d/%d failed: %w",
-			errSubjobFailure, len(errs), len(elements), errors.Join(errs...))
+		return fmt.Errorf("%d/%d subjobs failed: %w",
+			len(errs), len(elements), errors.Join(errs...))
 	}
 
 	return nil
