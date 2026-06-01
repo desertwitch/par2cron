@@ -14,6 +14,10 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string) error {
 	seen := make(map[par2.Hash]bool)
 
 	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
 		f, err := prog.par2er.ParseFile(prog.fsys, path, false)
 		if err != nil {
 			logger := prog.toolLogger(ctx, path)

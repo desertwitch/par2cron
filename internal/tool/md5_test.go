@@ -1,6 +1,7 @@
 package tool
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -387,5 +388,33 @@ func Test_Service_OutputMD5_AllFilesFail_Error(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
 	require.Contains(t, err.Error(), "3/3 failed")
+	require.Empty(t, stdout.String())
+}
+
+// Expectation: OutputMD5 should return a context error when the context is cancelled before processing.
+func Test_Service_OutputMD5_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	stdout := &testutil.SafeBuffer{}
+	stderr := &testutil.SafeBuffer{}
+
+	var called bool
+
+	svc := newTestService(afero.NewMemMapFs(), stdout, stderr, &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			called = true
+
+			return &par2.File{}, nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := svc.OutputMD5(ctx, []string{"/test.par2"})
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+	require.False(t, called)
 	require.Empty(t, stdout.String())
 }
