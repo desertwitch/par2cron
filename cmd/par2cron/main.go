@@ -337,7 +337,7 @@ func newBundleInfoCmd(ctx context.Context) *cobra.Command {
 	fsys := afero.NewOsFs()
 
 	_ = logSettings.LogLevel.Set("info")
-	logSettings.Logout = io.Discard
+	logSettings.Logout = os.Stderr
 	logSettings.Stdout = os.Stdout
 	logSettings.Stderr = os.Stderr
 
