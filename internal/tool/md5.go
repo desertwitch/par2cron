@@ -17,7 +17,7 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string) error {
 		f, err := prog.par2er.ParseFile(prog.fsys, path, false)
 		if err != nil {
 			logger := prog.toolLogger(ctx, path)
-			logger.Error("Failed to parse PAR2", "error", err)
+			logger.Error("Failed to parse PAR2 file", "error", err)
 
 			errs = append(errs, fmt.Errorf("%s: %w", path, err))
 
