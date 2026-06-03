@@ -783,6 +783,12 @@ func main() {
 		stopProfileMem()
 	})
 
+	clean, perr := setupPar2()
+	if perr != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set up embedded \"par2\" (par2cmdline): %v\n", perr)
+	}
+	defer clean()
+
 	rootCmd := newRootCmd(ctx)
 	err := rootCmd.Execute()
 	exitCode = schema.ExitCodeFor(err)

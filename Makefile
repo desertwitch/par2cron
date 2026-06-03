@@ -15,12 +15,16 @@ MAN_DIR = $(DOCS_DIR)/man
 MAN_ADOC = $(MAN_DIR)/par2cron.adoc
 COMPLETIONS_DIR = $(DOCS_DIR)/completions
 
-.PHONY: all $(BINARY) benchmark check check-slop clean debug docs docs-clean docs-man docs-markdown docs-pdf docs-text docs-completions generate help info is-clean lint test test-fuzz-quick test-fuzz-long test-coverage vendor
+.PHONY: all $(BINARY) $(BINARY)-embed benchmark check check-slop clean debug docs docs-clean docs-man docs-markdown docs-pdf docs-text docs-completions generate help info is-clean lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
 $(BINARY): ## Builds the application
 	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -ldflags="-w -s -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION) -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
+	@$(MAKE) info
+
+$(BINARY)-embed: ## Builds the application (with embedded "par2")
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -tags embed_par2 -ldflags="-w -s -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)-EMB -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
 
 benchmark: ## Runs the benchmark suite
@@ -100,6 +104,7 @@ help: ## Shows all build related commands of the Makefile
 info: ## Shows information about the application binaries that were built
 	@ldd $(BINARY) || true
 	@file $(BINARY)
+	@./$(BINARY) --version
 
 is-clean: ## Checks if the git tree is clean (e.g. before release)
 	@if [ -n "$$(git status --porcelain)" ]; then \

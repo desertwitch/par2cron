@@ -1,4 +1,5 @@
 TODO
+cmd/par2cron/par2
 dist/
 docs/completions
 docs/man/*
