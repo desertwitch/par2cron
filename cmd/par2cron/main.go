@@ -773,7 +773,8 @@ func main() {
 		os.Exit(exitCode)
 	}()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM, syscall.SIGPIPE)
 	defer stop()
 
 	cobra.OnFinalize(func() {
