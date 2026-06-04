@@ -8,6 +8,13 @@ VERSION := $(shell \
   if [ -n "$$tag" ]; then echo $$tag | sed 's/^v//'; \
   else git rev-parse --short=7 HEAD; fi)
 
+EMBED_VERSION := $(or $(shell \
+	./cmd/par2cron/embed/par2 --version 2>/dev/null \
+	| head -1 \
+	| tr ' ' '-' \
+	| sed 's/-version//i' \
+),unknown-par2)
+
 A2X = a2x
 A2X_FLAGS = -a version=$(VERSION)
 DOCS_DIR = ./docs
@@ -24,7 +31,7 @@ $(BINARY): ## Builds the application
 	@$(MAKE) info
 
 $(BINARY)-embed: ## Builds the application (with embedded "par2")
-	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -tags embed_par2 -ldflags="-w -s -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)-EMB -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go build -tags embed_par2 -ldflags="-w -s -X github.com/desertwitch/par2cron/internal/schema.ProgramVersion=$(VERSION)+$(EMBED_VERSION) -buildid=" -trimpath -o $(BINARY) $(SRC_DIR)
 	@$(MAKE) info
 
 benchmark: ## Runs the benchmark suite
