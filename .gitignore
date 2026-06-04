@@ -5,6 +5,7 @@ dist/
 docs/completions
 docs/man/*
 !docs/man/*.adoc
+scripts/patches
 /config.yaml
 /coverage.tmp
 /coverage.txt

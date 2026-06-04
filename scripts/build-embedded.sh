@@ -4,6 +4,7 @@ set -euo pipefail
 REPO="${1:-https://github.com/Parchive/par2cmdline}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EMBED_DIR="${SCRIPT_DIR}/../cmd/par2cron/embed"
+PATCHES_DIR="${SCRIPT_DIR}/patches"
 
 BUILDDIR="$(mktemp -d)"
 trap 'rm -rf "$BUILDDIR"' EXIT
@@ -13,6 +14,11 @@ git clone --depth 1 "$REPO" "$BUILDDIR/par2cmdline"
 
 pushd "$BUILDDIR/par2cmdline"
   echo "==> Patching and building (static)"
+  if [ -d "$PATCHES_DIR" ]; then
+    for p in "$PATCHES_DIR"/*.patch; do
+      [ -f "$p" ] && echo "$p" && patch -p1 < "$p"
+    done
+  fi
   sed -i '/AC_OPENMP/d' configure.ac
   ./automake.sh
   ./configure LDFLAGS="-static"
