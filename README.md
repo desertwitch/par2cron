@@ -29,6 +29,7 @@
 - [Installation](#installation)
   - [Dependencies](#dependencies)
   - [Building from source](#building-from-source)
+  - [Building from source (with embedded `par2`)](#building-from-source-with-embedded-par2)
   - [Running a built executable](#running-a-built-executable)
 - [Usage](#usage)
   - [`par2cron create`](#par2cron-create)
@@ -146,6 +147,38 @@ git clone https://github.com/desertwitch/par2cron.git
 cd par2cron
 make all
 ```
+
+### Building from source (with embedded `par2`)
+
+For fully self-contained deployments, par2cron supports embedding a static
+`par2cmdline` binary directly into the compiled executable. This eliminates the
+external `par2` dependency at runtime. Static binaries are supplied as part of
+the regular `par2cmdline` releases and can be found in the official repository
+or one of its forks:
+
+[https://github.com/Parchive/par2cmdline/releases](https://github.com/Parchive/par2cmdline/releases)
+
+To build with an embedded binary, place the statically-linked `par2` binary at
+`./cmd/par2cron/embed/par2` ([here](./cmd/par2cron/embed/)) and compile with the
+`embed_par2` build tag or using the convenience Makefile target:
+
+```bash
+git clone https://github.com/desertwitch/par2cron.git
+cd par2cron
+cp ../par2 ./cmd/par2cron/embed/
+make par2cron-embed
+```
+
+At startup, the embedded binary is extracted to a temporary directory and
+prepended to `PATH`, so par2cron then operates exactly as it would with a
+system-installed `par2`. The temporary files are cleaned up automatically when
+all PAR2 operations are complete.
+
+Default builds (without the build tag) do not bundle anything and require `par2`
+to be installed separately (by the user), as described in the
+[Dependencies](#dependencies) section.
+
+> **Note:** Beware that such embedded binaries are **not distributable** under the MIT License.
 
 ### Running a built executable
 
