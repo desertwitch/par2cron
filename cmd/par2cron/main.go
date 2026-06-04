@@ -773,7 +773,8 @@ func main() {
 		os.Exit(exitCode)
 	}()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM, syscall.SIGPIPE)
 	defer stop()
 
 	cobra.OnFinalize(func() {
@@ -781,6 +782,12 @@ func main() {
 		stopProfile()
 		stopProfileMem()
 	})
+
+	clean, perr := setupPar2()
+	if perr != nil {
+		fmt.Fprintf(os.Stderr, "Failed to set up embedded \"par2\" (par2cmdline): %v\n", perr)
+	}
+	defer clean()
 
 	rootCmd := newRootCmd(ctx)
 	err := rootCmd.Execute()

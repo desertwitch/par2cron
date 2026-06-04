@@ -363,7 +363,7 @@ Granular codes allow for integration with scripts and notification services:
 | 3    | Repairable      | Corruption detected, but parity data is sufficient to repair. |
 | 4    | Unrepairable    | Corruption detected that exceeds available redundancy.        |
 | 5    | Unclassified    | An unexpected or unknown error occurred.                      |
-| 143  | Interrupted     | The operation was interrupted (SIGINT or SIGTERM).            |
+| 143  | Interrupted     | The operation was interrupted (SIGINT, SIGTERM or SIGPIPE).   |
 
 In general the program is able to recover from most problematic situations
 without user interaction, either retrying failures at a later time or with
@@ -371,11 +371,15 @@ rebuilding corrupted or missing manifests (read more about manifests below)
 wherever possible. Failure-related exit codes usually directly relate to
 encountered errors requiring some degree of manual inspection by the user.
 
-Interrupting par2cron mid-operation using `SIGTERM` or `SIGINT` (CTRL+C) is
+Interrupting par2cron mid-operation using `SIGINT` (CTRL+C) or `SIGTERM` is
 generally safe and will not leave your files in a broken state. The currently
 processing job will be aborted (when it is safe to do so), in-flight PAR2 sets
 will be cleaned up, with the next run picking the job up again. Completed work
 is not lost, with each job being a self-contained processing unit.
+
+As par2cron is heavily used in shell scripting, broken pipes should not lead to
+corrupted or incomplete files. As a result, `SIGPIPE` is treated also as an
+interrupt, meaning the above section applies to this signal as well.
 
 ## Output Streams
 

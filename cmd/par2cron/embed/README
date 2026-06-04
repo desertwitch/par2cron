@@ -1,0 +1,2 @@
+When building with "make par2cron-embed" or "-tags embed_par2" a statically
+built par2cmdline binary named "par2" is expected to be placed in this folder.

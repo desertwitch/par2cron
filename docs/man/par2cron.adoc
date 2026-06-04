@@ -195,11 +195,14 @@ Validates a par2cron YAML configuration file.
 *5*::
   Unclassified. An unexpected or unknown error occurred.
 *143*::
-  Interrupted. The operation was interrupted (SIGINT or SIGTERM).
+  Interrupted. The operation was interrupted (SIGINT, SIGTERM or SIGPIPE).
 
-Interrupting par2cron with *SIGTERM* or *SIGINT* is safe. The current job is
+Interrupting par2cron with *SIGINT* or *SIGTERM* is safe. The current job is
 aborted when safe to do so, in-flight PAR2 sets are cleaned up, and the next
 run picks the job up again. Completed work is not lost.
+
+*SIGPIPE* is treated as an interrupt to prevent broken pipes from leaving
+corrupted or incomplete files, meaning the above applies to *SIGPIPE* equally.
 
 == OUTPUT STREAMS
 

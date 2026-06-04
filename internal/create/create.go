@@ -314,25 +314,25 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 
 func (prog *Service) createPar2(ctx context.Context, job *Job) error {
 	files, err := prog.findElementsToProtect(ctx, job)
-	if err != nil {
+	if err == nil {
+		switch job.par2Mode {
+		case schema.CreateFileMode:
+			if err := prog.createIndividual(ctx, job, files); err != nil {
+				return fmt.Errorf("failed to create par2: %w", err)
+			}
+
+		case schema.CreateNestedMode:
+			if err := prog.createNested(ctx, job, files); err != nil {
+				return fmt.Errorf("failed to create par2: %w", err)
+			}
+
+		default: // schema.CreateFolderMode or schema.CreateRecursiveMode
+			if err := prog.createCombined(ctx, job, files); err != nil {
+				return fmt.Errorf("failed to create par2: %w", err)
+			}
+		}
+	} else if !errors.Is(err, errNoFilesToProtect) {
 		return fmt.Errorf("failed to find protectables: %w", err)
-	}
-
-	switch job.par2Mode {
-	case schema.CreateFileMode:
-		if err := prog.createIndividual(ctx, job, files); err != nil {
-			return fmt.Errorf("failed to create par2: %w", err)
-		}
-
-	case schema.CreateNestedMode:
-		if err := prog.createNested(ctx, job, files); err != nil {
-			return fmt.Errorf("failed to create par2: %w", err)
-		}
-
-	default: // schema.CreateFolderMode
-		if err := prog.createCombined(ctx, job, files); err != nil {
-			return fmt.Errorf("failed to create par2: %w", err)
-		}
 	}
 
 	if !job.markerPersist {
@@ -408,7 +408,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			return nil, fmt.Errorf("failed to lstat: %w", err)
 		}
 
-		if fi.IsDir() && job.par2Mode != schema.CreateRecursiveMode {
+		if (!fi.IsDir() && fi.Size() == 0) || (fi.IsDir() && job.par2Mode != schema.CreateRecursiveMode) {
 			continue
 		}
 
@@ -443,7 +443,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 
 	if len(protectableElements) == 0 {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
-		logger.Error("No files to protect in folder (will check again next run)")
+		logger.Warn("Nothing to protect (discarding this job)")
 
 		return nil, errNoFilesToProtect
 	}

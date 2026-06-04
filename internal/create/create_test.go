@@ -1265,7 +1265,7 @@ func Test_Service_createPar2_FolderMode_DeepGlob_Success(t *testing.T) {
 }
 
 // Expectation: The creation mode "folder" should handle no files to protect.
-func Test_Service_createPar2_FolderMode_NoFilesToProtect_Error(t *testing.T) {
+func Test_Service_createPar2_FolderMode_NoFilesToProtect_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1304,11 +1304,11 @@ func Test_Service_createPar2_FolderMode_NoFilesToProtect_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	require.ErrorIs(t, prog.createPar2(t.Context(), job), errNoFilesToProtect)
+	require.NoError(t, prog.createPar2(t.Context(), job))
 	require.Equal(t, 0, called)
 
 	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
-	require.True(t, markerExists)
+	require.False(t, markerExists)
 }
 
 // Expectation: The creation mode "folder" should handle creation failure.
@@ -1648,7 +1648,7 @@ func Test_Service_createPar2_NestedMode_DeeplyNested_Success(t *testing.T) {
 }
 
 // Expectation: The creation mode "nested" should handle no files to protect.
-func Test_Service_createPar2_NestedMode_NoFilesToProtect_Error(t *testing.T) {
+func Test_Service_createPar2_NestedMode_NoFilesToProtect_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1687,11 +1687,11 @@ func Test_Service_createPar2_NestedMode_NoFilesToProtect_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	require.ErrorIs(t, prog.createPar2(t.Context(), job), errNoFilesToProtect)
+	require.NoError(t, prog.createPar2(t.Context(), job))
 	require.Equal(t, 0, called)
 
 	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
-	require.True(t, markerExists)
+	require.False(t, markerExists)
 }
 
 // Expectation: The creation mode "nested" should handle creation failure.
@@ -1856,7 +1856,7 @@ func Test_Service_createPar2_FileMode_DeepGlob_Success(t *testing.T) {
 }
 
 // Expectation: The creation mode "file" should handle no files to protect.
-func Test_Service_createPar2_FileMode_NoFilesToProtect_Error(t *testing.T) {
+func Test_Service_createPar2_FileMode_NoFilesToProtect_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1895,11 +1895,11 @@ func Test_Service_createPar2_FileMode_NoFilesToProtect_Error(t *testing.T) {
 		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
 	}
 
-	require.ErrorIs(t, prog.createPar2(t.Context(), job), errNoFilesToProtect)
+	require.NoError(t, prog.createPar2(t.Context(), job))
 	require.Equal(t, 0, called)
 
 	markerExists, _ := afero.Exists(fs, "/data/folder/_par2cron")
-	require.True(t, markerExists)
+	require.False(t, markerExists)
 }
 
 // Expectation: The creation mode "file" should handle creation failure.
@@ -2501,7 +2501,7 @@ func Test_Service_findElementsToProtect_NoFilesToProtect_Error(t *testing.T) {
 	_, err := prog.findElementsToProtect(t.Context(), job)
 
 	require.ErrorIs(t, err, errNoFilesToProtect)
-	require.Contains(t, logBuf.String(), "No files to protect")
+	require.Contains(t, logBuf.String(), "Nothing to protect")
 }
 
 // Expectation: Function should reject deep (/) glob patterns in recursive creation mode.
