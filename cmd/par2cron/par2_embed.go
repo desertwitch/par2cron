@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-//go:embed par2
+//go:embed embed/par2
 var par2Binary []byte
 
 // setupPar2 extracts the bundled par2cmdline binary to a temporary directory,
@@ -17,8 +17,8 @@ var par2Binary []byte
 // self-contained. This makes sense only for static builds of par2cmdline.
 //
 // This function is only included in builds that use the "embed_par2" build tag,
-// which requires a valid "par2" binary at "./cmd/par2cron/par2". Default builds
-// however do not bundle the "par2" binary into the compiled par2cron executable.
+// which requires a valid "par2" binary at "./cmd/par2cron/embed/par2". Default
+// builds do not bundle the "par2" binary into the compiled par2cron executable.
 //
 // Call the returned cleanup function once all PAR2 operations are complete.
 func setupPar2() (func(), error) {

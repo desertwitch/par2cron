@@ -1,5 +1,6 @@
 TODO
-cmd/par2cron/par2
+cmd/par2cron/embed/*
+!cmd/par2cron/embed/README
 dist/
 docs/completions
 docs/man/*
