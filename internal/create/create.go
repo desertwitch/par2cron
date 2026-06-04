@@ -443,7 +443,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 
 	if len(protectableElements) == 0 {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
-		logger.Warn("Nothing to protect in folder (discarding this job)")
+		logger.Warn("Nothing to protect (discarding this job)")
 
 		return nil, errNoFilesToProtect
 	}
