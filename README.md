@@ -2,7 +2,7 @@
     <img alt="Logo" src="assets/par2cron.png" width="150">
     <br>
     <h1>par2cron</h1>
-    <p>PAR2 Integrity & Self-Repair Engine<br>Selective automated protection for directory trees</p>
+    <p>PAR2 Integrity & Self-Repair Engine<br>Automated parity protection for directory trees</p>
 </div>
 
 <div align="center">
