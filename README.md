@@ -701,6 +701,8 @@ recursion internally. Combining both would result in unpredictable behavior.
 
 **For a full list of supported patterns, refer to the [doublestar](https://github.com/bmatcuk/doublestar#patterns) documentation.**
 
+> **Note:** Hidden elements are **not matched** unless explicitly included in the glob pattern (`*` vs. `.*`).
+
 ## Marker Files
 
 The core of the par2cron `create` operation are the marker files. A found marker
