@@ -279,7 +279,7 @@ func Test_Job_lastVerifiedStr_NoManifest_Success(t *testing.T) {
 	meta := &JobMeta{&schema.JobMeta{}}
 	result := meta.lastVerifiedStr()
 
-	require.Equal(t, "-", result)
+	require.Empty(t, result)
 }
 
 // Expectation: A dash should be printed if no verification exists.
@@ -293,7 +293,7 @@ func Test_Job_lastVerifiedStr_NoVerification_Success(t *testing.T) {
 	}
 	result := meta.lastVerifiedStr()
 
-	require.Equal(t, "-", result)
+	require.Empty(t, result)
 }
 
 // Expectation: The correct time string should be returned for the verification time.
@@ -347,7 +347,7 @@ func Test_Job_lastDurationStr_NoManifest_Success(t *testing.T) {
 	meta := &JobMeta{&schema.JobMeta{}}
 	result := meta.lastDurationStr()
 
-	require.Equal(t, "?", result)
+	require.Empty(t, result)
 }
 
 // Expectation: A question mark should be printed if no verification exists.
@@ -361,7 +361,7 @@ func Test_Job_lastDurationStr_NoVerification_Success(t *testing.T) {
 	}
 	result := meta.lastDurationStr()
 
-	require.Equal(t, "?", result)
+	require.Empty(t, result)
 }
 
 // Expectation: The correct duration string should be returned for the duration.
