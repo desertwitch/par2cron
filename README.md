@@ -142,6 +142,8 @@ system locations; ensure they are executable by running `chmod +x` before use.
 
 ### Building from source
 
+A working [Go](https://go.dev/dl/) installation is required to compile from source.
+
 ```bash
 git clone https://github.com/desertwitch/par2cron.git
 cd par2cron
