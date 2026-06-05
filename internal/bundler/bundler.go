@@ -156,6 +156,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 		if encErr != nil {
 			logger := prog.bundleLogger(ctx, nil, path)
 			logger.Error("Failed to encode bundle information", "error", encErr)
+			errs = append(errs, fmt.Errorf("%s: failed to encode bundle information: %w", path, encErr))
 		}
 
 		if mfErr != nil || valErr != nil || encErr != nil {
