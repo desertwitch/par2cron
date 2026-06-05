@@ -5,7 +5,7 @@ const rootUsage = "par2cron"
 const rootHelpShort = "PAR2 Integrity & Self-Repair Engine"
 
 const rootHelpLong = `par2cron - PAR2 Integrity & Self-Repair Engine
-Selective automated protection for directory trees
+Automated parity protection for directory trees
 
 par2cron wraps par2cmdline to provide cron-friendly, automated
 integrity verification and repair for directory trees. Designed
