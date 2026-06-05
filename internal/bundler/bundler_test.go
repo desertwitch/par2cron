@@ -2550,7 +2550,7 @@ func Test_Service_OutputJSON_MultipleFiles_PartialError(t *testing.T) {
 		"/data/bad" + schema.BundleExtension + schema.Par2Extension,
 	})
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
-	require.ErrorContains(t, err, "1 errors")
+	require.ErrorContains(t, err, "1 bundles with errors")
 
 	// Both JSON objects should be in the output (newline-delimited).
 	dec := json.NewDecoder(strings.NewReader(stdoutBuf.String()))

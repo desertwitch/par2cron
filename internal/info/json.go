@@ -215,10 +215,10 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		meta, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
-				return nil, fmt.Errorf("failed to enumerate jobs: %w", err)
+				return nil, fmt.Errorf("%s: failed to enumerate jobs: %w", rootDir, err)
 			}
 
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("%s: %w", rootDir, err))
 		}
 
 		cache.PruneUnwalked()

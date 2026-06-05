@@ -155,11 +155,10 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 		ms, err := prog.Enumerate(ctx, rootDir, opts, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
-				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+				return results, fmt.Errorf("%s: failed to enumerate jobs: %w", rootDir, err)
 			}
 
-			err = fmt.Errorf("failed to enumerate some jobs: %w", err)
-			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+			errs = append(errs, fmt.Errorf("%s: failed to enumerate some jobs: %w", rootDir, err))
 		}
 
 		cache.PruneUnwalked()
@@ -228,7 +227,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 				}
 
 				logger.Error("Manifest failure (will retry next run)", "error", err)
-				errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+				errs = append(errs, fmt.Errorf("%s: failed to load manifest: %w", meta.Par2Path, err))
 				results.Error++
 
 				continue
@@ -260,9 +259,9 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 				)
 
 				if job.manifest.Verification.RepairPossible {
-					errs = append(errs, schema.ErrExitRepairable)
+					errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, schema.ErrExitRepairable))
 				} else {
-					errs = append(errs, schema.ErrExitUnrepairable)
+					errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, schema.ErrExitUnrepairable))
 				}
 				results.Error++
 			}
@@ -276,7 +275,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			results.Skipped++
 		} else {
 			logger.Error("Job failure (will retry next run)", "error", err)
-			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+			errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, err))
 			results.Error++
 		}
 	}
@@ -285,7 +284,12 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 		return results, fmt.Errorf("context error: %w", err)
 	}
 
-	return results, util.HighestError(errs) //nolint:wrapcheck
+	if len(errs) > 0 {
+		return results, fmt.Errorf("%w: %w",
+			schema.ErrExitPartialFailure, errors.Join(errs...))
+	}
+
+	return results, nil
 }
 
 func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options, cache schema.Cache) ([]*JobMeta, error) {

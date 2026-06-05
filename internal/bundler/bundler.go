@@ -99,7 +99,8 @@ func (prog *Service) Unpack(ctx context.Context, rootDirs []string, opts Options
 }
 
 func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
-	var errs int
+	var errs []error
+	var errct int
 
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
@@ -110,7 +111,8 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 		if err != nil {
 			logger := prog.bundleLogger(ctx, nil, path)
 			logger.Error("Failed to open bundle", "error", err)
-			errs++
+			errs = append(errs, fmt.Errorf("%s: failed to open bundle: %w", path, err))
+			errct++
 
 			continue
 		}
@@ -136,6 +138,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 			result.ManifestError = mfErr.Error()
 			logger := prog.bundleLogger(ctx, nil, path)
 			logger.Error("Failed to validate manifest", "error", mfErr)
+			errs = append(errs, fmt.Errorf("%s: failed to validate manifest: %w", path, mfErr))
 		}
 
 		valErr := bun.Validate(true)
@@ -143,6 +146,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 			result.ValidationError = valErr.Error()
 			logger := prog.bundleLogger(ctx, nil, path)
 			logger.Error("Failed to validate bundle", "error", valErr)
+			errs = append(errs, fmt.Errorf("%s: failed to validate bundle: %w", path, valErr))
 		}
 
 		enc := json.NewEncoder(prog.log.Options.Stdout)
@@ -155,15 +159,15 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 		}
 
 		if mfErr != nil || valErr != nil || encErr != nil {
-			errs++
+			errct++
 		}
 
 		_ = bun.Close()
 	}
 
-	if errs > 0 {
-		return fmt.Errorf("%w: %d errors occcured",
-			schema.ErrExitPartialFailure, errs)
+	if len(errs) > 0 {
+		return fmt.Errorf("%w: %d bundles with errors: %w",
+			schema.ErrExitPartialFailure, errct, errors.Join(errs...))
 	}
 
 	return nil
@@ -182,11 +186,10 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 		js, err := ef(ctx, rootDir, opts)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
-				return results, fmt.Errorf("failed to enumerate jobs: %w", err)
+				return results, fmt.Errorf("%s: failed to enumerate jobs: %w", rootDir, err)
 			}
 
-			err = fmt.Errorf("failed to enumerate some jobs: %w", err)
-			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+			errs = append(errs, fmt.Errorf("%s: failed to enumerate some jobs: %w", rootDir, err))
 		}
 
 		jobs = append(jobs, js...)
@@ -215,7 +218,7 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 			results.Success++
 		} else {
 			logger.Error("Job failure (skipping)", "error", err)
-			errs = append(errs, fmt.Errorf("%w: %w", schema.ErrExitPartialFailure, err))
+			errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, err))
 			results.Error++
 		}
 	}
@@ -224,7 +227,12 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 		return results, fmt.Errorf("context error: %w", err)
 	}
 
-	return results, util.HighestError(errs) //nolint:wrapcheck
+	if len(errs) > 0 {
+		return results, fmt.Errorf("%w: %w",
+			schema.ErrExitPartialFailure, errors.Join(errs...))
+	}
+
+	return results, nil
 }
 
 func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {

@@ -96,7 +96,7 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 		meta, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
 			if !errors.Is(err, schema.ErrNonFatal) {
-				return fmt.Errorf("failed to enumerate jobs: %w", err)
+				return fmt.Errorf("%s: failed to enumerate jobs: %w", rootDir, err)
 			}
 
 			fmt.Fprintf(prog.log.Options.Stdout, "Warning: Not all manifests could be read for '%s' (%v)\n", rootDir, err)

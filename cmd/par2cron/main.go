@@ -751,12 +751,12 @@ func logOperationResult(err error, result util.ResultTracker, log *logging.Logge
 		log.Error(
 			fmt.Sprintf("Operation completed with errors (%d/%d jobs processed)",
 				processedCount, result.Selected),
-			"error", err,
 			"successCount", result.Success,
 			"skipCount", result.Skipped,
 			"errorCount", result.Error,
 			"processedCount", processedCount,
 			"selectedCount", result.Selected,
+			"error", err,
 		)
 	}
 }
