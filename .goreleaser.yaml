@@ -83,3 +83,21 @@ changelog:
       order: 10
     - title: 'Other work'
       order: 999
+
+nfpms:
+  - package_name: par2cron
+    maintainer: "desertwitch <dezertwitsh@gmail.com>"
+    description: "Automated parity protection for directory trees"
+    vendor: "desertwitch"
+    homepage: "https://github.com/desertwitch/par2cron"
+    license: "MIT"
+    section: utils
+    formats:
+      - deb
+      - rpm
+      - archlinux
+    contents:
+      - src: ./docs/man/par2cron.1
+        dst: /usr/share/man/man1/par2cron.1
+        file_info:
+          mode: 0644
