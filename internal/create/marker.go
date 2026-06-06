@@ -75,7 +75,7 @@ func (prog *Service) parseMarkerFile(markerPath string, opts Options) (*MarkerCo
 	prog.parseMarkerFilename(markerPath, cfg)
 
 	if err := prog.parseMarkerContent(markerPath, cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse marker file: %w", err)
+		return nil, fmt.Errorf("failed to parse content: %w", err)
 	}
 
 	prog.considerRecursiveMarker(markerPath, cfg)
@@ -87,7 +87,7 @@ func (prog *Service) parseMarkerFile(markerPath string, opts Options) (*MarkerCo
 				"error", schema.ErrUnsupportedGlob)
 		}
 
-		return nil, err
+		return nil, fmt.Errorf("failed to validate content: %w", err)
 	}
 
 	return cfg, nil

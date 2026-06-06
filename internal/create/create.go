@@ -271,7 +271,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 	jobs := []*Job{}
 	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
-	var parseErrors int
+	var errs []error
 	err := prog.walker.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("context error: %w", err)
@@ -297,7 +297,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		if err != nil {
 			logger := prog.creationLogger(ctx, nil, path)
 			logger.Error("A found marker file could not be parsed (will retry next run)", "error", err)
-			parseErrors++
+			errs = append(errs, fmt.Errorf("%s: failed to parse: %w", path, err))
 
 			return nil
 		}
@@ -309,8 +309,9 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 	if err != nil {
 		return nil, fmt.Errorf("failed to walk FS: %w", err)
 	}
-	if parseErrors > 0 {
-		return jobs, fmt.Errorf("%w: %d marker files failed to parse", schema.ErrNonFatal, parseErrors)
+	if len(errs) > 0 {
+		return jobs, fmt.Errorf("%w: %d markers failed to parse: %w",
+			schema.ErrNonFatal, len(errs), errors.Join(errs...))
 	}
 
 	return jobs, nil
