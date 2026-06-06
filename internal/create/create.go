@@ -271,7 +271,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 	jobs := []*Job{}
 	checker := util.NewIgnoreChecker(prog.fsys, rootDir)
 
-	var parseErrors int
+	var errs []error
 	err := prog.walker.WalkDir(rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("context error: %w", err)
@@ -297,7 +297,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		if err != nil {
 			logger := prog.creationLogger(ctx, nil, path)
 			logger.Error("A found marker file could not be parsed (will retry next run)", "error", err)
-			parseErrors++
+			errs = append(errs, fmt.Errorf("%s: failed to parse: %w", path, err))
 
 			return nil
 		}
@@ -309,8 +309,9 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 	if err != nil {
 		return nil, fmt.Errorf("failed to walk FS: %w", err)
 	}
-	if parseErrors > 0 {
-		return jobs, fmt.Errorf("%w: %d marker files failed to parse", schema.ErrNonFatal, parseErrors)
+	if len(errs) > 0 {
+		return jobs, fmt.Errorf("%w: %d markers failed: %w",
+			schema.ErrNonFatal, len(errs), errors.Join(errs...))
 	}
 
 	return jobs, nil
@@ -456,7 +457,9 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 }
 
 func (prog *Service) createCombined(ctx context.Context, job *Job, elements []schema.FsElement) error {
-	if prog.par2AlreadyExists(ctx, job) {
+	if exists, err := prog.par2AlreadyExists(ctx, job); err != nil {
+		return fmt.Errorf("failed to check existence: %w", err)
+	} else if exists {
 		return nil
 	}
 
@@ -496,7 +499,11 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 
 		j := newNestedModeJob(*job, dir)
 
-		if prog.par2AlreadyExists(ctx, &j) {
+		if exists, err := prog.par2AlreadyExists(ctx, &j); err != nil {
+			errs = append(errs, fmt.Errorf("%s: failed to check existence: %w", j.par2Path, err))
+
+			continue
+		} else if exists {
 			continue
 		}
 
@@ -532,7 +539,11 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 		j := newFileModeJob(*job, f.Path)
 		je := []schema.FsElement{elements[i]}
 
-		if prog.par2AlreadyExists(ctx, &j) {
+		if exists, err := prog.par2AlreadyExists(ctx, &j); err != nil {
+			errs = append(errs, fmt.Errorf("%s: failed to check existence: %w", j.par2Path, err))
+
+			continue
+		} else if exists {
 			continue
 		}
 

@@ -415,6 +415,12 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:     true,
 		},
 		{
+			name:         "plain par2 name detects plain existing (uppercase)",
+			existingFile: "/data/folder/Test" + schema.Par2Extension,
+			par2Name:     "Test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
 			name:         "plain par2 name detects hidden existing",
 			existingFile: "/data/folder/.test" + schema.Par2Extension,
 			par2Name:     "test" + schema.Par2Extension,
@@ -451,11 +457,10 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:     true,
 		},
 		{
-			name:          "hidden par2 name detects hidden bundle existing",
-			existingFile:  "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
-			par2Name:      ".test" + schema.Par2Extension,
-			markerPersist: true,
-			expected:      true,
+			name:         "hidden par2 name detects hidden bundle existing",
+			existingFile: "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
 		},
 		{
 			name:         "uppercase par2 name detects plain existing",
@@ -500,10 +505,11 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:     true,
 		},
 		{
-			name:         "plain par2 name detects hidden uppercase bundle existing",
-			existingFile: "/data/folder/.test" + schema.BundleExtension + strings.ToUpper(schema.Par2Extension),
-			par2Name:     "test" + schema.Par2Extension,
-			expected:     true,
+			name:          "plain par2 name detects hidden uppercase bundle existing",
+			existingFile:  "/data/folder/.test" + schema.BundleExtension + strings.ToUpper(schema.Par2Extension),
+			par2Name:      "test" + schema.Par2Extension,
+			markerPersist: true, // Just to exercise the log path...
+			expected:      true,
 		},
 		{
 			name:         "no par2 exists",
@@ -515,6 +521,18 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			name:         "unrelated file exists",
 			existingFile: "/data/folder/test.txt",
 			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "different base does not match",
+			existingFile: "/data/folder/Test" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "different base does not match #2",
+			existingFile: "/data/folder/test" + schema.Par2Extension,
+			par2Name:     "Test" + schema.Par2Extension,
 			expected:     false,
 		},
 	}
@@ -547,7 +565,8 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 				markerPersist: tt.markerPersist,
 			}
 
-			result := prog.par2AlreadyExists(t.Context(), job)
+			result, err := prog.par2AlreadyExists(t.Context(), job)
+			require.NoError(t, err)
 
 			require.Equal(t, tt.expected, result)
 

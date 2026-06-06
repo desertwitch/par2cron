@@ -3,6 +3,7 @@ package create
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -75,7 +76,7 @@ func (prog *Service) considerRecursive(opts *Options) error {
 	return nil
 }
 
-func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
+func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) (bool, error) {
 	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
 	baseName = strings.TrimPrefix(baseName, ".")
 
@@ -103,11 +104,13 @@ func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
 				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
 			}
 
-			return true
+			return true, nil
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return false, fmt.Errorf("failed to stat: %w", err)
 		}
 	}
 
-	return false
+	return false, nil
 }
 
 func getPaths(files []schema.FsElement) []string {
