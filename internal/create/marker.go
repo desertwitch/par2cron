@@ -121,7 +121,7 @@ func (prog *Service) parseMarkerFilename(markerPath string, cfg *MarkerConfig) {
 func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) error {
 	data, err := afero.ReadFile(prog.fsys, markerPath)
 	if err != nil {
-		return fmt.Errorf("failed to read marker file: %w", err)
+		return fmt.Errorf("failed to read: %w", err)
 	}
 
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
@@ -129,7 +129,7 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 
 	yamlConfig := &MarkerConfig{}
 	if err := decoder.Decode(&yamlConfig); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("failed to decode marker file: %w", err)
+		return fmt.Errorf("failed to decode: %w", err)
 	}
 
 	if yamlConfig.Par2Name != nil {

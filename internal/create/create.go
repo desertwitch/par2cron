@@ -310,7 +310,7 @@ func (prog *Service) Enumerate(ctx context.Context, rootDir string, opts Options
 		return nil, fmt.Errorf("failed to walk FS: %w", err)
 	}
 	if len(errs) > 0 {
-		return jobs, fmt.Errorf("%w: %d markers failed to parse: %w",
+		return jobs, fmt.Errorf("%w: %d markers failed: %w",
 			schema.ErrNonFatal, len(errs), errors.Join(errs...))
 	}
 
