@@ -80,19 +80,22 @@ func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
 	baseName = strings.TrimPrefix(baseName, ".")
 
 	candidates := map[string]struct{}{
-		baseName + schema.Par2Extension:                                {},
-		"." + baseName + schema.Par2Extension:                          {},
-		baseName + schema.BundleExtension + schema.Par2Extension:       {},
-		"." + baseName + schema.BundleExtension + schema.Par2Extension: {},
+		baseName + schema.Par2Extension:                                                 {},
+		baseName + strings.ToUpper(schema.Par2Extension):                                {},
+		"." + baseName + schema.Par2Extension:                                           {},
+		"." + baseName + strings.ToUpper(schema.Par2Extension):                          {},
+		baseName + schema.BundleExtension + schema.Par2Extension:                        {},
+		baseName + schema.BundleExtension + strings.ToUpper(schema.Par2Extension):       {},
+		"." + baseName + schema.BundleExtension + schema.Par2Extension:                  {},
+		"." + baseName + schema.BundleExtension + strings.ToUpper(schema.Par2Extension): {},
 	}
 
 	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
 	if err == nil {
 		for _, entry := range entries {
-			lower := strings.ToLower(entry.Name())
-
-			if _, ok := candidates[lower]; ok {
-				logger := prog.creationLogger(ctx, job, filepath.Join(job.workingDir, entry.Name()))
+			name := entry.Name()
+			if _, ok := candidates[name]; ok {
+				logger := prog.creationLogger(ctx, job, filepath.Join(job.workingDir, name))
 
 				if job.markerPersist {
 					logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")

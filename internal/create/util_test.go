@@ -402,16 +402,21 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name          string
-		existingFile  string
-		par2Name      string
-		markerPersist bool
-		expected      bool
+		name         string
+		existingFile string
+		par2Name     string
+		expected     bool
 	}{
 		{
 			name:         "plain par2 name detects plain existing",
 			existingFile: "/data/folder/test" + schema.Par2Extension,
 			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects plain existing (uppercase)",
+			existingFile: "/data/folder/Test" + schema.Par2Extension,
+			par2Name:     "Test" + schema.Par2Extension,
 			expected:     true,
 		},
 		{
@@ -451,11 +456,10 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:     true,
 		},
 		{
-			name:          "hidden par2 name detects hidden bundle existing",
-			existingFile:  "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
-			par2Name:      ".test" + schema.Par2Extension,
-			markerPersist: true,
-			expected:      true,
+			name:         "hidden par2 name detects hidden bundle existing",
+			existingFile: "/data/folder/.test" + schema.BundleExtension + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
 		},
 		{
 			name:         "uppercase par2 name detects plain existing",
@@ -517,6 +521,18 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			par2Name:     "test" + schema.Par2Extension,
 			expected:     false,
 		},
+		{
+			name:         "different base does not match",
+			existingFile: "/data/folder/Test" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "different base does not match #2",
+			existingFile: "/data/folder/test" + schema.Par2Extension,
+			par2Name:     "Test" + schema.Par2Extension,
+			expected:     false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -541,10 +557,9 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 			job := &Job{
-				workingDir:    "/data/folder",
-				par2Name:      tt.par2Name,
-				par2Path:      filepath.Join("/data/folder", tt.par2Name),
-				markerPersist: tt.markerPersist,
+				workingDir: "/data/folder",
+				par2Name:   tt.par2Name,
+				par2Path:   filepath.Join("/data/folder", tt.par2Name),
 			}
 
 			result := prog.par2AlreadyExists(t.Context(), job)
