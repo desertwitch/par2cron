@@ -3,6 +3,7 @@ package create
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -75,7 +76,7 @@ func (prog *Service) considerRecursive(opts *Options) error {
 	return nil
 }
 
-func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
+func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) (bool, error) {
 	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
 	baseName = strings.TrimPrefix(baseName, ".")
 
@@ -91,24 +92,26 @@ func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
 	}
 
 	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
-	if err == nil {
-		for _, entry := range entries {
-			name := entry.Name()
-			if _, ok := candidates[name]; ok {
-				logger := prog.creationLogger(ctx, job, filepath.Join(job.workingDir, name))
+	if err != nil {
+		return false, fmt.Errorf("failed to readdir: %w", err)
+	}
 
-				if job.markerPersist {
-					logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
-				} else {
-					logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-				}
+	for _, entry := range entries {
+		name := entry.Name()
+		if _, ok := candidates[name]; ok {
+			logger := prog.creationLogger(ctx, job, filepath.Join(job.workingDir, name))
 
-				return true
+			if job.markerPersist {
+				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+			} else {
+				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
 			}
+
+			return true, nil
 		}
 	}
 
-	return false
+	return false, nil
 }
 
 func getPaths(files []schema.FsElement) []string {

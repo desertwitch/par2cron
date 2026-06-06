@@ -457,7 +457,9 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 }
 
 func (prog *Service) createCombined(ctx context.Context, job *Job, elements []schema.FsElement) error {
-	if prog.par2AlreadyExists(ctx, job) {
+	if exists, err := prog.par2AlreadyExists(ctx, job); err != nil {
+		return fmt.Errorf("failed to check existence: %w", err)
+	} else if exists {
 		return nil
 	}
 
@@ -497,7 +499,11 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 
 		j := newNestedModeJob(*job, dir)
 
-		if prog.par2AlreadyExists(ctx, &j) {
+		if exists, err := prog.par2AlreadyExists(ctx, &j); err != nil {
+			errs = append(errs, fmt.Errorf("%s: failed to check existence: %w", j.par2Path, err))
+
+			continue
+		} else if exists {
 			continue
 		}
 
@@ -533,7 +539,11 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 		j := newFileModeJob(*job, f.Path)
 		je := []schema.FsElement{elements[i]}
 
-		if prog.par2AlreadyExists(ctx, &j) {
+		if exists, err := prog.par2AlreadyExists(ctx, &j); err != nil {
+			errs = append(errs, fmt.Errorf("%s: failed to check existence: %w", j.par2Path, err))
+
+			continue
+		} else if exists {
 			continue
 		}
 

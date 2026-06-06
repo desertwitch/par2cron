@@ -402,10 +402,11 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name         string
-		existingFile string
-		par2Name     string
-		expected     bool
+		name          string
+		existingFile  string
+		par2Name      string
+		expected      bool
+		markerPersist bool
 	}{
 		{
 			name:         "plain par2 name detects plain existing",
@@ -504,10 +505,11 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:     true,
 		},
 		{
-			name:         "plain par2 name detects hidden uppercase bundle existing",
-			existingFile: "/data/folder/.test" + schema.BundleExtension + strings.ToUpper(schema.Par2Extension),
-			par2Name:     "test" + schema.Par2Extension,
-			expected:     true,
+			name:          "plain par2 name detects hidden uppercase bundle existing",
+			existingFile:  "/data/folder/.test" + schema.BundleExtension + strings.ToUpper(schema.Par2Extension),
+			par2Name:      "test" + schema.Par2Extension,
+			markerPersist: true, // Just to exercise the log path...
+			expected:      true,
 		},
 		{
 			name:         "no par2 exists",
@@ -557,12 +559,14 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
 
 			job := &Job{
-				workingDir: "/data/folder",
-				par2Name:   tt.par2Name,
-				par2Path:   filepath.Join("/data/folder", tt.par2Name),
+				workingDir:    "/data/folder",
+				par2Name:      tt.par2Name,
+				par2Path:      filepath.Join("/data/folder", tt.par2Name),
+				markerPersist: tt.markerPersist,
 			}
 
-			result := prog.par2AlreadyExists(t.Context(), job)
+			result, err := prog.par2AlreadyExists(t.Context(), job)
+			require.NoError(t, err)
 
 			require.Equal(t, tt.expected, result)
 
