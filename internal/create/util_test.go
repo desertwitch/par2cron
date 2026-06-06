@@ -405,8 +405,8 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 		name          string
 		existingFile  string
 		par2Name      string
-		expected      bool
 		markerPersist bool
+		expected      bool
 	}{
 		{
 			name:         "plain par2 name detects plain existing",
