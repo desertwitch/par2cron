@@ -79,31 +79,29 @@ func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) bool {
 	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
 	baseName = strings.TrimPrefix(baseName, ".")
 
-	candidates := []string{
-		// Lower-case variants
-		filepath.Join(job.workingDir, baseName+schema.Par2Extension),
-		filepath.Join(job.workingDir, "."+baseName+schema.Par2Extension),
-		filepath.Join(job.workingDir, baseName+schema.BundleExtension+schema.Par2Extension),
-		filepath.Join(job.workingDir, "."+baseName+schema.BundleExtension+schema.Par2Extension),
-
-		// Upper-case variants
-		filepath.Join(job.workingDir, baseName+strings.ToUpper(schema.Par2Extension)),
-		filepath.Join(job.workingDir, "."+baseName+strings.ToUpper(schema.Par2Extension)),
-		filepath.Join(job.workingDir, baseName+schema.BundleExtension+strings.ToUpper(schema.Par2Extension)),
-		filepath.Join(job.workingDir, "."+baseName+schema.BundleExtension+strings.ToUpper(schema.Par2Extension)),
+	candidates := map[string]struct{}{
+		baseName + schema.Par2Extension:                                {},
+		"." + baseName + schema.Par2Extension:                          {},
+		baseName + schema.BundleExtension + schema.Par2Extension:       {},
+		"." + baseName + schema.BundleExtension + schema.Par2Extension: {},
 	}
 
-	for _, path := range candidates {
-		if _, err := util.LstatIfPossible(prog.fsys, path); err == nil {
-			logger := prog.creationLogger(ctx, job, path)
+	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
+	if err == nil {
+		for _, entry := range entries {
+			lower := strings.ToLower(entry.Name())
 
-			if job.markerPersist {
-				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
-			} else {
-				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
+			if _, ok := candidates[lower]; ok {
+				logger := prog.creationLogger(ctx, job, filepath.Join(job.workingDir, entry.Name()))
+
+				if job.markerPersist {
+					logger.Debug("Same-named PAR2 already exists in folder (not overwriting)")
+				} else {
+					logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+				}
+
+				return true
 			}
-
-			return true
 		}
 	}
 
