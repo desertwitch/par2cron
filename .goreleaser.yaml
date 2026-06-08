@@ -61,10 +61,18 @@ signs:
 
 release:
   draft: true
+  header: |
+    | Distribution | Package |
+    |:--|:--|
+    | Debian / Ubuntu | `.deb` |
+    | Fedora / RHEL | `.rpm` |
+    | Arch Linux | `.pkg.tar.zst` |
+    | Generic Linux (Binaries) | `.tar.gz` |
+
+    See [**Installing from packages**](https://github.com/desertwitch/par2cron#installing-from-packages) for installation guidance.
   footer: |
     ---
     **Thank you for choosing par2cron to protect your valuable data.** :yellow_heart:
-    Most users will want the `linux_amd64` package (see installation instructions in `QUICKGUIDE`).
     <br><img alt="Release footer" src="https://raw.githubusercontent.com/desertwitch/par2cron/refs/heads/main/assets/release_footer.png" width="400">
 
 changelog:
