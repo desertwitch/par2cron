@@ -62,8 +62,6 @@ signs:
 release:
   draft: true
   header: |
-    ## par2cron {{ .Version }}
-
     | Distribution | Package |
     |:--|:--|
     | Debian / Ubuntu | `.deb` |

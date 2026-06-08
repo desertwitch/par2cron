@@ -173,8 +173,8 @@ tar -xzf ./par2cron_*.tar.gz
 sudo install -m 755 par2cron /usr/bin/
 ```
 
-All packages and binaries are statically linked and require no runtime
-dependencies beyond `par2` (see [Dependencies](#dependencies)).
+Releases are statically linked and require no runtime dependencies beyond `par2`
+(see [Dependencies](#dependencies)).
 
 ### Building from source
 
