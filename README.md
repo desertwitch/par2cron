@@ -127,10 +127,10 @@ Running `make all` will compile the application and pull in any necessary
 dependencies. `make check` runs the test suite and static analysis tools.
 
 For convenience, precompiled packages and static binaries for common
-architectures are released through GitHub. Packages can be downloaded and then
-installed using your distribution's package manager, while standalone binaries
-can be installed into `/usr/bin/` or respective system locations; ensure they
-are executable by running `chmod +x` before use.
+architectures are released through GitHub. Release packages can be installed
+using your distribution's package manager, while standalone binaries can be
+installed into `/usr/bin/` or respective locations; ensure they are executable by
+running `chmod +x` before use.
 
 > All builds from source are designed to generate [reproducible builds](https://reproducible-builds.org/),
 > meaning that they should compile as byte-identical to the respective released binaries and also have the
