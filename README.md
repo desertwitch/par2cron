@@ -28,6 +28,7 @@
 - [Quick Start](#quick-start)
 - [Installation](#installation)
   - [Dependencies](#dependencies)
+  - [Installing from packages](#installing-from-packages)
   - [Building from source](#building-from-source)
   - [Building from source (with embedded `par2`)](#building-from-source-with-embedded-par2)
   - [Running a built executable](#running-a-built-executable)
@@ -125,9 +126,11 @@ To build from source, a `Makefile` is included with the project's source code.
 Running `make all` will compile the application and pull in any necessary
 dependencies. `make check` runs the test suite and static analysis tools.
 
-For convenience, precompiled static binaries for common architectures are
-released through GitHub. These can be installed into `/usr/bin/` or respective
-system locations; ensure they are executable by running `chmod +x` before use.
+For convenience, precompiled packages and static binaries for common
+architectures are released through GitHub. Packages can be downloaded and then
+installed using your distribution's package manager, while standalone binaries
+can be installed into `/usr/bin/` or respective system locations; ensure they
+are executable by running `chmod +x` before use.
 
 > All builds from source are designed to generate [reproducible builds](https://reproducible-builds.org/),
 > meaning that they should compile as byte-identical to the respective released binaries and also have the
@@ -136,9 +139,42 @@ system locations; ensure they are executable by running `chmod +x` before use.
 ### Dependencies
 
 - `par2` (the binary of the *par2cmdline* tool):
-    - Debian/Ubuntu: `apt install par2`
-    - macOS: `brew install par2`
-    - Fedora: `dnf install par2cmdline`
+    - Debian / Ubuntu: `apt install par2`
+    - Fedora / RHEL: `dnf install par2cmdline`
+    - Arch Linux: `pacman -S par2cmdline`
+
+### Installing from packages
+
+Precompiled packages for common distributions are available from the
+[GitHub Releases](https://github.com/desertwitch/par2cron/releases) page.
+
+**Debian / Ubuntu:**
+
+```bash
+sudo dpkg -i ./par2cron_*.deb
+```
+
+**Fedora / RHEL-based:**
+
+```bash
+sudo dnf install ./par2cron_*.rpm
+```
+
+**Arch Linux:**
+
+```bash
+sudo pacman -U ./par2cron_*.pkg.tar.zst
+```
+
+**Generic Linux (Binaries):**
+
+```bash
+tar -xzf ./par2cron_*.tar.gz
+sudo install -m 755 par2cron /usr/bin/
+```
+
+All packages and binaries are statically linked and require no runtime
+dependencies beyond `par2` (see [Dependencies](#dependencies)).
 
 ### Building from source
 
