@@ -28,7 +28,7 @@
 - [Quick Start](#quick-start)
 - [Installation](#installation)
   - [Dependencies](#dependencies)
-  - [Installing from packages](#installing-from-packages)
+  - [**Installing from packages**](#installing-from-packages)
   - [Building from source](#building-from-source)
   - [Building from source (with embedded `par2`)](#building-from-source-with-embedded-par2)
   - [Running a built executable](#running-a-built-executable)
