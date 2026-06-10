@@ -520,6 +520,54 @@ func Test_CreateExitError_NegativeCode_Panic(t *testing.T) {
 	})
 }
 
+// Expectation: The mock par2 handler should call the provided Parse function.
+func Test_MockPar2Handler_Parse_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	handler := &MockPar2Handler{
+		ParseFunc: func(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+			called = true
+
+			return []par2.Set{{}}, nil
+		},
+	}
+
+	result, err := handler.Parse(bytes.NewReader([]byte("data")), true)
+
+	require.NoError(t, err)
+	require.Len(t, result, 1)
+	require.True(t, called)
+}
+
+// Expectation: The mock par2 handler should return the error from the Parse function.
+func Test_MockPar2Handler_Parse_WithFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("parse error")
+	handler := &MockPar2Handler{
+		ParseFunc: func(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+			return nil, expectedErr
+		},
+	}
+
+	_, err := handler.Parse(bytes.NewReader([]byte("data")), true)
+
+	require.ErrorIs(t, err, expectedErr)
+}
+
+// Expectation: The mock par2 handler should return an error when no Parse function is provided.
+func Test_MockPar2Handler_Parse_NoFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	handler := &MockPar2Handler{}
+
+	_, err := handler.Parse(bytes.NewReader([]byte("data")), true)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not implemented")
+}
+
 // Expectation: The mock par2 handler should call the provided function.
 func Test_MockPar2Handler_ParseFile_WithFunc_Success(t *testing.T) {
 	t.Parallel()
