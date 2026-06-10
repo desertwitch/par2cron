@@ -938,7 +938,7 @@ func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
 	combined := slices.Concat(header, body)
 
 	_, err := readNextPacket(bytes.NewReader(combined), false)
-	require.ErrorIs(t, err, errSkipPacket)
+	require.ErrorIs(t, err, errUnhandledPacket)
 }
 
 // Expectation: readNextPacket should handle packet length exceeding MaxInt64.
@@ -1216,6 +1216,44 @@ func Test_verifyPacketChecksum_InvalidChecksum_Error(t *testing.T) {
 	err = verifyPacketChecksum(header, packet[:64], packet[64:])
 	require.Error(t, err)
 	require.ErrorIs(t, err, errChecksumMismatch)
+}
+
+// Expectation: verifyPacketStream should pass for valid checksum.
+func Test_verifyPacketStream_ValidChecksum_Success(t *testing.T) {
+	t.Parallel()
+
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+
+	header, err := parsePacketHeader(packet[:64])
+	require.NoError(t, err)
+
+	r := bytes.NewReader(packet[64:])
+	err = verifyPacketStream(header, packet[:64], r, int64(len(packet)-64))
+	require.NoError(t, err)
+
+	pos, err := r.Seek(0, io.SeekCurrent)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(packet)-64), pos)
+}
+
+// Expectation: verifyPacketStream should fail for invalid checksum.
+func Test_verifyPacketStream_InvalidChecksum_Error(t *testing.T) {
+	t.Parallel()
+
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	header, err := parsePacketHeader(packet[:64])
+	require.NoError(t, err)
+
+	// Corrupt the body
+	packet[64] ^= 0xFF
+	r := bytes.NewReader(packet[64:])
+	err = verifyPacketStream(header, packet[:64], r, int64(len(packet)-64))
+	require.Error(t, err)
+	require.ErrorIs(t, err, errChecksumMismatch)
+
+	pos, seekErr := r.Seek(0, io.SeekCurrent)
+	require.NoError(t, seekErr)
+	require.Equal(t, int64(len(packet)-64), pos)
 }
 
 // Expectation: parseMainPacketBody should reject invalid slice size alignment.

@@ -38,8 +38,8 @@ const (
 	packetHashOffset = 32 // Starting offset for MD5 hashing
 	packetHeaderSize = 64 // Total header size of a packet in bytes
 
-	recoverBufferSize   = 16 * 1024 // Next packet search reads in 16KiB chunks
-	recoverStallRetries = 10        // Next packet search can stall for up to 10 times
+	recoverBufferSize   = 1024 * 1024 // Next packet search reads in 1MiB chunks
+	recoverStallRetries = 10          // Next packet search can stall for up to 10 times
 )
 
 var (
@@ -78,6 +78,10 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 				// Do not catch [io.ErrUnexpectedEOF] here, a packet could
 				// claim an excessive length, cause it, and we'd skip others.
 				break // No more packets.
+			}
+			if errors.Is(err, errSkipPacket) {
+				// Reader is already positioned at next packet start.
+				continue
 			}
 
 			// Reposition the reader 1 byte after the pre-parse position,
@@ -266,6 +270,8 @@ func (s *setGrouper) Sets() []Set {
 }
 
 // readNextPacket reads packets of interest from the PAR2.
+//
+//nolint:cyclop
 func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	// Read the 64-byte header
 	headerBytes := make([]byte, packetHeaderSize)
@@ -298,21 +304,29 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	}
 	bodyLen := int64(header.length) - int64(packetHeaderSize)
 
-	// Validate that the body has a sane length
-	// The packets we care about should be smaller than that
-	if bodyLen < 0 || bodyLen > maxPacketSize {
-		return nil, fmt.Errorf("%w: invalid body length (%d bytes)", errInvalidPacket, bodyLen)
-	}
-
 	// Read the body only for packets we care about, skip the others.
 	switch {
 	case bytes.Equal(header.packetType[:], mainType):
 	case bytes.Equal(header.packetType[:], fileDescType):
 	case bytes.Equal(header.packetType[:], unicodeDescType):
 	default:
-		// Do not seek here, we cannot trust the packet length.
-		// Instead we let the error mechanism find the next packet.
-		return nil, errSkipPacket
+		// If the packet is valid (MD5) we can trust the packet length and skip past it.
+		if checkMD5 && bodyLen > 0 {
+			if err := verifyPacketStream(header, headerBytes, r, bodyLen); err != nil {
+				return nil, fmt.Errorf("failed to checksum body stream: %w", err)
+			}
+
+			return nil, errSkipPacket
+		}
+
+		// No way to trust packet length without MD5, defer to scanning mechanism.
+		return nil, errUnhandledPacket
+	}
+
+	// Validate that the body has a sane length
+	// The packets we care about should be smaller than that
+	if bodyLen < 0 || bodyLen > maxPacketSize {
+		return nil, fmt.Errorf("%w: invalid body length (%d bytes)", errInvalidPacket, bodyLen)
 	}
 
 	// Read the body into memory
@@ -435,6 +449,28 @@ func verifyPacketChecksum(header *packetHeader, headerBytes, bodyBytes []byte) e
 
 	// Hash the reset (until end of body of the packet)
 	hasher.Write(bodyBytes)
+
+	var computed Hash
+	copy(computed[:], hasher.Sum(nil))
+
+	if computed != header.hash {
+		return fmt.Errorf("%w: expected %x, got %x", errChecksumMismatch, header.hash, computed)
+	}
+
+	return nil
+}
+
+// verifyPacketStream verifies the MD5 hash of a packet by streaming
+// the body through the hasher without buffering it fully into memory.
+// On success the reader is positioned at the start of the next packet.
+func verifyPacketStream(header *packetHeader, headerBytes []byte, r io.Reader, bodyLen int64) error {
+	hasher := md5.New()
+
+	hasher.Write(headerBytes[packetHashOffset:])
+
+	if _, err := io.CopyN(hasher, r, bodyLen); err != nil {
+		return fmt.Errorf("failed to read: %w", err)
+	}
 
 	var computed Hash
 	copy(computed[:], hasher.Sum(nil))
