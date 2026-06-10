@@ -21,6 +21,7 @@ func ParseBundlePar2Index(fsys afero.Fs, path string, p schema.Par2Handler, b sc
 	if err != nil {
 		return nil, fmt.Errorf("failed to open bundle: %w", err)
 	}
+	defer bun.Close()
 
 	var sets []par2.Set
 	for _, e := range bun.Entries() {
