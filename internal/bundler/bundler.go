@@ -141,7 +141,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 			errs = append(errs, fmt.Errorf("%s: failed to validate manifest: %w", path, mfErr))
 		}
 
-		valErr := bun.Validate(true)
+		valErr := bun.Validate(false)
 		if valErr != nil {
 			result.ValidationError = valErr.Error()
 			logger := prog.bundleLogger(ctx, nil, path)

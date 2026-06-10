@@ -2404,8 +2404,8 @@ func Test_Service_OutputJSON_NilManifestAndError_Success(t *testing.T) {
 	require.Equal(t, "manifest corrupt", result["ManifestError"])
 }
 
-// Expectation: The function should pass strict=true to Validate.
-func Test_Service_OutputJSON_ValidateCalledStrict_Success(t *testing.T) {
+// Expectation: The function should pass strict=false to Validate.
+func Test_Service_OutputJSON_ValidateCalledNoStrict_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -2444,7 +2444,7 @@ func Test_Service_OutputJSON_ValidateCalledStrict_Success(t *testing.T) {
 
 	err := prog.OutputJSON(t.Context(), []string{"/data/test" + schema.BundleExtension + schema.Par2Extension})
 	require.NoError(t, err)
-	require.True(t, capturedStrict)
+	require.False(t, capturedStrict)
 }
 
 // Expectation: Invalid JSON manifest bytes should result in null Manifest in the output.
