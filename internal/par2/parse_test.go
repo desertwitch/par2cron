@@ -1227,8 +1227,13 @@ func Test_verifyPacketStream_ValidChecksum_Success(t *testing.T) {
 	header, err := parsePacketHeader(packet[:64])
 	require.NoError(t, err)
 
-	err = verifyPacketStream(header, packet[:64], bytes.NewReader(packet[64:]), int64(len(packet)-64))
+	r := bytes.NewReader(packet[64:])
+	err = verifyPacketStream(header, packet[:64], r, int64(len(packet)-64))
 	require.NoError(t, err)
+
+	pos, err := r.Seek(0, io.SeekCurrent)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(packet)-64), pos)
 }
 
 // Expectation: verifyPacketStream should fail for invalid checksum.
@@ -1241,10 +1246,14 @@ func Test_verifyPacketStream_InvalidChecksum_Error(t *testing.T) {
 
 	// Corrupt the body
 	packet[64] ^= 0xFF
-	err = verifyPacketStream(header, packet[:64], bytes.NewReader(packet[64:]), int64(len(packet)-64))
-
+	r := bytes.NewReader(packet[64:])
+	err = verifyPacketStream(header, packet[:64], r, int64(len(packet)-64))
 	require.Error(t, err)
 	require.ErrorIs(t, err, errChecksumMismatch)
+
+	pos, seekErr := r.Seek(0, io.SeekCurrent)
+	require.NoError(t, seekErr)
+	require.Equal(t, int64(len(packet)-64), pos)
 }
 
 // Expectation: parseMainPacketBody should reject invalid slice size alignment.
