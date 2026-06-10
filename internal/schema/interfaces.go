@@ -20,6 +20,7 @@ type CommandRunner interface {
 }
 
 type Par2Handler interface {
+	Parse(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error)
 	ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *par2.File, e error)
 }
 
@@ -45,6 +46,8 @@ type Cache interface {
 
 type Bundle interface {
 	Close() error
+	Entries() []bundle.IndexEntry
+	ExtractEntry(e bundle.IndexEntry, w io.Writer) error
 	IsRebuilt() bool
 	Manifest() ([]byte, error)
 	ManifestName() string

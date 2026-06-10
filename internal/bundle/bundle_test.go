@@ -458,6 +458,15 @@ func Test_Bundle_IsRebuilt_True(t *testing.T) {
 	require.True(t, b.IsRebuilt())
 }
 
+// Expectation: Entries should return the entries from the index.
+func Test_Bundle_Entries_Success(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+
+	require.NotEmpty(t, b.Entries())
+}
+
 // Expectation: Manifest should return the manifest bytes from a valid bundle.
 func Test_Bundle_Manifest_Success(t *testing.T) {
 	t.Parallel()

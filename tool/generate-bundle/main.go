@@ -59,6 +59,10 @@ func (bundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]by
 
 type par2Handler struct{}
 
+func (par2Handler) Parse(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+	return par2.Parse(r, checkMD5) //nolint:wrapcheck
+}
+
 func (par2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
 	return par2.ParseFile(fsys, path, panicAsErr) //nolint:wrapcheck
 }
@@ -77,7 +81,7 @@ func (s *Service) Run(opts Options) (string, error) {
 	}
 
 	parsePath := filepath.Join(opts.Dir, opts.Parse)
-	pf, err := s.par2er.ParseFile(s.fsys, parsePath, true)
+	pf, err := s.par2er.ParseFile(s.fsys, parsePath, false)
 	if err != nil {
 		return "", fmt.Errorf("parse error: %w", err)
 	}

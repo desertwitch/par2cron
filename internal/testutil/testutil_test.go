@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -902,6 +903,86 @@ func Test_MockBundle_MarshalJSON_NoValue_Error(t *testing.T) {
 	b := &MockBundle{}
 
 	_, err := b.MarshalJSON()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not implemented")
+}
+
+// Expectation: The mock bundle should call the provided Entries function.
+func Test_MockBundle_Entries_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	expected := []bundle.IndexEntry{
+		{Name: "file1.txt", DataLength: 100},
+		{Name: "file2.txt", DataLength: 200},
+	}
+	b := &MockBundle{
+		EntriesFunc: func() []bundle.IndexEntry {
+			return expected
+		},
+	}
+
+	result := b.Entries()
+
+	require.Equal(t, expected, result)
+}
+
+// Expectation: The mock bundle should return an empty slice when no Entries function is provided.
+func Test_MockBundle_Entries_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	result := b.Entries()
+
+	require.Empty(t, result)
+}
+
+// Expectation: The mock bundle should call the provided ExtractEntry function.
+func Test_MockBundle_ExtractEntry_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	b := &MockBundle{
+		ExtractEntryFunc: func(e bundle.IndexEntry, w io.Writer) error {
+			called = true
+			_, err := w.Write([]byte("extracted"))
+
+			return err
+		},
+	}
+
+	var buf bytes.Buffer
+	err := b.ExtractEntry(bundle.IndexEntry{Name: "test.txt"}, &buf)
+
+	require.NoError(t, err)
+	require.True(t, called)
+	require.Equal(t, "extracted", buf.String())
+}
+
+// Expectation: The mock bundle should return the error from the ExtractEntry function.
+func Test_MockBundle_ExtractEntry_WithFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("extract error")
+	b := &MockBundle{
+		ExtractEntryFunc: func(e bundle.IndexEntry, w io.Writer) error {
+			return expectedErr
+		},
+	}
+
+	err := b.ExtractEntry(bundle.IndexEntry{Name: "test.txt"}, &bytes.Buffer{})
+
+	require.ErrorIs(t, err, expectedErr)
+}
+
+// Expectation: The mock bundle should return an error when no ExtractEntry function is provided.
+func Test_MockBundle_ExtractEntry_NoFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	err := b.ExtractEntry(bundle.IndexEntry{Name: "test.txt"}, &bytes.Buffer{})
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented")

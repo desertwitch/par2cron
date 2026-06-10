@@ -22,3 +22,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, bundler schema.BundleHandler
 		par2er:  par2er,
 	}
 }
+
+type Options struct {
+	ParseAll bool
+}
