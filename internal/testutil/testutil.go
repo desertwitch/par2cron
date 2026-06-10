@@ -166,7 +166,16 @@ func CreateExitError(t *testing.T, ctx context.Context, code int) error {
 
 // MockPar2Handler is a mock implementation of schema.Par2Handler.
 type MockPar2Handler struct {
+	ParseFunc     func(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error)
 	ParseFileFunc func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error)
+}
+
+func (m *MockPar2Handler) Parse(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+	if m.ParseFunc != nil {
+		return m.ParseFunc(r, checkMD5)
+	}
+
+	return nil, errors.New("not implemented")
 }
 
 func (m *MockPar2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
@@ -202,6 +211,8 @@ func (m *MockBundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID
 // MockBundle is a mock implementation of schema.Bundle.
 type MockBundle struct {
 	CloseFunc         func() error
+	EntriesFunc       func() []bundle.IndexEntry
+	ExtractEntryFunc  func(e bundle.IndexEntry, w io.Writer) error
 	IsRebuiltValue    *bool
 	ManifestFunc      func() ([]byte, error)
 	ManifestNameValue *string
@@ -282,6 +293,22 @@ func (m *MockBundle) MarshalJSON() ([]byte, error) {
 	}
 
 	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundle) Entries() []bundle.IndexEntry {
+	if m.EntriesFunc != nil {
+		return m.EntriesFunc()
+	}
+
+	return []bundle.IndexEntry{}
+}
+
+func (m *MockBundle) ExtractEntry(e bundle.IndexEntry, w io.Writer) error {
+	if m.ExtractEntryFunc != nil {
+		return m.ExtractEntryFunc(e, w)
+	}
+
+	return errors.New("not implemented")
 }
 
 type FakeDirEntry struct {

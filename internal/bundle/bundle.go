@@ -109,6 +109,12 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 	return b, nil
 }
 
+// Entries returns the (file) entries of the bundle index.
+// The returned slice can be empty, but never nil.
+func (b *Bundle) Entries() []IndexEntry {
+	return b.Index.Entries
+}
+
 // Close closes the bundle file.
 func (b *Bundle) Close() error {
 	return b.f.Close() //nolint:wrapcheck

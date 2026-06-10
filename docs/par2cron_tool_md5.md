@@ -26,6 +26,7 @@ Print MD5 hashes for a bundle or specific PAR2 file:
 ### Options
 
 ```
+      --all               attempt to parse all provided files (and not just PAR2 index files)
   -h, --help              help for md5
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
 ```

@@ -7,9 +7,10 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/desertwitch/par2cron/internal/util"
 )
 
-func (prog *Service) OutputMD5(ctx context.Context, paths []string) error {
+func (prog *Service) OutputMD5(ctx context.Context, paths []string, opts Options) error {
 	var errs []error
 	seen := make(map[par2.Hash]bool)
 
@@ -17,18 +18,43 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("context error: %w", err)
 		}
-
-		f, err := prog.par2er.ParseFile(prog.fsys, path, false)
-		if err != nil {
-			logger := prog.toolLogger(ctx, path)
-			logger.Error("Failed to parse PAR2 file", "error", err)
-
-			errs = append(errs, fmt.Errorf("%s: %w", path, err))
-
+		if !opts.ParseAll && !util.IsPar2Index(path) {
 			continue
 		}
 
-		for _, set := range f.Sets {
+		var sets []par2.Set
+		var bundleParsed bool
+
+		if !opts.ParseAll && util.IsPar2Bundle(path) {
+			bse, err := util.ParseBundlePar2Index(prog.fsys, path, prog.par2er, prog.bundler)
+			if err != nil {
+				logger := prog.toolLogger(ctx, path)
+				logger.Error("Failed to parse PAR2 bundle", "error", err)
+
+				errs = append(errs, fmt.Errorf("%s: %w", path, err))
+
+				continue
+			}
+
+			sets = bse
+			bundleParsed = true
+		}
+
+		if !bundleParsed {
+			f, err := prog.par2er.ParseFile(prog.fsys, path, false)
+			if err == nil {
+				sets = f.Sets
+			} else {
+				logger := prog.toolLogger(ctx, path)
+				logger.Error("Failed to parse PAR2 file", "error", err)
+
+				errs = append(errs, fmt.Errorf("%s: %w", path, err))
+
+				continue
+			}
+		}
+
+		for _, set := range sets {
 			for _, fp := range set.RecoverySet {
 				if seen[fp.FileID] {
 					continue

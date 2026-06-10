@@ -193,6 +193,7 @@ func newToolCmd(ctx context.Context) *cobra.Command {
 }
 
 func newToolMD5Cmd(ctx context.Context) *cobra.Command {
+	var toolOptions tool.Options
 	var logSettings logging.Options
 
 	fsys := afero.NewOsFs()
@@ -213,7 +214,7 @@ func newToolMD5Cmd(ctx context.Context) *cobra.Command {
 
 			ctx := context.WithValue(ctx, schema.ModeKey, "md5")
 
-			err := prog.ToolService.OutputMD5(ctx, args)
+			err := prog.ToolService.OutputMD5(ctx, args, toolOptions)
 			if err != nil {
 				return fmt.Errorf("tool: md5: %w", err)
 			}
@@ -221,6 +222,7 @@ func newToolMD5Cmd(ctx context.Context) *cobra.Command {
 			return nil
 		},
 	}
+	toolMD5Cmd.Flags().BoolVar(&toolOptions.ParseAll, "all", false, "attempt to parse all provided files (and not just PAR2 index files)")
 	toolMD5Cmd.Flags().VarP(&logSettings.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 
 	return toolMD5Cmd

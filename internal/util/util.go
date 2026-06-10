@@ -1,6 +1,7 @@
 package util
 
 import (
+	"io"
 	"os"
 	"time"
 
@@ -39,6 +40,10 @@ func (GobCacheHandler) NewCache(fsys afero.Fs, cacheDir string, cacheName string
 var _ schema.Par2Handler = (*Par2Handler)(nil)
 
 type Par2Handler struct{}
+
+func (h *Par2Handler) Parse(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+	return par2.Parse(r, checkMD5) //nolint:wrapcheck
+}
 
 func (h *Par2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
 	return par2.ParseFile(fsys, path, panicAsErr) //nolint:wrapcheck
