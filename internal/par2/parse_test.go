@@ -938,7 +938,7 @@ func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
 	combined := slices.Concat(header, body)
 
 	_, err := readNextPacket(bytes.NewReader(combined), false)
-	require.ErrorIs(t, err, errInvalidPacket)
+	require.ErrorIs(t, err, errUnhandledPacket)
 }
 
 // Expectation: readNextPacket should handle packet length exceeding MaxInt64.

@@ -320,7 +320,7 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 		}
 
 		// No way to trust packet length without MD5, defer to scanning mechanism.
-		return nil, errInvalidPacket
+		return nil, errUnhandledPacket
 	}
 
 	// Validate that the body has a sane length
