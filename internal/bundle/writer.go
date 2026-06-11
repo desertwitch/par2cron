@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -26,7 +27,7 @@ type ManifestInput struct {
 
 // Pack creates a bundle at bundlePath from the given recovery set ID, files and manifest.
 // The bundle file is locked with syscall.LOCK_EX|syscall.LOCK_NB during the packing process.
-func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest ManifestInput, files []FileInput) error {
+func Pack(ctx context.Context, fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest ManifestInput, files []FileInput) error {
 	var failed bool
 	defer func() {
 		if failed {
@@ -65,9 +66,12 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 	// Compute index packet size.
 	indexSize := computeIndexSize(manifest, files)
 
+	// Prepare a context-aware writer over the file handle.
+	ws := &contextWriteSeeker{ctx, f}
+
 	// Write a placeholder since we don't know the offsets yet.
 	placeholder := make([]byte, indexSize)
-	if err := writeAll(f, placeholder); err != nil {
+	if err := writeAll(ws, placeholder); err != nil {
 		failed = true
 
 		return fmt.Errorf("failed to write index packet placeholder: %w", err)
@@ -76,7 +80,7 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 	// Write the file packets followed by their respective raw byte stream.
 	entries := make([]IndexEntry, len(files))
 	for i, fi := range files {
-		entry, err := writeFileSegment(fsys, f, recoverySetID, fi)
+		entry, err := writeFileSegment(fsys, ws, recoverySetID, fi)
 		if err != nil {
 			failed = true
 
@@ -86,7 +90,7 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 	}
 
 	// Write the manifest at the end of the file.
-	manifestPacketOffset, err := f.Seek(0, io.SeekCurrent)
+	manifestPacketOffset, err := ws.Seek(0, io.SeekCurrent)
 	if err != nil {
 		failed = true
 
@@ -97,7 +101,7 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 
 		return fmt.Errorf("failed to get valid manifest packet offset: %d", manifestPacketOffset)
 	}
-	manifestEntry, err := writeManifestPacket(f, recoverySetID, manifest, uint64(manifestPacketOffset))
+	manifestEntry, err := writeManifestPacket(ws, recoverySetID, manifest, uint64(manifestPacketOffset))
 	if err != nil {
 		failed = true
 
@@ -105,12 +109,12 @@ func Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest Man
 	}
 
 	// Now seek back and write the actual index packet with the offsets.
-	if _, err := f.Seek(0, io.SeekStart); err != nil {
+	if _, err := ws.Seek(0, io.SeekStart); err != nil {
 		failed = true
 
 		return fmt.Errorf("failed to seek to start: %w", err)
 	}
-	if err := writeIndexPacket(f, recoverySetID, 0, entries, manifestEntry); err != nil {
+	if err := writeIndexPacket(ws, recoverySetID, 0, entries, manifestEntry); err != nil {
 		failed = true
 
 		return fmt.Errorf("failed to write index packet: %w", err)

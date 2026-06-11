@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -11,7 +12,7 @@ import (
 
 // Scan scans the bundle for app-specific packets by PAR2 magic bytes, ignoring
 // index packet metadata. Use this as fallback if the index packet is corrupt.
-func Scan(r io.ReaderAt, size int64, checkMD5 bool) ([]FilePacket, *ManifestPacket) {
+func Scan(ctx context.Context, r io.ReaderAt, size int64, checkMD5 bool) ([]FilePacket, *ManifestPacket, error) {
 	var files []FilePacket
 	var manifest *ManifestPacket
 
@@ -20,6 +21,10 @@ func Scan(r io.ReaderAt, size int64, checkMD5 bool) ([]FilePacket, *ManifestPack
 
 loop:
 	for offset := int64(0); offset+commonHeaderSize <= size; {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, fmt.Errorf("context error: %w", err)
+		}
+
 		ch, body, err := readAndValidatePacket(r, offset, size, checkMD5)
 		if err == nil {
 			switch ch.PacketType {
@@ -55,23 +60,31 @@ loop:
 		}
 
 		// Invalid packet, scan forward for next magic sequence.
-		found, err := findNextMagic(r, offset+1, size, buf)
+		found, err := findNextMagic(ctx, r, offset+1, size, buf)
 		if err != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, fmt.Errorf("context error: %w", err)
+			}
+
 			break // No more magic sequences found.
 		}
 
 		offset = found
 	}
 
-	return files, manifest
+	return files, manifest, nil
 }
 
 // findNextMagic scans r for the next occurrence of magic bytes starting at
 // from. Returns the offset of the match or an error if none is found.
-func findNextMagic(r io.ReaderAt, from, fileSize int64, buf []byte) (int64, error) {
+func findNextMagic(ctx context.Context, r io.ReaderAt, from, fileSize int64, buf []byte) (int64, error) {
 	magicLen := int64(len(Magic))
 
 	for off := from; off+magicLen <= fileSize; {
+		if err := ctx.Err(); err != nil {
+			return 0, fmt.Errorf("context error: %w", err)
+		}
+
 		// Read a chunk.
 		readLen := min(int64(len(buf)), fileSize-off)
 		n, err := r.ReadAt(buf[:readLen], off)

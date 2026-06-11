@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"io"
 	"os"
 	"time"
@@ -21,12 +22,12 @@ var _ schema.BundleHandler = (*BundleHandler)(nil)
 
 type BundleHandler struct{}
 
-func (b *BundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
-	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
+func (b *BundleHandler) Open(ctx context.Context, fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+	return bundle.Open(ctx, fsys, bundlePath) //nolint:wrapcheck
 }
 
-func (b *BundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
-	return bundle.Pack(fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
+func (b *BundleHandler) Pack(ctx context.Context, fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+	return bundle.Pack(ctx, fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
 }
 
 var _ schema.CacheHandler = (*GobCacheHandler)(nil)

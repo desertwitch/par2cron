@@ -221,7 +221,7 @@ func newTestBundleFixture(t *testing.T) testBundleFixture {
 	}
 
 	bundlePath := "/bundles/sample.p2c.par2"
-	require.NoError(t, Pack(fs, bundlePath, testRecoverySetID, manifest, inputs))
+	require.NoError(t, Pack(t.Context(), fs, bundlePath, testRecoverySetID, manifest, inputs))
 
 	return testBundleFixture{
 		fs:         fs,
@@ -235,7 +235,7 @@ func openTestBundle(t *testing.T) (*Bundle, testBundleFixture) {
 	t.Helper()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
@@ -277,7 +277,7 @@ func Test_Open_Success(t *testing.T) {
 	require.Equal(t, testRecoverySetID, b.Index.RecoverySetID)
 	require.Equal(t, fixture.manifest.Name, b.Index.ManifestName)
 	require.Len(t, b.Index.Entries, len(fixture.files))
-	require.NoError(t, b.Validate(true))
+	require.NoError(t, b.Validate(t.Context(), true))
 	require.NoError(t, b.ValidateIndex())
 }
 
@@ -285,7 +285,7 @@ func Test_Open_Success(t *testing.T) {
 func Test_Open_OpenFails_Error(t *testing.T) {
 	t.Parallel()
 
-	_, err := Open(afero.NewMemMapFs(), "/missing.par2")
+	_, err := Open(t.Context(), afero.NewMemMapFs(), "/missing.par2")
 
 	require.ErrorContains(t, err, "failed to open")
 }
@@ -312,7 +312,7 @@ func Test_Open_StatFails_Error(t *testing.T) {
 		},
 	}
 
-	_, err := Open(fs, "/bundle.par2")
+	_, err := Open(t.Context(), fs, "/bundle.par2")
 
 	require.ErrorContains(t, err, "failed to stat")
 }
@@ -342,7 +342,7 @@ func Test_Open_NegativeFileSize_Error(t *testing.T) {
 		},
 	}
 
-	_, err := Open(fs, "/bundle.par2")
+	_, err := Open(t.Context(), fs, "/bundle.par2")
 
 	require.ErrorContains(t, err, "file size <= 0")
 }
@@ -372,7 +372,7 @@ func Test_Open_ZeroFileSize_Error(t *testing.T) {
 		},
 	}
 
-	_, err := Open(fs, "/bundle.par2")
+	_, err := Open(t.Context(), fs, "/bundle.par2")
 
 	require.ErrorContains(t, err, "file size <= 0")
 }
@@ -386,7 +386,7 @@ func Test_Open_ReconstructsIndex_Success(t *testing.T) {
 		raw[0] ^= 0xFF
 	})
 
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
@@ -405,7 +405,7 @@ func Test_Open_TooDamaged_Error(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(fs, "/bundle.par2", []byte("broken"), 0o644))
 
-	_, err := Open(fs, "/bundle.par2")
+	_, err := Open(t.Context(), fs, "/bundle.par2")
 
 	require.ErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "bundle too damaged")
@@ -416,7 +416,7 @@ func Test_Bundle_Close_Error(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	orig := b.f
 	b.f = &testFile{
@@ -449,7 +449,7 @@ func Test_Bundle_IsRebuilt_True(t *testing.T) {
 		raw[0] ^= 0xFF
 	})
 
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
@@ -473,7 +473,7 @@ func Test_Bundle_Manifest_Success(t *testing.T) {
 
 	b, fixture := openTestBundle(t)
 
-	got, err := b.Manifest()
+	got, err := b.Manifest(t.Context())
 
 	require.NoError(t, err)
 	require.Equal(t, fixture.manifest.Bytes, got)
@@ -484,7 +484,7 @@ func Test_Bundle_Manifest_ExtractFails_Error(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Close())
 
@@ -492,13 +492,13 @@ func Test_Bundle_Manifest_ExtractFails_Error(t *testing.T) {
 		raw[b.Index.ManifestDataOffset] ^= 0xFF
 	})
 
-	b, err = Open(fixture.fs, fixture.bundlePath)
+	b, err = Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
 	})
 
-	got, err := b.Manifest()
+	got, err := b.Manifest(t.Context())
 
 	require.ErrorContains(t, err, "failed to extract")
 	require.ErrorIs(t, err, ErrDataCorrupt)
@@ -521,7 +521,7 @@ func Test_Bundle_Validate_Success(t *testing.T) {
 
 	b, _ := openTestBundle(t)
 
-	require.NoError(t, b.Validate(true))
+	require.NoError(t, b.Validate(t.Context(), true))
 }
 
 // Expectation: Validate should stop at index validation failures before checking files or manifest.
@@ -531,7 +531,7 @@ func Test_Bundle_Validate_IndexError_Error(t *testing.T) {
 	b, _ := openTestBundle(t)
 	b.OpenError = errors.New("rebuilt index")
 
-	err := b.Validate(false)
+	err := b.Validate(t.Context(), false)
 
 	require.ErrorContains(t, err, "index: rebuilt index")
 }
@@ -543,7 +543,7 @@ func Test_Bundle_Validate_FilesError_Error(t *testing.T) {
 	b, _ := openTestBundle(t)
 	b.Index.Entries[0].PacketOffset = b.Index.ManifestPacketOffset
 
-	err := b.Validate(false)
+	err := b.Validate(t.Context(), false)
 
 	require.ErrorContains(t, err, "files:")
 	require.ErrorContains(t, err, "expected file type")
@@ -556,7 +556,7 @@ func Test_Bundle_Validate_ManifestError_Error(t *testing.T) {
 	b, _ := openTestBundle(t)
 	b.Index.ManifestPacketOffset = b.Index.Entries[0].PacketOffset
 
-	err := b.Validate(false)
+	err := b.Validate(t.Context(), false)
 
 	require.ErrorContains(t, err, "manifest:")
 	require.ErrorContains(t, err, "expected manifest type")
@@ -569,7 +569,7 @@ func Test_Bundle_ValidateFiles_ReadPacketFails_Error(t *testing.T) {
 	b, _ := openTestBundle(t)
 	b.Index.Entries[0].PacketOffset = uint64(b.size) //nolint:gosec
 
-	err := b.ValidateFiles(false)
+	err := b.ValidateFiles(t.Context(), false)
 
 	require.ErrorContains(t, err, "file packet 0")
 	require.ErrorContains(t, err, "unexpected EOF")
@@ -593,7 +593,7 @@ func Test_Bundle_ValidateFiles_DataHashReadFails_Error(t *testing.T) {
 		},
 	}
 
-	err := b.ValidateFiles(true)
+	err := b.ValidateFiles(t.Context(), true)
 
 	require.ErrorContains(t, err, "hash error")
 	require.ErrorContains(t, err, "read boom")
@@ -604,7 +604,7 @@ func Test_Bundle_ValidateFiles_StrictHashMismatch_Error(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Close())
 
@@ -612,14 +612,14 @@ func Test_Bundle_ValidateFiles_StrictHashMismatch_Error(t *testing.T) {
 		raw[b.Index.Entries[0].DataOffset] ^= 0xFF
 	})
 
-	b, err = Open(fixture.fs, fixture.bundlePath)
+	b, err = Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
 	})
 
-	require.NoError(t, b.ValidateFiles(false))
-	require.ErrorContains(t, b.ValidateFiles(true), "hash mismatch")
+	require.NoError(t, b.ValidateFiles(t.Context(), false))
+	require.ErrorContains(t, b.ValidateFiles(t.Context(), true), "hash mismatch")
 }
 
 // Expectation: ValidateFiles should reject entries that point at a non-file packet.
@@ -629,7 +629,7 @@ func Test_Bundle_ValidateFiles_WrongPacketType_Error(t *testing.T) {
 	b, _ := openTestBundle(t)
 	b.Index.Entries[0].PacketOffset = b.Index.ManifestPacketOffset
 
-	err := b.ValidateFiles(false)
+	err := b.ValidateFiles(t.Context(), false)
 
 	require.ErrorContains(t, err, "expected file type")
 }
@@ -639,7 +639,7 @@ func Test_Bundle_ValidateManifest_StrictHashMismatch_Error(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Close())
 
@@ -647,13 +647,13 @@ func Test_Bundle_ValidateManifest_StrictHashMismatch_Error(t *testing.T) {
 		raw[b.Index.ManifestDataOffset] ^= 0xFF
 	})
 
-	b, err = Open(fixture.fs, fixture.bundlePath)
+	b, err = Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
 	})
 
-	require.Error(t, b.Validate(true))
+	require.Error(t, b.Validate(t.Context(), true))
 }
 
 // Expectation: ValidateManifest should reject a manifest offset that points at a file packet.
@@ -663,7 +663,7 @@ func Test_Bundle_ValidateManifest_WrongPacketType_Error(t *testing.T) {
 	b, _ := openTestBundle(t)
 	b.Index.ManifestPacketOffset = b.Index.Entries[0].PacketOffset
 
-	err := b.ValidateManifest(false)
+	err := b.ValidateManifest(t.Context(), false)
 
 	require.ErrorContains(t, err, "expected manifest type")
 }
@@ -685,7 +685,7 @@ func Test_Bundle_ValidateManifest_DataHashReadFails_Error(t *testing.T) {
 		},
 	}
 
-	err := b.ValidateManifest(true)
+	err := b.ValidateManifest(t.Context(), true)
 
 	require.ErrorContains(t, err, "hash error")
 	require.ErrorContains(t, err, "read boom")
@@ -701,7 +701,7 @@ func Test_Bundle_ValidateManifest_HashMismatch_Error(t *testing.T) {
 	badHash[0] ^= 0xFF
 	b.Index.ManifestDataSHA256 = badHash
 
-	err := b.ValidateManifest(true)
+	err := b.ValidateManifest(t.Context(), true)
 
 	require.ErrorContains(t, err, "manifest data at offset")
 	require.ErrorContains(t, err, "hash mismatch")
@@ -715,7 +715,7 @@ func Test_Bundle_ValidateManifest_ReadPacketFails_Error(t *testing.T) {
 	b, _ := openTestBundle(t)
 	b.Index.ManifestPacketOffset = uint64(b.size) //nolint:gosec
 
-	err := b.ValidateManifest(false)
+	err := b.ValidateManifest(t.Context(), false)
 
 	require.ErrorContains(t, err, "manifest packet at offset")
 	require.ErrorContains(t, err, "unexpected EOF")

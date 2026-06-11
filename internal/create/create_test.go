@@ -3805,8 +3805,8 @@ func Test_Service_runCreate_Par2Fails_Error(t *testing.T) {
 	require.False(t, manifestExists)
 }
 
-// Expectation: The function should log warning if manifest write fails but still succeed.
-func Test_Service_runCreate_ManifestWriteFails_Success(t *testing.T) {
+// Expectation: The function should error if manifest write fails.
+func Test_Service_runCreate_ManifestWriteFails_Error(t *testing.T) {
 	t.Parallel()
 
 	baseFs := afero.NewMemMapFs()
@@ -3847,11 +3847,11 @@ func Test_Service_runCreate_ManifestWriteFails_Success(t *testing.T) {
 		{Path: "/data/folder/file.txt", Name: "file.txt"},
 	}
 
-	require.NoError(t, prog.runCreate(t.Context(), job, files))
+	require.Error(t, prog.runCreate(t.Context(), job, files))
 	require.Contains(t, logBuf.String(), "Failed to write par2cron manifest")
 
 	par2exists, _ := afero.Exists(fs, job.par2Path)
-	require.True(t, par2exists)
+	require.False(t, par2exists)
 
 	manifestExists, _ := afero.Exists(fs, job.manifestPath)
 	require.False(t, manifestExists)

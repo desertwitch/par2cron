@@ -629,7 +629,7 @@ func Test_MockBundleHandler_Open_WithFunc_Success(t *testing.T) {
 		},
 	}
 
-	result, err := handler.Open(afero.NewMemMapFs(), "/data/test.par2")
+	result, err := handler.Open(t.Context(), afero.NewMemMapFs(), "/data/test.par2")
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -647,7 +647,7 @@ func Test_MockBundleHandler_Open_WithFunc_Error(t *testing.T) {
 		},
 	}
 
-	_, err := handler.Open(afero.NewMemMapFs(), "/data/test.par2")
+	_, err := handler.Open(t.Context(), afero.NewMemMapFs(), "/data/test.par2")
 
 	require.ErrorIs(t, err, expectedErr)
 }
@@ -658,7 +658,7 @@ func Test_MockBundleHandler_Open_NoFunc_Error(t *testing.T) {
 
 	handler := &MockBundleHandler{}
 
-	_, err := handler.Open(afero.NewMemMapFs(), "/data/test.par2")
+	_, err := handler.Open(t.Context(), afero.NewMemMapFs(), "/data/test.par2")
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented")
@@ -677,7 +677,7 @@ func Test_MockBundleHandler_Pack_WithFunc_Success(t *testing.T) {
 		},
 	}
 
-	err := handler.Pack(afero.NewMemMapFs(), "/data/test.par2", [16]byte{}, bundle.ManifestInput{}, nil)
+	err := handler.Pack(t.Context(), afero.NewMemMapFs(), "/data/test.par2", [16]byte{}, bundle.ManifestInput{}, nil)
 
 	require.NoError(t, err)
 	require.True(t, called)
@@ -694,7 +694,7 @@ func Test_MockBundleHandler_Pack_WithFunc_Error(t *testing.T) {
 		},
 	}
 
-	err := handler.Pack(afero.NewMemMapFs(), "/data/test.par2", [16]byte{}, bundle.ManifestInput{}, nil)
+	err := handler.Pack(t.Context(), afero.NewMemMapFs(), "/data/test.par2", [16]byte{}, bundle.ManifestInput{}, nil)
 
 	require.ErrorIs(t, err, expectedErr)
 }
@@ -705,7 +705,7 @@ func Test_MockBundleHandler_Pack_NoFunc_Error(t *testing.T) {
 
 	handler := &MockBundleHandler{}
 
-	err := handler.Pack(afero.NewMemMapFs(), "/data/test.par2", [16]byte{}, bundle.ManifestInput{}, nil)
+	err := handler.Pack(t.Context(), afero.NewMemMapFs(), "/data/test.par2", [16]byte{}, bundle.ManifestInput{}, nil)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented")
@@ -748,7 +748,7 @@ func Test_MockBundle_Manifest_WithFunc_Success(t *testing.T) {
 		},
 	}
 
-	data, err := b.Manifest()
+	data, err := b.Manifest(t.Context())
 
 	require.NoError(t, err)
 	require.Equal(t, expected, data)
@@ -760,7 +760,7 @@ func Test_MockBundle_Manifest_NoFunc_Error(t *testing.T) {
 
 	b := &MockBundle{}
 
-	_, err := b.Manifest()
+	_, err := b.Manifest(t.Context())
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented")
@@ -839,7 +839,7 @@ func Test_MockBundle_Validate_NoFunc_Success(t *testing.T) {
 
 	b := &MockBundle{}
 
-	require.NoError(t, b.Validate(true))
+	require.NoError(t, b.Validate(t.Context(), true))
 }
 
 // Expectation: The mock bundle should return the error from the Validate function.
@@ -853,7 +853,7 @@ func Test_MockBundle_Validate_WithFunc_Error(t *testing.T) {
 		},
 	}
 
-	err := b.Validate(true)
+	err := b.Validate(t.Context(), true)
 
 	require.ErrorIs(t, err, expectedErr)
 }
@@ -909,7 +909,7 @@ func Test_MockBundle_Unpack_NoFunc_Success(t *testing.T) {
 
 	b := &MockBundle{}
 
-	files, err := b.Unpack(afero.NewMemMapFs(), "/dest", true)
+	files, err := b.Unpack(t.Context(), afero.NewMemMapFs(), "/dest", true)
 	require.ErrorContains(t, err, "not implemented")
 	require.Nil(t, files)
 }
@@ -924,7 +924,7 @@ func Test_MockBundle_Unpack_WithFunc_Error(t *testing.T) {
 		},
 	}
 
-	files, err := b.Unpack(afero.NewMemMapFs(), "/dest", true)
+	files, err := b.Unpack(t.Context(), afero.NewMemMapFs(), "/dest", true)
 	require.NoError(t, err)
 	require.Len(t, files, 2)
 }
@@ -1001,7 +1001,7 @@ func Test_MockBundle_ExtractEntry_WithFunc_Success(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := b.ExtractEntry(bundle.IndexEntry{Name: "test.txt"}, &buf)
+	err := b.ExtractEntry(t.Context(), bundle.IndexEntry{Name: "test.txt"}, &buf)
 
 	require.NoError(t, err)
 	require.True(t, called)
@@ -1019,7 +1019,7 @@ func Test_MockBundle_ExtractEntry_WithFunc_Error(t *testing.T) {
 		},
 	}
 
-	err := b.ExtractEntry(bundle.IndexEntry{Name: "test.txt"}, &bytes.Buffer{})
+	err := b.ExtractEntry(t.Context(), bundle.IndexEntry{Name: "test.txt"}, &bytes.Buffer{})
 
 	require.ErrorIs(t, err, expectedErr)
 }
@@ -1030,7 +1030,7 @@ func Test_MockBundle_ExtractEntry_NoFunc_Error(t *testing.T) {
 
 	b := &MockBundle{}
 
-	err := b.ExtractEntry(bundle.IndexEntry{Name: "test.txt"}, &bytes.Buffer{})
+	err := b.ExtractEntry(t.Context(), bundle.IndexEntry{Name: "test.txt"}, &bytes.Buffer{})
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented")

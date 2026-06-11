@@ -1,12 +1,84 @@
 package bundle
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 )
+
+var (
+	_ io.Reader      = (*contextReader)(nil)
+	_ io.ReaderAt    = (*contextReaderAt)(nil)
+	_ io.WriteSeeker = (*contextWriteSeeker)(nil)
+)
+
+// contextReader is an implementation of [io.Reader] that is Context-aware for
+// receiving mid-transfer cancellation.
+type contextReader struct {
+	ctx    context.Context //nolint:containedctx
+	reader io.Reader
+}
+
+// Read wraps the [io.Reader] reading function while being aware of and handling
+// any mid-transfer Context cancellations.
+func (cr *contextReader) Read(p []byte) (int, error) {
+	select {
+	case <-cr.ctx.Done():
+		return 0, fmt.Errorf("context error: %w", cr.ctx.Err())
+	default:
+		return cr.reader.Read(p) //nolint:wrapcheck
+	}
+}
+
+// contextReaderAt is an implementation of [io.ReaderAt] that is Context-aware for
+// receiving mid-transfer cancellation.
+type contextReaderAt struct {
+	ctx    context.Context //nolint:containedctx
+	reader io.ReaderAt
+}
+
+// ReadAt wraps the [io.ReaderAt] reading function while being aware of and handling
+// any mid-transfer Context cancellations.
+func (cr *contextReaderAt) ReadAt(p []byte, off int64) (int, error) {
+	select {
+	case <-cr.ctx.Done():
+		return 0, fmt.Errorf("context error: %w", cr.ctx.Err())
+	default:
+		return cr.reader.ReadAt(p, off) //nolint:wrapcheck
+	}
+}
+
+// contextWriteSeeker is an implementation of [io.WriteSeeker] that is Context-aware
+// for receiving mid-transfer cancellation.
+type contextWriteSeeker struct {
+	ctx    context.Context //nolint:containedctx
+	writer io.WriteSeeker
+}
+
+// Write wraps the [io.WriteSeeker] writing function while being aware of and handling
+// any mid-transfer Context cancellations.
+func (cw *contextWriteSeeker) Write(p []byte) (int, error) {
+	select {
+	case <-cw.ctx.Done():
+		return 0, fmt.Errorf("context error: %w", cw.ctx.Err())
+	default:
+		return cw.writer.Write(p) //nolint:wrapcheck
+	}
+}
+
+// Seek wraps the [io.WriteSeeker] seeking function while being aware of and handling
+// any mid-transfer Context cancellations.
+func (cw *contextWriteSeeker) Seek(offset int64, whence int) (int64, error) {
+	select {
+	case <-cw.ctx.Done():
+		return 0, fmt.Errorf("context error: %w", cw.ctx.Err())
+	default:
+		return cw.writer.Seek(offset, whence) //nolint:wrapcheck
+	}
+}
 
 // dataHash computes the SHA256 data integrity hash from a byte slice.
 func dataHash(data []byte) [32]byte {

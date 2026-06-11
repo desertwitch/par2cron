@@ -25,8 +25,8 @@ type Par2Handler interface {
 }
 
 type BundleHandler interface {
-	Open(fsys afero.Fs, bundlePath string) (Bundle, error)
-	Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
+	Open(ctx context.Context, fsys afero.Fs, bundlePath string) (Bundle, error)
+	Pack(ctx context.Context, fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
 }
 
 type CacheHandler interface {
@@ -47,13 +47,13 @@ type Cache interface {
 type Bundle interface {
 	Close() error
 	Entries() []bundle.IndexEntry
-	ExtractEntry(e bundle.IndexEntry, w io.Writer) error
+	ExtractEntry(ctx context.Context, e bundle.IndexEntry, w io.Writer) error
 	IsRebuilt() bool
-	Manifest() ([]byte, error)
+	Manifest(ctx context.Context) ([]byte, error)
 	ManifestName() string
-	Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error)
+	Unpack(ctx context.Context, fsys afero.Fs, destDir string, strict bool) ([]string, error)
 	Update(manifest []byte) error
-	Validate(strict bool) error
+	Validate(ctx context.Context, strict bool) error
 	ValidateIndex() error
 }
 

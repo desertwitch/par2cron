@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -24,8 +25,9 @@ func Test_Scan_Success(t *testing.T) {
 	fixture := newTestBundleFixture(t)
 	raw := readBundleBytes(t, fixture.fs, fixture.bundlePath)
 
-	files, manifest := Scan(bytes.NewReader(raw), int64(len(raw)), true)
+	files, manifest, err := Scan(t.Context(), bytes.NewReader(raw), int64(len(raw)), true)
 
+	require.NoError(t, err)
 	require.NotNil(t, manifest)
 	require.Len(t, files, len(fixture.files))
 	require.Equal(t, fixture.manifest.Name, manifest.Name)
@@ -39,8 +41,9 @@ func Test_Scan_SkipsCorruptPrefix_Success(t *testing.T) {
 	fixture := newTestBundleFixture(t)
 	raw := append([]byte("junk!"), readBundleBytes(t, fixture.fs, fixture.bundlePath)...)
 
-	files, manifest := Scan(bytes.NewReader(raw), int64(len(raw)), true)
+	files, manifest, err := Scan(t.Context(), bytes.NewReader(raw), int64(len(raw)), true)
 
+	require.NoError(t, err)
 	require.NotNil(t, manifest)
 	require.Len(t, files, len(fixture.files))
 	require.Positive(t, manifest.packetOffset)
@@ -61,8 +64,9 @@ func Test_Scan_SkipsUnparsableFilePacket_Success(t *testing.T) {
 	}, manifestOffset)
 	require.NoError(t, err)
 
-	files, manifest := Scan(bytes.NewReader(buf.Bytes()), int64(buf.Len()), true)
+	files, manifest, err := Scan(t.Context(), bytes.NewReader(buf.Bytes()), int64(buf.Len()), true)
 
+	require.NoError(t, err)
 	require.Empty(t, files)
 	require.NotNil(t, manifest)
 	require.Equal(t, "manifest.json", manifest.Name)
@@ -76,11 +80,28 @@ func Test_Scan_SkipsUnparsableManifestPacket_Success(t *testing.T) {
 	require.NoError(t, writeFilePacket(&buf, testRecoverySetID, "file.par2", 3, dataHash([]byte("abc"))))
 	require.NoError(t, writeCommonPacket(&buf, testRecoverySetID, PacketTypeManifest, nil))
 
-	files, manifest := Scan(bytes.NewReader(buf.Bytes()), int64(buf.Len()), true)
+	files, manifest, err := Scan(t.Context(), bytes.NewReader(buf.Bytes()), int64(buf.Len()), true)
 
+	require.NoError(t, err)
 	require.Len(t, files, 1)
 	require.Equal(t, "file.par2", files[0].Name)
 	require.Nil(t, manifest)
+}
+
+// Expectation: Scan should return a context error when the context is cancelled before scanning begins.
+func Test_Scan_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	raw := readBundleBytes(t, fixture.fs, fixture.bundlePath)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, _, err := Scan(ctx, bytes.NewReader(raw), int64(len(raw)), true)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
 }
 
 // Expectation: findNextMagic should return the offset of the first matching magic sequence.
@@ -90,7 +111,7 @@ func Test_findNextMagic_Success(t *testing.T) {
 	data := append([]byte("prefix"), Magic[:]...)
 
 	buf := make([]byte, 16*1024)
-	offset, err := findNextMagic(bytes.NewReader(data), 0, int64(len(data)), buf)
+	offset, err := findNextMagic(t.Context(), bytes.NewReader(data), 0, int64(len(data)), buf)
 
 	require.NoError(t, err)
 	require.Equal(t, int64(6), offset)
@@ -104,7 +125,7 @@ func Test_findNextMagic_CrossChunkBoundary_Success(t *testing.T) {
 	data := append(prefix, Magic[:]...) //nolint:gocritic
 
 	buf := make([]byte, 16*1024)
-	offset, err := findNextMagic(bytes.NewReader(data), 0, int64(len(data)), buf)
+	offset, err := findNextMagic(t.Context(), bytes.NewReader(data), 0, int64(len(data)), buf)
 
 	require.NoError(t, err)
 	require.Equal(t, int64(len(prefix)), offset)
@@ -115,7 +136,7 @@ func Test_findNextMagic_ReadError_Error(t *testing.T) {
 	t.Parallel()
 
 	buf := make([]byte, 16*1024)
-	_, err := findNextMagic(failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize, buf)
+	_, err := findNextMagic(t.Context(), failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize, buf)
 
 	require.ErrorContains(t, err, "failed to io")
 	require.ErrorContains(t, err, "read boom")
@@ -126,9 +147,25 @@ func Test_findNextMagic_NotFound_Error(t *testing.T) {
 	t.Parallel()
 
 	buf := make([]byte, 16*1024)
-	_, err := findNextMagic(bytes.NewReader([]byte("plain bytes")), 0, int64(len("plain bytes")), buf)
+	_, err := findNextMagic(t.Context(), bytes.NewReader([]byte("plain bytes")), 0, int64(len("plain bytes")), buf)
 
 	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: findNextMagic should return a context error when the context is cancelled before scanning begins.
+func Test_findNextMagic_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	data := append(bytes.Repeat([]byte{'x'}, 1024), Magic[:]...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	buf := make([]byte, 16*1024)
+	_, err := findNextMagic(ctx, bytes.NewReader(data), 0, int64(len(data)), buf)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
 }
 
 // Expectation: reconstructIndex should sort scanned files by name and copy manifest metadata into the index.

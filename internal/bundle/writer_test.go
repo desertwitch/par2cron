@@ -66,7 +66,7 @@ func Test_Pack_ManifestTooLarge_Error(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{
 		Name:  "manifest.json",
 		Bytes: make([]byte, maxPacketBodyBytes),
 	}, nil)
@@ -81,7 +81,7 @@ func Test_Pack_CleanupAfterFailure_Error(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, fs.MkdirAll("/bundles", 0o755))
 
-	err := Pack(fs, "/bundles/out.par2", testRecoverySetID, ManifestInput{
+	err := Pack(t.Context(), fs, "/bundles/out.par2", testRecoverySetID, ManifestInput{
 		Name:  "manifest.json",
 		Bytes: []byte(`{"ok":true}`),
 	}, []FileInput{
@@ -106,7 +106,7 @@ func Test_Pack_CreateFails_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to create")
 	require.ErrorContains(t, err, "create boom")
@@ -132,7 +132,7 @@ func Test_Pack_WriteIndexPlaceholderFails_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to write index packet placeholder")
 	require.ErrorContains(t, err, "write boom")
@@ -162,7 +162,7 @@ func Test_Pack_GetManifestPacketPositionFails_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to get manifest packet position")
 	require.ErrorContains(t, err, "seek boom")
@@ -192,7 +192,7 @@ func Test_Pack_InvalidManifestPacketOffset_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to get valid manifest packet offset")
 }
@@ -221,7 +221,7 @@ func Test_Pack_SeekToStartFails_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to seek to start")
 	require.ErrorContains(t, err, "seek start boom")
@@ -260,7 +260,7 @@ func Test_Pack_WriteManifestPacketFails_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to write manifest packet")
 	require.ErrorContains(t, err, "write boom")
@@ -299,7 +299,7 @@ func Test_Pack_WriteIndexPacketFails_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to write index packet")
 	require.ErrorContains(t, err, "write boom")
@@ -325,7 +325,7 @@ func Test_Pack_SyncFails_Error(t *testing.T) {
 		},
 	}
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to sync")
 	require.ErrorContains(t, err, "sync boom")
@@ -338,7 +338,7 @@ func Test_Pack_FileExists_Error(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	require.NoError(t, afero.WriteFile(fs, "/bundle.par2", []byte("existing"), 0o644))
 
-	err := Pack(fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
+	err := Pack(t.Context(), fs, "/bundle.par2", testRecoverySetID, ManifestInput{Name: "manifest.json"}, nil)
 
 	require.ErrorContains(t, err, "failed to create")
 
@@ -362,7 +362,7 @@ func Test_Bundle_Update_Success(t *testing.T) {
 		verifyDataAtOffset(t, raw, entry.DataOffset, entry.DataLength, fixture.files[entry.Name])
 	}
 
-	got, err := b.Manifest()
+	got, err := b.Manifest(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, newManifest, got)
 	require.Equal(t, dataHash(newManifest), b.Index.ManifestDataSHA256)

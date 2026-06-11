@@ -151,7 +151,7 @@ func Fuzz_Bundle_Open(f *testing.F) {
 			return
 		}
 
-		b, err := Open(fs, bundlePath)
+		b, err := Open(t.Context(), fs, bundlePath)
 		if err != nil {
 			return
 		}
@@ -171,7 +171,7 @@ func Fuzz_Bundle_Scan(f *testing.F) {
 	// We fuzz the content of the reference bundle.
 	f.Fuzz(func(t *testing.T, data []byte) {
 		r := bytes.NewReader(data)
-		_, _ = Scan(r, int64(len(data)), false)
+		_, _, _ = Scan(t.Context(), r, int64(len(data)), false)
 	})
 }
 
@@ -229,7 +229,7 @@ func Fuzz_Bundle_Pack(f *testing.F) {
 			inputs = append(inputs, FileInput{Name: file1Name, Path: "/in/file1.par2"})
 		}
 
-		_ = Pack(fsys, "/bundle.out", rsid, ManifestInput{
+		_ = Pack(t.Context(), fsys, "/bundle.out", rsid, ManifestInput{
 			Name:  manifestName,
 			Bytes: manifestData,
 		}, inputs)
@@ -250,13 +250,13 @@ func Fuzz_Bundle_Manifest(f *testing.F) {
 			return
 		}
 
-		b, err := Open(fs, bundlePath)
+		b, err := Open(t.Context(), fs, bundlePath)
 		if err != nil {
 			return
 		}
 		defer func() { _ = b.Close() }()
 
-		_, _ = b.Manifest()
+		_, _ = b.Manifest(t.Context())
 	})
 }
 
@@ -279,13 +279,13 @@ func Fuzz_Bundle_Unpack(f *testing.F) {
 			return
 		}
 
-		b, err := Open(fs, bundlePath)
+		b, err := Open(t.Context(), fs, bundlePath)
 		if err != nil {
 			return
 		}
 		defer func() { _ = b.Close() }()
 
-		_, _ = b.Unpack(fs, destDir, false)
+		_, _ = b.Unpack(t.Context(), fs, destDir, false)
 	})
 }
 
@@ -303,7 +303,7 @@ func Fuzz_Bundle_Update(f *testing.F) {
 			return
 		}
 
-		b, err := Open(fs, bundlePath)
+		b, err := Open(t.Context(), fs, bundlePath)
 		if err != nil {
 			return
 		}
@@ -327,13 +327,13 @@ func Fuzz_Bundle_Validate(f *testing.F) {
 			return
 		}
 
-		b, err := Open(fs, bundlePath)
+		b, err := Open(t.Context(), fs, bundlePath)
 		if err != nil {
 			return
 		}
 		defer func() { _ = b.Close() }()
 
-		_ = b.Validate(false)
-		_ = b.Validate(true)
+		_ = b.Validate(t.Context(), false)
+		_ = b.Validate(t.Context(), true)
 	})
 }

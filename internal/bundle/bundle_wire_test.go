@@ -272,12 +272,12 @@ func Test_WireFormat_TestdataBundle_Unpack_Success(t *testing.T) {
 			fs := afero.NewOsFs()
 			ensureTestdataBundle(t, gs, tmpDir, false)
 
-			b, err := Open(fs, filepath.Join(tmpDir, filepath.Base(gs.Bundle)))
+			b, err := Open(t.Context(), fs, filepath.Join(tmpDir, filepath.Base(gs.Bundle)))
 			require.NoError(t, err)
-			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.Validate(t.Context(), true))
 			t.Cleanup(func() { _ = b.Close() })
 
-			_, err = b.Unpack(fs, tmpDir, true)
+			_, err = b.Unpack(t.Context(), fs, tmpDir, true)
 			require.NoError(t, err)
 			requirePar2MatchTestdata(t, gs, tmpDir)
 			requireManifestMatchesTestdata(t, tmpDir)
@@ -297,15 +297,15 @@ func Test_WireFormat_ReferenceBundle_Pack_EqualsTestdata_Success(t *testing.T) {
 			fs := afero.NewOsFs()
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
 			requireBundleMatchesTestdata(t, gs, tmpDir)
 
-			b, err := Open(fs, bundlePath)
+			b, err := Open(t.Context(), fs, bundlePath)
 			require.NoError(t, err)
 			t.Cleanup(func() { _ = b.Close() })
 
-			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.Validate(t.Context(), true))
 		})
 	}
 }
@@ -323,7 +323,7 @@ func Test_WireFormat_ReferenceBundle_Pack_Verify(t *testing.T) {
 			ensureTestdataSourceFiles(t, tmpDir, false)
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
 			requireBundleMatchesTestdata(t, gs, tmpDir)
 
@@ -348,11 +348,11 @@ func Test_WireFormat_ReferenceBundle_Pack_UpdatedManifest_Verify(t *testing.T) {
 			ensureTestdataSourceFiles(t, tmpDir, false)
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
 			requireBundleMatchesTestdata(t, gs, tmpDir)
 
-			b, err := Open(fs, bundlePath)
+			b, err := Open(t.Context(), fs, bundlePath)
 			require.NoError(t, err)
 			require.NoError(t, b.Update([]byte("test")))
 			require.NoError(t, b.Close())
@@ -378,7 +378,7 @@ func Test_WireFormat_ReferenceBundle_Pack_Repair(t *testing.T) {
 			ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
 			cmd := exec.CommandContext(t.Context(), "par2", "verify", filepath.Base(gs.Bundle))
 			cmd.Dir = tmpDir
@@ -410,11 +410,11 @@ func Test_WireFormat_ReferenceBundle_Pack_UpdatedManifest_Repair(t *testing.T) {
 			ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
 			requireBundleMatchesTestdata(t, gs, tmpDir)
 
-			b, err := Open(fs, bundlePath)
+			b, err := Open(t.Context(), fs, bundlePath)
 			require.NoError(t, err)
 			require.NoError(t, b.Update([]byte("test")))
 			require.NoError(t, b.Close())
@@ -448,12 +448,12 @@ func Test_WireFormat_ReferenceBundle_Unpack_Verify(t *testing.T) {
 			ensureTestdataSourceFiles(t, tmpDir, false)
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
-			b, err := Open(fs, bundlePath)
+			b, err := Open(t.Context(), fs, bundlePath)
 			require.NoError(t, err)
-			require.NoError(t, b.Validate(true))
-			_, err = b.Unpack(fs, tmpDir, true)
+			require.NoError(t, b.Validate(t.Context(), true))
+			_, err = b.Unpack(t.Context(), fs, tmpDir, true)
 			require.NoError(t, err)
 			require.NoError(t, b.Close())
 
@@ -483,15 +483,15 @@ func Test_WireFormat_ReferenceBundle_Unpack_UpdatedManifest_Verify(t *testing.T)
 			ensureTestdataSourceFiles(t, tmpDir, false)
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
 			requireBundleMatchesTestdata(t, gs, tmpDir)
 
-			b, err := Open(fs, bundlePath)
+			b, err := Open(t.Context(), fs, bundlePath)
 			require.NoError(t, err)
-			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.Validate(t.Context(), true))
 			require.NoError(t, b.Update([]byte("test")))
-			_, err = b.Unpack(fs, tmpDir, true)
+			_, err = b.Unpack(t.Context(), fs, tmpDir, true)
 			require.NoError(t, err)
 			require.NoError(t, b.Close())
 
@@ -520,12 +520,12 @@ func Test_WireFormat_ReferenceBundle_Unpack_Repair(t *testing.T) {
 			ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
-			b, err := Open(fs, bundlePath)
+			b, err := Open(t.Context(), fs, bundlePath)
 			require.NoError(t, err)
-			require.NoError(t, b.Validate(true))
-			_, err = b.Unpack(fs, tmpDir, true)
+			require.NoError(t, b.Validate(t.Context(), true))
+			_, err = b.Unpack(t.Context(), fs, tmpDir, true)
 			require.NoError(t, err)
 			require.NoError(t, b.Close())
 
@@ -563,15 +563,15 @@ func Test_WireFormat_ReferenceBundle_Unpack_UpdatedManifest_Repair(t *testing.T)
 			ensureTestdataSourceFiles(t, tmpDir, true) // corrupt
 
 			bundlePath := filepath.Join(tmpDir, filepath.Base(gs.Bundle))
-			require.NoError(t, Pack(fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
+			require.NoError(t, Pack(t.Context(), fs, bundlePath, gs.RecoverySetID, goldenManifest, gs.Inputs()))
 
 			requireBundleMatchesTestdata(t, gs, tmpDir)
 
-			b, err := Open(fs, bundlePath)
+			b, err := Open(t.Context(), fs, bundlePath)
 			require.NoError(t, err)
-			require.NoError(t, b.Validate(true))
+			require.NoError(t, b.Validate(t.Context(), true))
 			require.NoError(t, b.Update([]byte("test")))
-			_, err = b.Unpack(fs, tmpDir, true)
+			_, err = b.Unpack(t.Context(), fs, tmpDir, true)
 			require.NoError(t, err)
 			require.NoError(t, b.Close())
 

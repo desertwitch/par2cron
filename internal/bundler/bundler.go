@@ -107,7 +107,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 			return fmt.Errorf("context error: %w", err)
 		}
 
-		bun, err := prog.bundler.Open(prog.fsys, path)
+		bun, err := prog.bundler.Open(ctx, prog.fsys, path)
 		if err != nil {
 			logger := prog.bundleLogger(ctx, nil, path)
 			logger.Error("Failed to open bundle", "error", err)
@@ -126,7 +126,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 			Bundle: bun,
 		}
 
-		mf, mfErr := bun.Manifest()
+		mf, mfErr := bun.Manifest(ctx)
 		if mf != nil {
 			if json.Valid(mf) {
 				result.Manifest = json.RawMessage(mf)
@@ -141,7 +141,7 @@ func (prog *Service) OutputJSON(ctx context.Context, paths []string) error {
 			errs = append(errs, fmt.Errorf("%s: failed to validate manifest: %w", path, mfErr))
 		}
 
-		valErr := bun.Validate(false)
+		valErr := bun.Validate(ctx, false)
 		if valErr != nil {
 			result.ValidationError = valErr.Error()
 			logger := prog.bundleLogger(ctx, nil, path)
@@ -409,7 +409,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 		Bytes: manifestData,
 	}
 
-	if err := prog.bundler.Pack(prog.fsys, bundlePath, recoverySetID, manifest, files); err != nil {
+	if err := prog.bundler.Pack(ctx, prog.fsys, bundlePath, recoverySetID, manifest, files); err != nil {
 		return fmt.Errorf("failed to pack bundle: %w", err)
 	}
 
@@ -489,7 +489,7 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
-	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)
 	if err != nil {
 		return fmt.Errorf("failed to open bundle: %w", err)
 	}
@@ -523,7 +523,7 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	}
 	defer unlock2()
 
-	files, err := bun.Unpack(prog.fsys, job.workingDir, false)
+	files, err := bun.Unpack(ctx, prog.fsys, job.workingDir, false)
 	if err != nil {
 		if !util.OnlyContains(err, bundle.ErrDataCorrupt) {
 			cleanupPaths = append(cleanupPaths, files...)
