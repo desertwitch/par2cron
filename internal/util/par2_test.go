@@ -18,7 +18,7 @@ import (
 func Test_ParseBundlePar2Index_NotBundleFile_Error(t *testing.T) {
 	t.Parallel()
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.txt", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.txt", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -29,7 +29,7 @@ func Test_ParseBundlePar2Index_NotBundleFile_Error(t *testing.T) {
 func Test_ParseBundlePar2Index_PlainPar2NotBundle_Error(t *testing.T) {
 	t.Parallel()
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -40,7 +40,7 @@ func Test_ParseBundlePar2Index_PlainPar2NotBundle_Error(t *testing.T) {
 func Test_ParseBundlePar2Index_Par2VolumeFile_Error(t *testing.T) {
 	t.Parallel()
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.vol0+1.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.vol0+1.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -58,7 +58,7 @@ func Test_ParseBundlePar2Index_OpenError_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -84,7 +84,7 @@ func Test_ParseBundlePar2Index_NoIndexEntries_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -106,7 +106,7 @@ func Test_ParseBundlePar2Index_EmptyEntries_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -130,7 +130,7 @@ func Test_ParseBundlePar2Index_IndexTooLarge_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -158,7 +158,7 @@ func Test_ParseBundlePar2Index_ExtractEntryError_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -194,7 +194,7 @@ func Test_ParseBundlePar2Index_ParseError_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -236,7 +236,7 @@ func Test_ParseBundlePar2Index_SingleIndexEntry_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
@@ -284,7 +284,7 @@ func Test_ParseBundlePar2Index_MultipleIndexEntries_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Len(t, sets, 2)
@@ -324,7 +324,7 @@ func Test_ParseBundlePar2Index_SkipsVolumeEntries_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
@@ -359,7 +359,7 @@ func Test_ParseBundlePar2Index_IndexExactlyAtMaxSize_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
@@ -401,7 +401,7 @@ func Test_ParseBundlePar2Index_ExtractedDataPassedToParser_Success(t *testing.T)
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)

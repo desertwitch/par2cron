@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -49,12 +50,12 @@ type Service struct {
 
 type bundleHandler struct{}
 
-func (bundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
-	return bundle.Open(fsys, bundlePath) //nolint:wrapcheck
+func (bundleHandler) Open(ctx context.Context, fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+	return bundle.Open(ctx, fsys, bundlePath) //nolint:wrapcheck
 }
 
-func (bundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
-	return bundle.Pack(fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
+func (bundleHandler) Pack(ctx context.Context, fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+	return bundle.Pack(ctx, fsys, bundlePath, recoverySetID, manifest, files) //nolint:wrapcheck
 }
 
 type par2Handler struct{}
@@ -109,17 +110,17 @@ func (s *Service) Run(opts Options) (string, error) {
 		return "", fmt.Errorf("remove error: %w", err)
 	}
 
-	if err := s.bundler.Pack(s.fsys, outPath, recoverySetID, manifest, inputs); err != nil {
+	if err := s.bundler.Pack(context.Background(), s.fsys, outPath, recoverySetID, manifest, inputs); err != nil {
 		return "", fmt.Errorf("pack error: %w", err)
 	}
 
-	bun, err := s.bundler.Open(s.fsys, outPath)
+	bun, err := s.bundler.Open(context.Background(), s.fsys, outPath)
 	if err != nil {
 		return "", fmt.Errorf("bundle open error: %w", err)
 	}
 	defer bun.Close()
 
-	if err := bun.Validate(true); err != nil {
+	if err := bun.Validate(context.Background(), true); err != nil {
 		return "", fmt.Errorf("bundle validate error: %w", err)
 	}
 

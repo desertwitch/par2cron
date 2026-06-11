@@ -8,6 +8,7 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,7 +75,7 @@ func (b Bundle) MarshalJSON() ([]byte, error) {
 // corrupt, Open attempts to reconstruct it by scanning for intact file and
 // manifest packets. Use Validate.. functions to check the bundle's integrity
 // after opening (if that should be required). Update() restores working state.
-func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
+func Open(ctx context.Context, fsys afero.Fs, bundlePath string) (*Bundle, error) {
 	f, err := fsys.OpenFile(bundlePath, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open: %w", err)
@@ -94,7 +95,10 @@ func Open(fsys afero.Fs, bundlePath string) (*Bundle, error) {
 
 	b := &Bundle{f: f, size: fi.Size()}
 	if err := b.readIndexPacket(); err != nil {
-		files, manifest := Scan(f, fi.Size(), true)
+		files, manifest, serr := Scan(ctx, f, fi.Size(), true)
+		if serr != nil {
+			return nil, fmt.Errorf("failed to scan: %w", serr)
+		}
 
 		if manifest == nil {
 			_ = f.Close()
@@ -130,10 +134,10 @@ func (b *Bundle) IsRebuilt() bool {
 // Manifest reads and returns the manifest bytes, verified against the SHA256
 // hash. On errors the bytes are still returned for inspection but should be
 // treated as suspect. ErrDataCorrupt is returned on hash mismatch (corruption).
-func (b *Bundle) Manifest() ([]byte, error) {
+func (b *Bundle) Manifest(ctx context.Context) ([]byte, error) {
 	var buf bytes.Buffer
 
-	if err := b.ExtractManifest(&buf); err != nil {
+	if err := b.ExtractManifest(ctx, &buf); err != nil {
 		return buf.Bytes(), fmt.Errorf("failed to extract: %w", err)
 	}
 
@@ -150,16 +154,16 @@ func (b *Bundle) ManifestName() string {
 // packets, and the manifest in sequence. If strict is true, manifest and file
 // data is additionally verified against their SHA256 hashes, which requires
 // reading the full data streams and may be slower for large bundles.
-func (b *Bundle) Validate(strict bool) error {
+func (b *Bundle) Validate(ctx context.Context, strict bool) error {
 	if err := b.ValidateIndex(); err != nil {
 		return fmt.Errorf("index: %w", err)
 	}
 
-	if err := b.ValidateFiles(strict); err != nil {
+	if err := b.ValidateFiles(ctx, strict); err != nil {
 		return fmt.Errorf("files: %w", err)
 	}
 
-	if err := b.ValidateManifest(strict); err != nil {
+	if err := b.ValidateManifest(ctx, strict); err != nil {
 		return fmt.Errorf("manifest: %w", err)
 	}
 
@@ -180,9 +184,11 @@ func (b *Bundle) ValidateIndex() error {
 // file packet at the expected offset. If strict is true, it additionally checks
 // each file stream's data against its SHA256 hash to detect corruption, which
 // requires reading the full data stream and may be slower for large bundles.
-func (b *Bundle) ValidateFiles(strict bool) error {
+func (b *Bundle) ValidateFiles(ctx context.Context, strict bool) error {
+	f := &contextReaderAt{ctx, b.f}
+
 	for i, entry := range b.Index.Entries {
-		ch, _, err := readAndValidatePacket(b.f, int64(entry.PacketOffset), b.size, true) //nolint:gosec
+		ch, _, err := readAndValidatePacket(f, int64(entry.PacketOffset), b.size, true) //nolint:gosec
 		if err != nil {
 			return fmt.Errorf("file packet %d (%q) at offset %d: %w", i, entry.Name, entry.PacketOffset, err)
 		}
@@ -191,7 +197,7 @@ func (b *Bundle) ValidateFiles(strict bool) error {
 		}
 
 		if strict {
-			sr := io.NewSectionReader(b.f, int64(entry.DataOffset), int64(entry.DataLength)) //nolint:gosec
+			sr := io.NewSectionReader(f, int64(entry.DataOffset), int64(entry.DataLength)) //nolint:gosec
 
 			hash, err := dataHashReader(sr)
 			if err != nil {
@@ -210,8 +216,10 @@ func (b *Bundle) ValidateFiles(strict bool) error {
 // at the expected offset. If strict is true, it additionally checks the
 // manifest data against its SHA256 hash to detect corruption, which requires
 // reading the full data stream and may be slower for large bundles.
-func (b *Bundle) ValidateManifest(strict bool) error {
-	ch, _, err := readAndValidatePacket(b.f, int64(b.Index.ManifestPacketOffset), b.size, true) //nolint:gosec
+func (b *Bundle) ValidateManifest(ctx context.Context, strict bool) error {
+	f := &contextReaderAt{ctx, b.f}
+
+	ch, _, err := readAndValidatePacket(f, int64(b.Index.ManifestPacketOffset), b.size, true) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("manifest packet at offset %d: %w", b.Index.ManifestPacketOffset, err)
 	}
@@ -220,7 +228,7 @@ func (b *Bundle) ValidateManifest(strict bool) error {
 	}
 
 	if strict {
-		sr := io.NewSectionReader(b.f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
+		sr := io.NewSectionReader(f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
 
 		hash, err := dataHashReader(sr)
 		if err != nil {

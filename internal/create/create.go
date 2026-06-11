@@ -636,9 +636,12 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 			return fmt.Errorf("failed to bundle: %w", err)
 		}
 	} else {
-		if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, mf, false); err != nil {
+		if err := util.WriteManifest(ctx, prog.fsys, prog.bundler, job.manifestPath, mf, false); err != nil {
+			needsCleanup = true
 			logger := prog.creationLogger(ctx, job, job.manifestPath)
-			logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
+			logger.Error("Failed to write par2cron manifest (will retry next run)", "error", err)
+
+			return fmt.Errorf("failed to write manifest: %w", err)
 		}
 	}
 
@@ -692,7 +695,7 @@ func (prog *Service) packAsBundle(ctx context.Context, job *Job, mf *schema.Mani
 		Bytes: manifestData,
 	}
 
-	if err := prog.bundler.Pack(prog.fsys, bundlePath, recoverySetID, manifest, files); err != nil {
+	if err := prog.bundler.Pack(ctx, prog.fsys, bundlePath, recoverySetID, manifest, files); err != nil {
 		return fmt.Errorf("failed to pack bundle: %w", err)
 	}
 

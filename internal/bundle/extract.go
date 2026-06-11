@@ -1,6 +1,7 @@
 package bundle
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +17,7 @@ import (
 // paths that were successfully written alongside any errors. If strict is true,
 // files that fail integrity checks are removed; otherwise they are kept on disk
 // (returning ErrDataCorrupt). Locking needs to be taken care of at the call-site.
-func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+func (b *Bundle) Unpack(ctx context.Context, fsys afero.Fs, destDir string, strict bool) ([]string, error) {
 	var errs []error
 	var extractedPaths []string
 
@@ -28,7 +29,7 @@ func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, e
 			continue
 		}
 		err = extractToFile(fsys, path, func(w io.Writer) error {
-			return b.ExtractEntry(e, w)
+			return b.ExtractEntry(ctx, e, w)
 		}, strict)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%q: %w", e.Name, err))
@@ -42,8 +43,9 @@ func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, e
 	if err != nil {
 		errs = append(errs, err)
 	} else {
-		err := extractToFile(fsys, path,
-			b.ExtractManifest, strict)
+		err := extractToFile(fsys, path, func(w io.Writer) error {
+			return b.ExtractManifest(ctx, w)
+		}, strict)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("manifest: %w", err))
 		}
@@ -58,8 +60,10 @@ func (b *Bundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, e
 // ExtractEntry copies a file packet's data stream to w and verifies it against
 // its SHA256 hash. If an error is returned, the written data may be partial or
 // corrupt. If the transfer is complete but corrupt, ErrDataCorrupt is returned.
-func (b *Bundle) ExtractEntry(e IndexEntry, w io.Writer) error {
-	sr := io.NewSectionReader(b.f, int64(e.DataOffset), int64(e.DataLength)) //nolint:gosec
+func (b *Bundle) ExtractEntry(ctx context.Context, e IndexEntry, w io.Writer) error {
+	f := &contextReaderAt{ctx, b.f}
+
+	sr := io.NewSectionReader(f, int64(e.DataOffset), int64(e.DataLength)) //nolint:gosec
 	expectedHash := e.DataSHA256
 
 	hash, err := dataHashReader(io.TeeReader(sr, w))
@@ -77,8 +81,10 @@ func (b *Bundle) ExtractEntry(e IndexEntry, w io.Writer) error {
 // ExtractManifest copies the manifest's data stream to w and verifies it
 // against its SHA256 hash. If an error is returned, written data may be partial
 // or corrupt. If transfer is complete but corrupt, ErrDataCorrupt is returned.
-func (b *Bundle) ExtractManifest(w io.Writer) error {
-	sr := io.NewSectionReader(b.f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
+func (b *Bundle) ExtractManifest(ctx context.Context, w io.Writer) error {
+	f := &contextReaderAt{ctx, b.f}
+
+	sr := io.NewSectionReader(f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
 	expectedHash := b.Index.ManifestDataSHA256
 
 	hash, err := dataHashReader(io.TeeReader(sr, w))

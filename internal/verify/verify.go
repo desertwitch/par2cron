@@ -440,7 +440,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
-	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
 		logger := prog.verificationLogger(ctx, nil, bundlePath)
@@ -448,10 +448,14 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, schema.ErrNonFatal
 	}
-	by, err := bun.Manifest()
+	by, err := bun.Manifest(ctx)
 	if err != nil {
 		_ = bun.Close()
 		unlock()
+
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("context error: %w", err)
+		}
 
 		meta := NewJobMeta(schema.NewJobMeta(bundlePath, nil, true))
 
@@ -527,16 +531,20 @@ func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*sc
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
-	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
 
 		return nil, fmt.Errorf("failed to open: %w", err)
 	}
-	by, err := bun.Manifest()
+	by, err := bun.Manifest(ctx)
 	if err != nil {
 		_ = bun.Close()
 		unlock()
+
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("context error: %w", err)
+		}
 
 		logger := prog.verificationLogger(ctx, meta, bundlePath)
 		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
@@ -621,7 +629,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 
 	job.manifest.Verification.Count++
 
-	if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
+	if err := util.WriteManifest(ctx, prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
 		logger := prog.verificationLogger(ctx, job, job.manifestPath)
 		logger.Error("Failed to write par2cron manifest", "error", err)
 

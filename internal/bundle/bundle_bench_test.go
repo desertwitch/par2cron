@@ -29,7 +29,9 @@ func seedFiles(fsys afero.Fs, n, size int) []FileInput {
 	return files
 }
 
-func packTestBundle(fsys afero.Fs, path string, numFiles, fileSize int) []byte {
+func packTestBundle(b *testing.B, fsys afero.Fs, path string, numFiles, fileSize int) []byte {
+	b.Helper()
+
 	files := seedFiles(fsys, numFiles, fileSize)
 	manifest := []byte(`{"files":["a.txt","b.txt"],"created":"2025-01-01T00:00:00Z"}`)
 	mi := ManifestInput{Name: "test.manifest", Bytes: manifest}
@@ -37,7 +39,7 @@ func packTestBundle(fsys afero.Fs, path string, numFiles, fileSize int) []byte {
 	var rid [16]byte
 	_, _ = rand.Read(rid[:])
 
-	if err := Pack(fsys, path, rid, mi, files); err != nil {
+	if err := Pack(b.Context(), fsys, path, rid, mi, files); err != nil {
 		panic(err)
 	}
 
@@ -64,7 +66,7 @@ func Benchmark_Pack(b *testing.B) {
 			b.ResetTimer()
 			for i := range b.N {
 				path := fmt.Sprintf("/bench_%d.p2c.par2", i)
-				if err := Pack(fsys, path, rid, mi, files); err != nil {
+				if err := Pack(b.Context(), fsys, path, rid, mi, files); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -84,11 +86,11 @@ func Benchmark_Open(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
-			packTestBundle(fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
+			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
 
 			b.ResetTimer()
 			for range b.N {
-				bnd, err := Open(fsys, "/bench.p2c.par2")
+				bnd, err := Open(b.Context(), fsys, "/bench.p2c.par2")
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -110,10 +112,10 @@ func Benchmark_Update(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
-			packTestBundle(fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
+			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
 			newManifest := []byte(`{"files":["a.txt","b.txt","c.txt"],"updated":"2025-06-01T00:00:00Z"}`)
 
-			bnd, err := Open(fsys, "/bench.p2c.par2")
+			bnd, err := Open(b.Context(), fsys, "/bench.p2c.par2")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -137,9 +139,9 @@ func Benchmark_Validate(b *testing.B) {
 		}
 		b.Run(label, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
-			packTestBundle(fsys, "/bench.p2c.par2", 5, 64<<10)
+			packTestBundle(b, fsys, "/bench.p2c.par2", 5, 64<<10)
 
-			bnd, err := Open(fsys, "/bench.p2c.par2")
+			bnd, err := Open(b.Context(), fsys, "/bench.p2c.par2")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -147,7 +149,7 @@ func Benchmark_Validate(b *testing.B) {
 
 			b.ResetTimer()
 			for range b.N {
-				if err := bnd.Validate(strict); err != nil {
+				if err := bnd.Validate(b.Context(), strict); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -166,7 +168,7 @@ func Benchmark_Scan(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
-			packTestBundle(fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
+			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
 
 			f, err := fsys.Open("/bench.p2c.par2")
 			if err != nil {
@@ -186,7 +188,7 @@ func Benchmark_Scan(b *testing.B) {
 
 			b.ResetTimer()
 			for range b.N {
-				files, manifest := Scan(ra, fi.Size(), true)
+				files, manifest, _ := Scan(b.Context(), ra, fi.Size(), true)
 				if manifest == nil || len(files) == 0 {
 					b.Fatal("scan returned no results")
 				}
@@ -206,9 +208,9 @@ func Benchmark_Unpack(b *testing.B) {
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
-			packTestBundle(fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
+			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
 
-			bnd, err := Open(fsys, "/bench.p2c.par2")
+			bnd, err := Open(b.Context(), fsys, "/bench.p2c.par2")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -219,7 +221,7 @@ func Benchmark_Unpack(b *testing.B) {
 				destDir := fmt.Sprintf("/out/%d", i)
 				_ = fsys.MkdirAll(destDir, 0o755)
 
-				paths, err := bnd.Unpack(fsys, destDir, true)
+				paths, err := bnd.Unpack(b.Context(), fsys, destDir, true)
 				if err != nil {
 					b.Fatal(err)
 				}

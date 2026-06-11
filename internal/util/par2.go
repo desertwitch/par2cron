@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 
@@ -12,12 +13,12 @@ import (
 
 const maxIndexSize = 100 * 1024 * 1024 // 100MiB
 
-func ParseBundlePar2Index(fsys afero.Fs, path string, p schema.Par2Handler, b schema.BundleHandler) ([]par2.Set, error) {
+func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p schema.Par2Handler, b schema.BundleHandler) ([]par2.Set, error) {
 	if !IsPar2Bundle(path) {
 		return nil, errors.New("not a bundle file")
 	}
 
-	bun, err := b.Open(fsys, path)
+	bun, err := b.Open(ctx, fsys, path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open bundle: %w", err)
 	}
@@ -32,7 +33,7 @@ func ParseBundlePar2Index(fsys afero.Fs, path string, p schema.Par2Handler, b sc
 				return nil, errors.New("index file too large")
 			}
 
-			if err := bun.ExtractEntry(e, &buf); err != nil {
+			if err := bun.ExtractEntry(ctx, e, &buf); err != nil {
 				return nil, fmt.Errorf("failed to extract index file: %w", err)
 			}
 

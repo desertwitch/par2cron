@@ -2632,7 +2632,7 @@ func Test_Service_loadManifest_ValidManifest_Success(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadManifest(meta)
+	result, err := prog.loadManifest(t.Context(), meta)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -2665,7 +2665,7 @@ func Test_Service_loadManifest_FileNotFound_Error(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadManifest(meta)
+	result, err := prog.loadManifest(t.Context(), meta)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read")
@@ -2698,7 +2698,7 @@ func Test_Service_loadManifest_InvalidJSON_Error(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadManifest(meta)
+	result, err := prog.loadManifest(t.Context(), meta)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to unmarshal")
@@ -2736,7 +2736,7 @@ func Test_Service_loadManifest_ReadError_Error(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadManifest(meta)
+	result, err := prog.loadManifest(t.Context(), meta)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read")
@@ -2791,7 +2791,7 @@ func Test_Service_loadBundleManifest_ValidManifest_Success(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadBundleManifest(meta)
+	result, err := prog.loadBundleManifest(t.Context(), meta)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -2830,7 +2830,7 @@ func Test_Service_loadBundleManifest_OpenFails_Error(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadBundleManifest(meta)
+	result, err := prog.loadBundleManifest(t.Context(), meta)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to open")
@@ -2877,7 +2877,7 @@ func Test_Service_loadBundleManifest_ManifestReadFails_Error(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadBundleManifest(meta)
+	result, err := prog.loadBundleManifest(t.Context(), meta)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read")
@@ -2924,7 +2924,7 @@ func Test_Service_loadBundleManifest_InvalidJSON_Error(t *testing.T) {
 		},
 	}
 
-	result, err := prog.loadBundleManifest(meta)
+	result, err := prog.loadBundleManifest(t.Context(), meta)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to unmarshal")

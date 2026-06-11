@@ -19,7 +19,7 @@ func Test_Bundle_Unpack_Success(t *testing.T) {
 	b, fixture := openTestBundle(t)
 	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
 
-	_, err := b.Unpack(fixture.fs, "/out", true)
+	_, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 	require.NoError(t, err)
 
 	for name, want := range fixture.files {
@@ -42,7 +42,7 @@ func Test_Bundle_Unpack_JoinedErrors_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fixture.fs, "/out/"+b.Index.Entries[0].Name, []byte("existing"), 0o644))
 	require.NoError(t, afero.WriteFile(fixture.fs, "/out/"+fixture.manifest.Name, []byte("existing"), 0o644))
 
-	_, err := b.Unpack(fixture.fs, "/out", true)
+	_, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, b.Index.Entries[0].Name)
@@ -58,7 +58,7 @@ func Test_Bundle_Unpack_PathTraversal_Error(t *testing.T) {
 
 	b.Index.Entries[0].Name = "../../etc/passwd"
 
-	paths, err := b.Unpack(fixture.fs, "/out", true)
+	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "escapes destination directory")
@@ -74,7 +74,7 @@ func Test_Bundle_Unpack_ManifestPathTraversal_Error(t *testing.T) {
 
 	b.Index.ManifestName = "../manifest.json"
 
-	paths, err := b.Unpack(fixture.fs, "/out", true)
+	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "escapes destination directory")
@@ -93,7 +93,7 @@ func Test_Bundle_Unpack_PathTraversalContinuesOthers(t *testing.T) {
 
 	b.Index.Entries[0].Name = "../../escape"
 
-	paths, err := b.Unpack(fixture.fs, "/out", true)
+	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
 	require.NotEmpty(t, paths, "valid entries should still be extracted")
@@ -106,7 +106,7 @@ func Test_Bundle_Unpack_ReturnsPaths(t *testing.T) {
 	b, fixture := openTestBundle(t)
 	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
 
-	paths, err := b.Unpack(fixture.fs, "/out", true)
+	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.NoError(t, err)
 	require.Len(t, paths, len(b.Index.Entries)+1) // entries + manifest
@@ -126,7 +126,7 @@ func Test_Bundle_Unpack_Strict_ExcludesFailedPaths(t *testing.T) {
 	// Block the first entry by pre-creating it (O_EXCL will fail).
 	require.NoError(t, afero.WriteFile(fixture.fs, "/out/"+b.Index.Entries[0].Name, []byte("existing"), 0o644))
 
-	paths, err := b.Unpack(fixture.fs, "/out", true)
+	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
 	require.NotContains(t, paths, filepath.Join("/out", b.Index.Entries[0].Name))
@@ -137,7 +137,7 @@ func Test_Bundle_Unpack_NonStrict_IncludesCorruptPaths(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Close())
 
@@ -145,7 +145,7 @@ func Test_Bundle_Unpack_NonStrict_IncludesCorruptPaths(t *testing.T) {
 		raw[b.Index.Entries[0].DataOffset] ^= 0xFF
 	})
 
-	b, err = Open(fixture.fs, fixture.bundlePath)
+	b, err = Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
@@ -153,7 +153,7 @@ func Test_Bundle_Unpack_NonStrict_IncludesCorruptPaths(t *testing.T) {
 
 	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
 
-	paths, err := b.Unpack(fixture.fs, "/out", false)
+	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", false)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrDataCorrupt)
@@ -165,7 +165,7 @@ func Test_Bundle_Unpack_Strict_ExcludesCorruptPaths(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Close())
 
@@ -173,7 +173,7 @@ func Test_Bundle_Unpack_Strict_ExcludesCorruptPaths(t *testing.T) {
 		raw[b.Index.Entries[0].DataOffset] ^= 0xFF
 	})
 
-	b, err = Open(fixture.fs, fixture.bundlePath)
+	b, err = Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
@@ -181,7 +181,7 @@ func Test_Bundle_Unpack_Strict_ExcludesCorruptPaths(t *testing.T) {
 
 	require.NoError(t, fixture.fs.MkdirAll("/out", 0o755))
 
-	paths, err := b.Unpack(fixture.fs, "/out", true)
+	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrDataCorrupt)
@@ -196,7 +196,7 @@ func Test_Bundle_ExtractEntry_Success(t *testing.T) {
 	entry := b.Index.Entries[0]
 
 	var buf bytes.Buffer
-	err := b.ExtractEntry(entry, &buf)
+	err := b.ExtractEntry(t.Context(), entry, &buf)
 
 	require.NoError(t, err)
 	require.Equal(t, fixture.files[entry.Name], buf.Bytes())
@@ -207,7 +207,7 @@ func Test_Bundle_ExtractEntry_HashMismatch_Error(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Close())
 
@@ -215,14 +215,14 @@ func Test_Bundle_ExtractEntry_HashMismatch_Error(t *testing.T) {
 		raw[b.Index.Entries[0].DataOffset] ^= 0xFF
 	})
 
-	b, err = Open(fixture.fs, fixture.bundlePath)
+	b, err = Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
 	})
 
 	var buf bytes.Buffer
-	err = b.ExtractEntry(b.Index.Entries[0], &buf)
+	err = b.ExtractEntry(t.Context(), b.Index.Entries[0], &buf)
 
 	require.ErrorIs(t, err, ErrDataCorrupt)
 	require.NotEmpty(t, buf.Bytes())
@@ -239,7 +239,7 @@ func Test_Bundle_ExtractEntry_WriterError_Error(t *testing.T) {
 		err:       errors.New("writer boom"),
 	}
 
-	err := b.ExtractEntry(entry, w)
+	err := b.ExtractEntry(t.Context(), entry, w)
 
 	require.ErrorContains(t, err, "failed to io")
 	require.ErrorContains(t, err, "writer boom")
@@ -253,7 +253,7 @@ func Test_Bundle_ExtractManifest_Success(t *testing.T) {
 	b, fixture := openTestBundle(t)
 
 	var buf bytes.Buffer
-	err := b.ExtractManifest(&buf)
+	err := b.ExtractManifest(t.Context(), &buf)
 
 	require.NoError(t, err)
 	require.Equal(t, fixture.manifest.Bytes, buf.Bytes())
@@ -264,7 +264,7 @@ func Test_Bundle_ExtractManifest_HashMismatch_Error(t *testing.T) {
 	t.Parallel()
 
 	fixture := newTestBundleFixture(t)
-	b, err := Open(fixture.fs, fixture.bundlePath)
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	require.NoError(t, b.Close())
 
@@ -272,14 +272,14 @@ func Test_Bundle_ExtractManifest_HashMismatch_Error(t *testing.T) {
 		raw[b.Index.ManifestDataOffset] ^= 0xFF
 	})
 
-	b, err = Open(fixture.fs, fixture.bundlePath)
+	b, err = Open(t.Context(), fixture.fs, fixture.bundlePath)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, b.Close())
 	})
 
 	var buf bytes.Buffer
-	err = b.ExtractManifest(&buf)
+	err = b.ExtractManifest(t.Context(), &buf)
 
 	require.ErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "failed to validate")
@@ -297,7 +297,7 @@ func Test_Bundle_ExtractManifest_WriterError_Error(t *testing.T) {
 		err:       errors.New("writer boom"),
 	}
 
-	err := b.ExtractManifest(w)
+	err := b.ExtractManifest(t.Context(), w)
 
 	require.ErrorContains(t, err, "failed to io")
 	require.ErrorContains(t, err, "writer boom")

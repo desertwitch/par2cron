@@ -133,7 +133,7 @@ func Test_WriteManifest_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
-	err := WriteManifest(fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
+	err := WriteManifest(t.Context(), fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
 
 	require.NoError(t, err)
 
@@ -154,7 +154,7 @@ func Test_WriteManifest_UpdatesManifestVersion_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.ManifestVersion = "0" // simulate old version
 
-	err := WriteManifest(fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
+	err := WriteManifest(t.Context(), fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
 	require.NoError(t, err)
 
 	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
@@ -175,7 +175,7 @@ func Test_WriteManifest_UpdatesProgramVersion_Success(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.ProgramVersion = "0.0.0" // simulate old version
 
-	err := WriteManifest(fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
+	err := WriteManifest(t.Context(), fsys, &BundleHandler{}, "/data/test"+schema.ManifestExtension, mf, false)
 	require.NoError(t, err)
 
 	by, err := afero.ReadFile(fsys, "/data/test"+schema.ManifestExtension)
@@ -197,7 +197,7 @@ func Test_WriteManifest_WriteFails_Error(t *testing.T) {
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "abc123"
 
-	err := WriteManifest(fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
+	err := WriteManifest(t.Context(), fs, &BundleHandler{}, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mf, false)
 
 	require.ErrorContains(t, err, "failed to write")
 
@@ -237,7 +237,7 @@ func Test_WriteManifest_Bundle_Success(t *testing.T) {
 		},
 	}
 
-	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+	err := WriteManifest(t.Context(), fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
 
 	require.NoError(t, err)
 	require.True(t, updateCalled)
@@ -278,7 +278,7 @@ func Test_WriteManifest_Bundle_UpdatesVersions_Success(t *testing.T) {
 		},
 	}
 
-	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+	err := WriteManifest(t.Context(), fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
 	require.NoError(t, err)
 
 	var written schema.Manifest
@@ -302,7 +302,7 @@ func Test_WriteManifest_Bundle_OpenFails_Error(t *testing.T) {
 		},
 	}
 
-	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+	err := WriteManifest(t.Context(), fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
 
 	require.ErrorContains(t, err, "failed to open bundle")
 }
@@ -331,7 +331,7 @@ func Test_WriteManifest_Bundle_UpdateFails_Error(t *testing.T) {
 		},
 	}
 
-	err := WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
+	err := WriteManifest(t.Context(), fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true)
 
 	require.ErrorContains(t, err, "failed to update bundle")
 }
@@ -363,7 +363,7 @@ func Test_WriteManifest_Bundle_CloseCalled_Success(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+	require.NoError(t, WriteManifest(t.Context(), fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
 	require.True(t, closeCalled)
 }
 
@@ -394,7 +394,7 @@ func Test_WriteManifest_Bundle_CloseCalledOnUpdateFailure_Error(t *testing.T) {
 		},
 	}
 
-	require.Error(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+	require.Error(t, WriteManifest(t.Context(), fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
 	require.True(t, closeCalled)
 }
 
@@ -418,7 +418,7 @@ func Test_WriteManifest_Bundle_NoStandaloneFile_Success(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, WriteManifest(fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
+	require.NoError(t, WriteManifest(t.Context(), fs, bundler, "/data/test"+schema.BundleExtension+schema.Par2Extension, mf, true))
 
 	// No file should be written to disk - the manifest lives inside the bundle.
 	entries, err := afero.ReadDir(fs, "/data")

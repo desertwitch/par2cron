@@ -192,7 +192,7 @@ type MockBundleHandler struct {
 	PackFunc func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
 }
 
-func (m *MockBundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+func (m *MockBundleHandler) Open(ctx context.Context, fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
 	if m.OpenFunc != nil {
 		return m.OpenFunc(fsys, bundlePath)
 	}
@@ -200,7 +200,7 @@ func (m *MockBundleHandler) Open(fsys afero.Fs, bundlePath string) (schema.Bundl
 	return nil, errors.New("not implemented")
 }
 
-func (m *MockBundleHandler) Pack(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+func (m *MockBundleHandler) Pack(ctx context.Context, fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
 	if m.PackFunc != nil {
 		return m.PackFunc(fsys, bundlePath, recoverySetID, manifest, files)
 	}
@@ -231,7 +231,7 @@ func (m *MockBundle) Close() error {
 	return nil
 }
 
-func (m *MockBundle) Manifest() ([]byte, error) {
+func (m *MockBundle) Manifest(_ context.Context) ([]byte, error) {
 	if m.ManifestFunc != nil {
 		return m.ManifestFunc()
 	}
@@ -255,7 +255,7 @@ func (m *MockBundle) Update(manifest []byte) error {
 	return errors.New("not implemented")
 }
 
-func (m *MockBundle) Validate(strict bool) error {
+func (m *MockBundle) Validate(_ context.Context, strict bool) error {
 	if m.ValidateFunc != nil {
 		return m.ValidateFunc(strict)
 	}
@@ -279,7 +279,7 @@ func (m *MockBundle) IsRebuilt() bool {
 	return false
 }
 
-func (m *MockBundle) Unpack(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+func (m *MockBundle) Unpack(_ context.Context, fsys afero.Fs, destDir string, strict bool) ([]string, error) {
 	if m.UnpackFunc != nil {
 		return m.UnpackFunc(fsys, destDir, strict)
 	}
@@ -303,7 +303,7 @@ func (m *MockBundle) Entries() []bundle.IndexEntry {
 	return []bundle.IndexEntry{}
 }
 
-func (m *MockBundle) ExtractEntry(e bundle.IndexEntry, w io.Writer) error {
+func (m *MockBundle) ExtractEntry(_ context.Context, e bundle.IndexEntry, w io.Writer) error {
 	if m.ExtractEntryFunc != nil {
 		return m.ExtractEntryFunc(e, w)
 	}

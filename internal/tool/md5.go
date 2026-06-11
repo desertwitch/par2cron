@@ -26,7 +26,7 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string, opts Options
 		var bundleParsed bool
 
 		if !opts.ParseAll && util.IsPar2Bundle(path) {
-			bse, err := util.ParseBundlePar2Index(prog.fsys, path, prog.par2er, prog.bundler)
+			bse, err := util.ParseBundlePar2Index(ctx, prog.fsys, path, prog.par2er, prog.bundler)
 			if err != nil {
 				logger := prog.toolLogger(ctx, path)
 				logger.Error("Failed to parse PAR2 bundle", "error", err)

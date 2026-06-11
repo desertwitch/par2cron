@@ -196,7 +196,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 		pos := fmt.Sprintf("%d/%d", i+1, len(metas))
 		ctx := context.WithValue(ctx, schema.PosKey, pos)
 
-		mf, err := prog.loadManifest(meta)
+		mf, err := prog.loadManifest(ctx, meta)
 		if err != nil {
 			if errors.Is(err, schema.ErrFileIsLocked) {
 				logger.Warn("Manifest unavailable (will retry next run)", "error", err)
@@ -394,7 +394,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
-	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
 		logger := prog.repairLogger(ctx, nil, bundlePath)
@@ -402,7 +402,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 
 		return nil, schema.ErrNonFatal
 	}
-	by, err := bun.Manifest()
+	by, err := bun.Manifest(ctx)
 	if err != nil {
 		_ = bun.Close()
 		unlock()
@@ -425,9 +425,9 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 	return NewJobMeta(schema.NewJobMeta(bundlePath, mf, true)), nil
 }
 
-func (prog *Service) loadManifest(meta *JobMeta) (*schema.Manifest, error) {
+func (prog *Service) loadManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) {
 	if meta.IsBundle {
-		return prog.loadBundleManifest(meta)
+		return prog.loadBundleManifest(ctx, meta)
 	}
 
 	manifestPath := meta.Par2Path + schema.ManifestExtension
@@ -452,20 +452,20 @@ func (prog *Service) loadManifest(meta *JobMeta) (*schema.Manifest, error) {
 	return mf, nil
 }
 
-func (prog *Service) loadBundleManifest(meta *JobMeta) (*schema.Manifest, error) {
+func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*schema.Manifest, error) {
 	bundlePath := meta.Par2Path
 
 	unlock, err := util.AcquireLock(prog.fsys, bundlePath, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock: %w", err)
 	}
-	bun, err := prog.bundler.Open(prog.fsys, bundlePath)
+	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)
 	if err != nil {
 		unlock()
 
 		return nil, fmt.Errorf("failed to open: %w", err)
 	}
-	by, err := bun.Manifest()
+	by, err := bun.Manifest(ctx)
 	if err != nil {
 		_ = bun.Close()
 		unlock()
@@ -573,7 +573,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 
 	job.manifest.Repair.ExitCode = schema.Par2ExitCodeSuccess
 
-	if err := util.WriteManifest(prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
+	if err := util.WriteManifest(ctx, prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
 		logger := prog.repairLogger(ctx, job, job.manifestPath)
 		logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
 	}
