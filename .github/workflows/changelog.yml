@@ -7,7 +7,7 @@ jobs:
   was-updated:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for changelog changes
+      - name: Check if PR updates changelog
         uses: actions/github-script@v9
         with:
           script: |
