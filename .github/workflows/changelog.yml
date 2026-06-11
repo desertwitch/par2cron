@@ -6,10 +6,10 @@ permissions:
   contents: read
 
 jobs:
-  was-updated:
+  has-updates:
     runs-on: ubuntu-latest
     steps:
-      - name: Check if PR updates changelog
+      - name: Check for changelog updates
         uses: actions/github-script@v9
         with:
           script: |
@@ -31,5 +31,5 @@ jobs:
                 'Note that running `changie new` creates a new changelog entry.'
               );
             } else {
-              core.info('All good, changelog was modified.');
+              core.info('All good, changelog was updated.');
             }
