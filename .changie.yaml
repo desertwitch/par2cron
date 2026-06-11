@@ -5,7 +5,7 @@ changelogPath: CHANGELOG.md
 versionExt: md
 versionFormat: '## {{.Version}} - {{.Time.Format "2006-01-02"}}'
 kindFormat: '### {{.Kind}}'
-changeFormat: '* {{.Body}}'
+changeFormat: '* {{.Body}}{{if .Custom.Issue}} ([#{{.Custom.Issue}}](https://github.com/desertwitch/par2cron/issues/{{.Custom.Issue}})){{end}}{{if .Custom.PR}} ([#{{.Custom.PR}}](https://github.com/desertwitch/par2cron/pull/{{.Custom.PR}})){{end}}'
 kinds:
     - label: Added
       auto: minor
@@ -24,3 +24,14 @@ newlines:
     beforeChangelogVersion: 1
     endOfVersion: 1
 envPrefix: CHANGIE_
+custom:
+  - key: Issue
+    label: Issue Number
+    type: int
+    minInt: 1
+    optional: true
+  - key: PR
+    label: PR Number
+    type: int
+    minInt: 1
+    optional: true
