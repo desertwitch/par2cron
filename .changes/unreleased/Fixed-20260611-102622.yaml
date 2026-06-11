@@ -1,0 +1,6 @@
+kind: Fixed
+body: Bundle operations now observe mid-I/O cancellation.
+time: 2026-06-11T10:26:22.174108033+02:00
+custom:
+    Issue: ""
+    PR: "77"
