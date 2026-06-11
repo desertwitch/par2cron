@@ -39,8 +39,8 @@ const (
 	packetHashOffset = 32 // Starting offset for MD5 hashing
 	packetHeaderSize = 64 // Total header size of a packet in bytes
 
-	recoverBufferSize   = 1024 * 1024 // Next packet search reads in 1MiB chunks
-	recoverStallRetries = 10          // Next packet search can stall for up to 10 times
+	recoverBufferSize   = 16 * 1024 // Next packet search reads in 16KiB chunks
+	recoverStallRetries = 10        // Next packet search can stall for up to 10 times
 )
 
 var (
