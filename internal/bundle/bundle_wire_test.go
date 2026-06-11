@@ -2,6 +2,7 @@
 package bundle
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/exec"
@@ -52,7 +53,7 @@ func TestMain(m *testing.M) {
 		par2Files := findPar2Files(base.dir)
 		indexFile := findIndexPar2(par2Files)
 
-		pf, err := par2.ParseFile(fs, indexFile, true)
+		pf, err := par2.ParseFile(context.Background(), fs, indexFile, true)
 		if err != nil {
 			log.Fatalf("TestMain: parse %s: %v", indexFile, err)
 		}

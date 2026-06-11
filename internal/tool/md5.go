@@ -41,7 +41,7 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string, opts Options
 		}
 
 		if !bundleParsed {
-			f, err := prog.par2er.ParseFile(prog.fsys, path, false)
+			f, err := prog.par2er.ParseFile(ctx, prog.fsys, path, false)
 			if err == nil {
 				sets = f.Sets
 			} else {

@@ -39,7 +39,7 @@ func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p sch
 
 			r := bytes.NewReader(buf.Bytes())
 
-			s, err := p.Parse(r, true)
+			s, err := p.Parse(ctx, r, true)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse index file: %w", err)
 			}

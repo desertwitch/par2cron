@@ -42,12 +42,12 @@ var _ schema.Par2Handler = (*Par2Handler)(nil)
 
 type Par2Handler struct{}
 
-func (h *Par2Handler) Parse(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
-	return par2.Parse(r, checkMD5) //nolint:wrapcheck
+func (h *Par2Handler) Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+	return par2.Parse(ctx, r, checkMD5) //nolint:wrapcheck
 }
 
-func (h *Par2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
-	return par2.ParseFile(fsys, path, panicAsErr) //nolint:wrapcheck
+func (h *Par2Handler) ParseFile(ctx context.Context, fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+	return par2.ParseFile(ctx, fsys, path, panicAsErr) //nolint:wrapcheck
 }
 
 type ResultTracker struct {

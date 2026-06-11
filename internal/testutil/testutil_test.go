@@ -533,7 +533,7 @@ func Test_MockPar2Handler_Parse_WithFunc_Success(t *testing.T) {
 		},
 	}
 
-	result, err := handler.Parse(bytes.NewReader([]byte("data")), true)
+	result, err := handler.Parse(t.Context(), bytes.NewReader([]byte("data")), true)
 
 	require.NoError(t, err)
 	require.Len(t, result, 1)
@@ -551,7 +551,7 @@ func Test_MockPar2Handler_Parse_WithFunc_Error(t *testing.T) {
 		},
 	}
 
-	_, err := handler.Parse(bytes.NewReader([]byte("data")), true)
+	_, err := handler.Parse(t.Context(), bytes.NewReader([]byte("data")), true)
 
 	require.ErrorIs(t, err, expectedErr)
 }
@@ -562,7 +562,7 @@ func Test_MockPar2Handler_Parse_NoFunc_Error(t *testing.T) {
 
 	handler := &MockPar2Handler{}
 
-	_, err := handler.Parse(bytes.NewReader([]byte("data")), true)
+	_, err := handler.Parse(t.Context(), bytes.NewReader([]byte("data")), true)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented")
@@ -581,7 +581,7 @@ func Test_MockPar2Handler_ParseFile_WithFunc_Success(t *testing.T) {
 		},
 	}
 
-	result, err := handler.ParseFile(afero.NewMemMapFs(), "/data/test.par2", true)
+	result, err := handler.ParseFile(t.Context(), afero.NewMemMapFs(), "/data/test.par2", true)
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -599,7 +599,7 @@ func Test_MockPar2Handler_ParseFile_WithFunc_Error(t *testing.T) {
 		},
 	}
 
-	_, err := handler.ParseFile(afero.NewMemMapFs(), "/data/test.par2", true)
+	_, err := handler.ParseFile(t.Context(), afero.NewMemMapFs(), "/data/test.par2", true)
 
 	require.ErrorIs(t, err, expectedErr)
 }
@@ -610,7 +610,7 @@ func Test_MockPar2Handler_ParseFile_NoFunc_Error(t *testing.T) {
 
 	handler := &MockPar2Handler{}
 
-	_, err := handler.ParseFile(afero.NewMemMapFs(), "/data/test.par2", true)
+	_, err := handler.ParseFile(t.Context(), afero.NewMemMapFs(), "/data/test.par2", true)
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not implemented")
