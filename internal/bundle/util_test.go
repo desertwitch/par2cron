@@ -2,15 +2,189 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
+	"io"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 const sha256Size = 32
+
+// nopSeeker wraps a *bytes.Buffer to satisfy io.WriteSeeker with a no-op Seek.
+type nopSeeker struct {
+	*bytes.Buffer
+}
+
+func (nopSeeker) Seek(int64, int) (int64, error) { return 0, nil }
+
+// memWriteSeeker is a minimal in-memory io.WriteSeeker for testing Seek behaviour.
+type memWriteSeeker struct {
+	pos int64
+}
+
+func (m *memWriteSeeker) Write(p []byte) (int, error) {
+	m.pos += int64(len(p))
+
+	return len(p), nil
+}
+
+func (m *memWriteSeeker) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		m.pos = offset
+	case io.SeekCurrent:
+		m.pos += offset
+	case io.SeekEnd:
+		m.pos += offset
+	}
+
+	return m.pos, nil
+}
+
+// Expectation: contextReader should pass through reads when the context is active.
+func Test_contextReader_Read_Success(t *testing.T) {
+	t.Parallel()
+
+	cr := &contextReader{ctx: t.Context(), reader: strings.NewReader("hello")}
+
+	buf := make([]byte, 5)
+	n, err := cr.Read(buf)
+
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+	require.Equal(t, "hello", string(buf))
+}
+
+// Expectation: contextReader should return a context error when the context is already cancelled.
+func Test_contextReader_Read_Cancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	cr := &contextReader{ctx: ctx, reader: strings.NewReader("hello")}
+
+	_, err := cr.Read(make([]byte, 5))
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
+}
+
+// Expectation: contextReader should propagate EOF from the underlying reader.
+func Test_contextReader_Read_EOF(t *testing.T) {
+	t.Parallel()
+
+	cr := &contextReader{ctx: t.Context(), reader: strings.NewReader("")}
+
+	_, err := cr.Read(make([]byte, 1))
+
+	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: contextReaderAt should pass through reads at a given offset when the context is active.
+func Test_contextReaderAt_ReadAt_Success(t *testing.T) {
+	t.Parallel()
+
+	cr := &contextReaderAt{ctx: t.Context(), reader: bytes.NewReader([]byte("hello world"))}
+
+	buf := make([]byte, 5)
+	n, err := cr.ReadAt(buf, 6)
+
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+	require.Equal(t, "world", string(buf))
+}
+
+// Expectation: contextReaderAt should return a context error when the context is already cancelled.
+func Test_contextReaderAt_ReadAt_Cancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	cr := &contextReaderAt{ctx: ctx, reader: bytes.NewReader([]byte("hello"))}
+
+	_, err := cr.ReadAt(make([]byte, 5), 0)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
+}
+
+// Expectation: contextReaderAt should propagate EOF when reading past the end of the underlying reader.
+func Test_contextReaderAt_ReadAt_EOF(t *testing.T) {
+	t.Parallel()
+
+	cr := &contextReaderAt{ctx: t.Context(), reader: bytes.NewReader([]byte("hi"))}
+
+	_, err := cr.ReadAt(make([]byte, 5), 0)
+
+	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: contextWriteSeeker should pass through writes when the context is active.
+func Test_contextWriteSeeker_Write_Success(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	ws := nopSeeker{&buf}
+	cw := &contextWriteSeeker{ctx: t.Context(), writer: ws}
+
+	n, err := cw.Write([]byte("hello"))
+
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+	require.Equal(t, "hello", buf.String())
+}
+
+// Expectation: contextWriteSeeker should return a context error on Write when the context is already cancelled.
+func Test_contextWriteSeeker_Write_Cancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	var buf bytes.Buffer
+	cw := &contextWriteSeeker{ctx: ctx, writer: nopSeeker{&buf}}
+
+	_, err := cw.Write([]byte("hello"))
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
+	require.Empty(t, buf.String())
+}
+
+// Expectation: contextWriteSeeker should pass through seeks when the context is active.
+func Test_contextWriteSeeker_Seek_Success(t *testing.T) {
+	t.Parallel()
+
+	inner := &memWriteSeeker{}
+	cw := &contextWriteSeeker{ctx: t.Context(), writer: inner}
+
+	pos, err := cw.Seek(42, io.SeekStart)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(42), pos)
+}
+
+// Expectation: contextWriteSeeker should return a context error on Seek when the context is already cancelled.
+func Test_contextWriteSeeker_Seek_Cancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	cw := &contextWriteSeeker{ctx: ctx, writer: &memWriteSeeker{}}
+
+	_, err := cw.Seek(0, io.SeekStart)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
+}
 
 // Expectation: dataHash should return the SHA256 hash of the provided byte slice.
 func Test_dataHash_Success(t *testing.T) {

@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -87,6 +88,22 @@ func Test_Scan_SkipsUnparsableManifestPacket_Success(t *testing.T) {
 	require.Nil(t, manifest)
 }
 
+// Expectation: Scan should return a context error when the context is cancelled before scanning begins.
+func Test_Scan_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	raw := readBundleBytes(t, fixture.fs, fixture.bundlePath)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, _, err := Scan(ctx, bytes.NewReader(raw), int64(len(raw)), true)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
+}
+
 // Expectation: findNextMagic should return the offset of the first matching magic sequence.
 func Test_findNextMagic_Success(t *testing.T) {
 	t.Parallel()
@@ -133,6 +150,22 @@ func Test_findNextMagic_NotFound_Error(t *testing.T) {
 	_, err := findNextMagic(t.Context(), bytes.NewReader([]byte("plain bytes")), 0, int64(len("plain bytes")), buf)
 
 	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: findNextMagic should return a context error when the context is cancelled before scanning begins.
+func Test_findNextMagic_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	data := append(bytes.Repeat([]byte{'x'}, 1024), Magic[:]...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	buf := make([]byte, 16*1024)
+	_, err := findNextMagic(ctx, bytes.NewReader(data), 0, int64(len(data)), buf)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
 }
 
 // Expectation: reconstructIndex should sort scanned files by name and copy manifest metadata into the index.
