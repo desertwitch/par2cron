@@ -47,7 +47,7 @@ func Benchmark_ParseFile(b *testing.B) {
 
 			b.ResetTimer()
 			for range b.N {
-				if _, err := ParseFile(fsys, fname, true); err != nil {
+				if _, err := ParseFile(b.Context(), fsys, fname, true); err != nil {
 					b.Fatal(err)
 				}
 			}

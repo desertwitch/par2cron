@@ -60,12 +60,12 @@ func (bundleHandler) Pack(ctx context.Context, fsys afero.Fs, bundlePath string,
 
 type par2Handler struct{}
 
-func (par2Handler) Parse(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
-	return par2.Parse(r, checkMD5) //nolint:wrapcheck
+func (par2Handler) Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+	return par2.Parse(ctx, r, checkMD5) //nolint:wrapcheck
 }
 
-func (par2Handler) ParseFile(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
-	return par2.ParseFile(fsys, path, panicAsErr) //nolint:wrapcheck
+func (par2Handler) ParseFile(ctx context.Context, fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+	return par2.ParseFile(ctx, fsys, path, panicAsErr) //nolint:wrapcheck
 }
 
 func NewService(fsys afero.Fs, par2er schema.Par2Handler, bundler schema.BundleHandler) *Service {
@@ -82,7 +82,7 @@ func (s *Service) Run(opts Options) (string, error) {
 	}
 
 	parsePath := filepath.Join(opts.Dir, opts.Parse)
-	pf, err := s.par2er.ParseFile(s.fsys, parsePath, false)
+	pf, err := s.par2er.ParseFile(context.Background(), s.fsys, parsePath, false)
 	if err != nil {
 		return "", fmt.Errorf("parse error: %w", err)
 	}

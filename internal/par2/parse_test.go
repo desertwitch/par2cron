@@ -2,6 +2,7 @@ package par2
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/binary"
 	"io"
@@ -111,8 +112,8 @@ func Fuzz_Parse(f *testing.F) {
 	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		sets1, err1 := Parse(bytes.NewReader(data), false)
-		sets2, err2 := Parse(bytes.NewReader(data), false)
+		sets1, err1 := Parse(t.Context(), bytes.NewReader(data), false)
+		sets2, err2 := Parse(t.Context(), bytes.NewReader(data), false)
 
 		require.Equal(t, err1, err2, "non-deterministic error")
 		require.Equal(t, sets1, sets2, "non-deterministic result")
@@ -134,7 +135,7 @@ func Test_Parse_RealSeeds_Success(t *testing.T) {
 			require.NoError(t, err)
 			defer f.Close()
 
-			sets, err := Parse(f, true)
+			sets, err := Parse(t.Context(), f, true)
 			require.NoError(t, err)
 
 			require.Len(t, sets, 1)
@@ -154,7 +155,7 @@ func Test_Parse_SyntheticSeeds_Success(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 
-			entries, err := Parse(bytes.NewReader(seed), true)
+			entries, err := Parse(t.Context(), bytes.NewReader(seed), true)
 
 			require.NoError(t, err)
 			require.NotEmpty(t, entries)
@@ -166,11 +167,34 @@ func Test_Parse_SyntheticSeeds_Success(t *testing.T) {
 // Integration and Unit Tests
 // ============================================================================
 
+// cancelAfterNReader wraps a ReadSeeker and calls cancel() once the
+// cumulative bytes read reaches cancelAt.
+type cancelAfterNReader struct {
+	io.ReadSeeker
+
+	cancelAt  int64
+	cancel    context.CancelFunc
+	bytesRead int64
+	cancelled bool
+}
+
+func (c *cancelAfterNReader) Read(p []byte) (int, error) {
+	n, err := c.ReadSeeker.Read(p)
+	c.bytesRead += int64(n)
+
+	if !c.cancelled && c.bytesRead >= c.cancelAt {
+		c.cancelled = true
+		c.cancel()
+	}
+
+	return n, err
+}
+
 // Expectation: Parse should handle empty input gracefully.
 func Test_Parse_EmptyInput_Success(t *testing.T) {
 	t.Parallel()
 
-	sets, err := Parse(bytes.NewReader([]byte{}), false)
+	sets, err := Parse(t.Context(), bytes.NewReader([]byte{}), false)
 	require.NoError(t, err)
 	require.Empty(t, sets)
 }
@@ -188,7 +212,7 @@ func Test_Parse_MultipleSets_Success(t *testing.T) {
 
 	combined := slices.Concat(set1Main, set1File, set2Main, set2File)
 
-	sets, err := Parse(bytes.NewReader(combined), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 2)
 }
@@ -200,7 +224,7 @@ func Test_Parse_OnlyStrayPackets_Success(t *testing.T) {
 	// File packet without corresponding main packet entry
 	filePacket := buildFileDescPacket("stray.txt", 100, idC, sID)
 
-	sets, err := Parse(bytes.NewReader(filePacket), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(filePacket), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 	require.Empty(t, sets[0].RecoverySet)
@@ -214,7 +238,7 @@ func Test_Parse_MissingFileDescriptions_Success(t *testing.T) {
 
 	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB}, [][16]byte{idC}, sID)
 
-	sets, err := Parse(bytes.NewReader(mainPacket), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(mainPacket), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 	require.Len(t, sets[0].MissingRecoveryPackets, 2)
@@ -231,7 +255,7 @@ func Test_Parse_RecoveryAndNonRecovery_Success(t *testing.T) {
 
 	combined := slices.Concat(main, file1, file2)
 
-	sets, err := Parse(bytes.NewReader(combined), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 	require.Len(t, sets[0].RecoverySet, 1)
@@ -250,7 +274,7 @@ func Test_Parse_UnicodeOverride_Success(t *testing.T) {
 
 	combined := slices.Concat(main, ascii, unicode)
 
-	sets, err := Parse(bytes.NewReader(combined), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 	require.Equal(t, "日本語.txt", sets[0].RecoverySet[0].Name)
@@ -266,7 +290,7 @@ func Test_Parse_UnicodeWithoutASCII_Success(t *testing.T) {
 
 	combined := slices.Concat(main, unicode)
 
-	sets, err := Parse(bytes.NewReader(combined), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 	require.Empty(t, sets[0].RecoverySet) // idB not in recovery list
@@ -284,7 +308,7 @@ func Test_Parse_MultipleUnicodeOverrides_Success(t *testing.T) {
 
 	combined := slices.Concat(main, ascii1, ascii2, unicode1, unicode2)
 
-	sets, err := Parse(bytes.NewReader(combined), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 	require.Len(t, sets[0].RecoverySet, 2)
@@ -309,7 +333,7 @@ func Test_Parse_InvalidPacketContent_Success(t *testing.T) {
 
 	// This should trigger recovery because body is too short for main packet
 	// Then EOF, resulting in empty sets
-	sets, err := Parse(bytes.NewReader(header), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(header), false)
 	require.NoError(t, err)
 	require.Empty(t, sets)
 }
@@ -326,7 +350,7 @@ func Test_Parse_RecoveryAfterTooShortPacket_AtStart_Success(t *testing.T) {
 		buildFileDescPacket("test.txt", 100, idA, sID),
 	)
 
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -350,7 +374,7 @@ func Test_Parse_RecoveryAfterTooShortPacket_InMiddle_Success(t *testing.T) {
 		buildFileDescPacket("test.txt", 100, idA, sID),
 	)
 
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -374,7 +398,7 @@ func Test_Parse_RecoveryAfterTooShortPacket_AtEnd_Success(t *testing.T) {
 		garbagePacket,
 	)
 
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -398,7 +422,7 @@ func Test_Parse_RecoveryAfterCorruptPacket_AtStart_Success(t *testing.T) {
 	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
 	packets := slices.Concat(corruptPacket, mainPacket, validPacket)
 
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -422,7 +446,7 @@ func Test_Parse_RecoveryAfterCorruptPacket_InMiddle_Success(t *testing.T) {
 	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
 	packets := slices.Concat(mainPacket, corruptPacket, validPacket)
 
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -446,7 +470,7 @@ func Test_Parse_RecoveryAfterCorruptPacket_AtEnd_Success(t *testing.T) {
 	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
 	packets := slices.Concat(mainPacket, validPacket, corruptPacket)
 
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -476,7 +500,7 @@ func Test_Parse_RecoveryAfterExcessiveLengthPacket_Success(t *testing.T) {
 	)
 
 	packets := slices.Concat(corruptPacket, validPackets)
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -517,7 +541,7 @@ func Test_Parse_RecoveryAfterExcessiveLengthUnknownPacket_Success(t *testing.T) 
 
 	packets := slices.Concat(corruptPacket, validPackets)
 
-	sets, err := Parse(bytes.NewReader(packets), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.NoError(t, err)
 
 	require.Len(t, sets, 1)
@@ -549,9 +573,73 @@ func Test_Parse_TooManySets_Error(t *testing.T) {
 		)
 	}
 
-	_, err := Parse(bytes.NewReader(packets), false)
+	_, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errTooManySets)
+}
+
+// Expectation: Parse should return context error when cancelled before first packet.
+func Test_Parse_ContextCancelledBeforeFirstPacket_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	data := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+
+	_, err := Parse(ctx, bytes.NewReader(data), false)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// Expectation: Parse should return context error when cancelled mid-parse.
+func Test_Parse_ContextCancelledMidParse_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Build two valid packets; cancel after the first is consumed.
+	packet1 := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet2 := buildFileDescPacket("test.txt", 100, idA, sID)
+	data := slices.Concat(packet1, packet2)
+
+	// Use a reader that cancels the context after delivering the first packet.
+	cr := &cancelAfterNReader{
+		ReadSeeker: bytes.NewReader(data),
+		cancelAt:   int64(len(packet1)),
+		cancel:     cancel,
+	}
+
+	_, err := Parse(ctx, cr, false)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// Expectation: Parse should return context error when cancelled during recovery seek.
+func Test_Parse_ContextCancelledDuringRecovery_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// A corrupt packet triggers seekToNextPacket, which checks ctx each iteration.
+	corruptPacket := slices.Concat(packetMagic, []byte("CORRUPT_GARBAGE"))
+
+	// Pad with enough non-magic data to force multiple scan iterations,
+	// then cancel so the scan observes it.
+	padding := bytes.Repeat([]byte{0xFF}, recoverBufferSize+100)
+	data := slices.Concat(corruptPacket, padding)
+
+	// Cancel after the corrupt packet header has been read but before
+	// seekToNextPacket can finish scanning.
+	cr := &cancelAfterNReader{
+		ReadSeeker: bytes.NewReader(data),
+		cancelAt:   int64(len(corruptPacket) + recoverBufferSize/2),
+		cancel:     cancel,
+	}
+
+	_, err := Parse(ctx, cr, false)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // Expectation: setGrouper.Insert should return error for unknown packet type.
@@ -803,7 +891,7 @@ func Test_Parse_MultipleCorruptedPackets_Success(t *testing.T) {
 	garbage2 := []byte("PAR2\x00PKTgarbage2")
 	combined := slices.Concat(garbage1, garbage2, validPacket)
 
-	sets, err := Parse(bytes.NewReader(combined), false)
+	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
 	require.NoError(t, err)
 	require.Len(t, sets, 1)
 }
@@ -1049,7 +1137,7 @@ func Test_seekToNextPacket_FindsMagic_Success(t *testing.T) {
 	// Read past the garbage to trigger seeking
 	_, _ = reader.Read(make([]byte, 10))
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.NoError(t, err)
 
 	// Verify we're at the start of the packet
@@ -1064,7 +1152,7 @@ func Test_seekToNextPacket_NoPacketFound_Error(t *testing.T) {
 	garbage := []byte("no valid packet magic here at all")
 	reader := bytes.NewReader(garbage)
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.Error(t, err)
 }
 
@@ -1074,7 +1162,7 @@ func Test_seekToNextPacket_EmptyReader_Error(t *testing.T) {
 
 	reader := bytes.NewReader([]byte{})
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.Error(t, err)
 }
 
@@ -1084,7 +1172,7 @@ func Test_seekToNextPacket_ShortReader_Error(t *testing.T) {
 
 	reader := bytes.NewReader([]byte("PAR2")) // Shorter than 8-byte magic
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.Error(t, err)
 }
 
@@ -1099,7 +1187,7 @@ func Test_seekToNextPacket_SplitBoundary_Success(t *testing.T) {
 
 	reader := bytes.NewReader(data)
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.NoError(t, err)
 
 	pos, _ := reader.Seek(0, io.SeekCurrent)
@@ -1114,7 +1202,7 @@ func Test_seekToNextPacket_PartialMagicAtEnd_Error(t *testing.T) {
 	data := slices.Concat([]byte("some junk"), packetMagic[:len(packetMagic)-1])
 	reader := bytes.NewReader(data)
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.ErrorIs(t, err, io.EOF)
 }
 
@@ -1131,7 +1219,7 @@ func Test_seekToNextPacket_MultipleMagicInBuffer_Success(t *testing.T) {
 	)
 	reader := bytes.NewReader(data)
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.NoError(t, err)
 
 	// Should point to the start of the first magic (index 6)
@@ -1146,7 +1234,7 @@ func Test_seekToNextPacket_StallRecovery_Success(t *testing.T) {
 	// 5 stalls is less than the 10 retry limit
 	reader := &stallingReader{data: packetMagic, maxStalls: 5}
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.NoError(t, err)
 }
 
@@ -1157,8 +1245,38 @@ func Test_seekToNextPacket_InfiniteStall_Error(t *testing.T) {
 	// 15 stalls exceeds the 10 retry limit
 	reader := &stallingReader{data: packetMagic, maxStalls: 15}
 
-	err := seekToNextPacket(reader)
+	err := seekToNextPacket(t.Context(), reader)
 	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+}
+
+// Expectation: seekToNextPacket should return context error when cancelled.
+func Test_seekToNextPacket_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	data := bytes.Repeat([]byte{0xFF}, 1024)
+	reader := bytes.NewReader(data)
+
+	err := seekToNextPacket(ctx, reader)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
+// Expectation: seekToNextPacket should return deadline exceeded error.
+func Test_seekToNextPacket_ContextDeadlineExceeded_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 0) // Already expired
+	defer cancel()
+
+	data := bytes.Repeat([]byte{0xFF}, 1024)
+	reader := bytes.NewReader(data)
+
+	err := seekToNextPacket(ctx, reader)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 // Expectation: parsePacketHeader should fail on truncated header.

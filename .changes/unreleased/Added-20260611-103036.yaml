@@ -1,0 +1,6 @@
+kind: Added
+body: Command "tool md5" now has an --all flag to parse all provided files (not just PAR2 indexes).
+time: 2026-06-11T10:30:36.625624562+02:00
+custom:
+    Issue: ""
+    PR: "76"

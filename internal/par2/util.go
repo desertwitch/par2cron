@@ -2,6 +2,7 @@ package par2
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -94,7 +95,7 @@ func (h *Hash) UnmarshalJSON(data []byte) error {
 // Beware the PAR2-specific packet and error handling as described in [Parse].
 //
 //nolint:nonamedreturns
-func ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
+func ParseFile(ctx context.Context, fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
 	f, err := fsys.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PAR2 file: %w", err)
@@ -113,7 +114,7 @@ func ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
 		}()
 	}
 
-	sets, err := Parse(f, true)
+	sets, err := Parse(ctx, f, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse PAR2: %w", err)
 	}
@@ -124,16 +125,17 @@ func ParseFile(fsys afero.Fs, path string, panicAsErr bool) (p *File, e error) {
 	}, nil
 }
 
+/*
 // ParseFileSet parses an index PAR2 file and all related volume files.
 // It ignores files which cannot be parsed, unless no files can be parsed.
 // In case no files can be parsed, [errFileCorrupted] is returned instead.
 //
 // panicAsErr controls if a panic should be returned as [ParserPanicError].
 // Beware the PAR2-specific packet and error handling as described in [Parse].
-func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, error) {
+func ParseFileSet(ctx context.Context, fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, error) {
 	files := []File{}
 
-	indexData, err := ParseFile(fsys, indexFile, panicAsErr)
+	indexData, err := ParseFile(ctx, fsys, indexFile, panicAsErr)
 	if err != nil {
 		if pe, ok := errors.AsType[*ParserPanicError](err); ok {
 			return nil, pe // Do not swallow panics.
@@ -179,7 +181,7 @@ func ParseFileSet(fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, e
 	}
 
 	return merged, nil
-}
+} */
 
 // sortFilePackets sorts a slice of [FilePacket] by filename, ties by ID.
 func sortFilePackets(list []FilePacket) {

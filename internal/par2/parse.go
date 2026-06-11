@@ -2,6 +2,7 @@ package par2
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/binary"
 	"errors"
@@ -38,8 +39,8 @@ const (
 	packetHashOffset = 32 // Starting offset for MD5 hashing
 	packetHeaderSize = 64 // Total header size of a packet in bytes
 
-	recoverBufferSize   = 1024 * 1024 // Next packet search reads in 1MiB chunks
-	recoverStallRetries = 10          // Next packet search can stall for up to 10 times
+	recoverBufferSize   = 16 * 1024 // Next packet search reads in 16KiB chunks
+	recoverStallRetries = 10        // Next packet search can stall for up to 10 times
 )
 
 var (
@@ -62,10 +63,14 @@ var (
 // In compliance with the specification, unparseable packets are silently skipped.
 // Unless there is a fatal error, no parseable packets will return an empty slice.
 // It parses: [MainPacket], [FilePacket] and [UnicodePacket], skipping all others.
-func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
+func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 	grouper := newSetGrouper()
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("context error: %w", err)
+		}
+
 		before, err := r.Seek(0, io.SeekCurrent)
 		if err != nil {
 			return nil, fmt.Errorf("%w: failed to seek pre-parse position: %w",
@@ -93,7 +98,10 @@ func Parse(r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 			}
 
 			// Attempt to seek to the next [packetMagic] sequence.
-			if err := seekToNextPacket(r); err != nil {
+			if err := seekToNextPacket(ctx, r); err != nil {
+				if err := ctx.Err(); err != nil {
+					return nil, fmt.Errorf("context error: %w", err)
+				}
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 					break // No more packets.
 				}
@@ -358,12 +366,16 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 // seekToNextPacket tries to find the next [packetMagic] sequence.
 // It scans until [io.EOF], [io.ErrUnexpectedEOF] or another fatal error occurs.
 // It advances the reader to the position at the start of [packetMagic] (if found).
-func seekToNextPacket(r io.ReadSeeker) error {
+func seekToNextPacket(ctx context.Context, r io.ReadSeeker) error {
 	buf := make([]byte, recoverBufferSize)
 	magicLen := len(packetMagic)
 	readerStalls := 0
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context error: %w", err)
+		}
+
 		// Record before-read position so we can jump later.
 		before, err := r.Seek(0, io.SeekCurrent)
 		if err != nil {

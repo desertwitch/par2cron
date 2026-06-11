@@ -373,7 +373,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 		return fmt.Errorf("failed to find files to bundle: %w", err)
 	}
 
-	p, err := prog.par2er.ParseFile(prog.fsys, job.par2Path, false)
+	p, err := prog.par2er.ParseFile(ctx, prog.fsys, job.par2Path, false)
 	if err != nil {
 		return fmt.Errorf("failed to parse index par2: %w", err)
 	}

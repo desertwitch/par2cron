@@ -1,0 +1,35 @@
+name: changelog
+
+on:
+  pull_request:
+permissions:
+  contents: read
+
+jobs:
+  has-updates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for changelog updates
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const hasChangelog = files.some(f =>
+              f.filename.startsWith('.changes/') ||
+              f.filename === 'CHANGELOG.md'
+            );
+
+            if (!hasChangelog) {
+              core.setFailed(
+                'This PR is possibly missing a changelog entry or merge. ' +
+                'Note that running `changie new` creates a new changelog entry.'
+              );
+            } else {
+              core.info('All good, changelog was updated.');
+            }
