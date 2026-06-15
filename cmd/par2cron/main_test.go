@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -113,6 +112,85 @@ func Test_NewRootCmd_Success(t *testing.T) {
 	require.True(t, cmd.HasSubCommands())
 }
 
+// Expectation: The root command should have a "log-level" persistent flag.
+func Test_NewRootCmd_HasLogLevelFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	flag := cmd.PersistentFlags().Lookup("log-level")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "l", flag.Shorthand)
+	require.Equal(t, "level", flag.Value.Type())
+	require.Equal(t, "info", flag.DefValue)
+}
+
+// Expectation: The root command should have a "seq-url" persistent flag.
+func Test_NewRootCmd_HasSeqURLFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	flag := cmd.PersistentFlags().Lookup("seq-url")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
+// Expectation: The root command should have a "seq-key" persistent flag.
+func Test_NewRootCmd_HasSeqKeyFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	flag := cmd.PersistentFlags().Lookup("seq-key")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
+// Expectation: The root command should have a "json" persistent flag.
+func Test_NewRootCmd_HasJSONFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	flag := cmd.PersistentFlags().Lookup("json")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.DefValue)
+}
+
+// Expectation: The root command should have a "pprof" persistent flag.
+func Test_NewRootCmd_HasPprofFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	flag := cmd.PersistentFlags().Lookup("pprof")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
+// Expectation: The root command should have a "mprof" persistent flag.
+func Test_NewRootCmd_HasMprofFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	flag := cmd.PersistentFlags().Lookup("mprof")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
 // Expectation: The root command should have a "create" subcommand.
 func Test_NewRootCmd_HasCreateCommand_Success(t *testing.T) {
 	t.Parallel()
@@ -195,31 +273,13 @@ func Test_NewRootCmd_HasToolCommand_Success(t *testing.T) {
 func Test_NewToolCmd_HasMD5Command_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newToolCmd(t.Context())
+	cmd := newToolCmd(t.Context(), &logging.Options{})
 
 	toolMD5Cmd, _, err := cmd.Find([]string{"md5"})
 
 	require.NoError(t, err)
 	require.NotNil(t, toolMD5Cmd)
 	require.Equal(t, "md5", toolMD5Cmd.Name())
-}
-
-// Expectation: The "tool md5" command should have a "log-level" flag.
-func Test_NewToolMD5Cmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newToolMD5Cmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-	flagval := flag.Value
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flagval.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
 }
 
 // Expectation: The root command should have a "gen-markdown" subcommand.
@@ -252,7 +312,7 @@ func Test_NewRootCmd_HasBundleCommand_Success(t *testing.T) {
 func Test_NewBundleCmd_HasPackCommand_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleCmd(t.Context())
+	cmd := newBundleCmd(t.Context(), &logging.Options{})
 
 	bundleCmd, _, err := cmd.Find([]string{"pack"})
 
@@ -265,7 +325,7 @@ func Test_NewBundleCmd_HasPackCommand_Success(t *testing.T) {
 func Test_NewBundleCmd_HasUnpackCommand_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleCmd(t.Context())
+	cmd := newBundleCmd(t.Context(), &logging.Options{})
 
 	bundleCmd, _, err := cmd.Find([]string{"unpack"})
 
@@ -278,7 +338,7 @@ func Test_NewBundleCmd_HasUnpackCommand_Success(t *testing.T) {
 func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleCmd(t.Context())
+	cmd := newBundleCmd(t.Context(), &logging.Options{})
 
 	bundleCmd, _, err := cmd.Find([]string{"info"})
 
@@ -287,29 +347,11 @@ func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
 	require.Equal(t, "info", bundleCmd.Name())
 }
 
-// Expectation: The "bundle info" command should have a "log-level" flag.
-func Test_NewBundleInfoCmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newBundleInfoCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-	flagval := flag.Value
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flagval.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
-}
-
 // Expectation: The "bundle pack" command should have flags.
 func Test_NewBundlePackCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context())
+	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "pack", cmd.Name())
@@ -320,7 +362,7 @@ func Test_NewBundlePackCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewBundlePackCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context())
+	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -329,24 +371,11 @@ func Test_NewBundlePackCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	require.Equal(t, "false", flag.DefValue)
 }
 
-// Expectation: The "bundle pack" command should have a "json" flag.
-func Test_NewBundlePackCmd_HasJsonFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newBundlePackCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("json")
-
-	require.NotNil(t, flag)
-	require.Equal(t, "bool", flag.Value.Type())
-	require.Equal(t, "false", flag.Value.String())
-}
-
 // Expectation: The "bundle pack" command should have an "include-external" flag.
 func Test_NewBundlePackCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context())
+	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("include-external")
 
@@ -355,29 +384,11 @@ func Test_NewBundlePackCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	require.Equal(t, "false", flag.Value.String())
 }
 
-// Expectation: The "bundle pack" command should have a "log-level" flag.
-func Test_NewBundlePackCmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newBundlePackCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-	flagval := flag.Value
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flagval.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
-}
-
 // Expectation: The "bundle pack" command cannot run without arguments.
 func Test_NewBundlePackCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context())
+	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -389,7 +400,7 @@ func Test_NewBundlePackCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewBundleUnpackCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleUnpackCmd(t.Context())
+	cmd := newBundleUnpackCmd(t.Context(), &logging.Options{})
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "unpack", cmd.Name())
@@ -400,7 +411,7 @@ func Test_NewBundleUnpackCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewBundleUnpackCmd_HasForceFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleUnpackCmd(t.Context())
+	cmd := newBundleUnpackCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("force")
 
@@ -409,42 +420,11 @@ func Test_NewBundleUnpackCmd_HasForceFlag_Success(t *testing.T) {
 	require.Equal(t, "false", flag.DefValue)
 }
 
-// Expectation: The "bundle unpack" command should have a "json" flag.
-func Test_NewBundleUnpackCmd_HasJsonFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newBundleUnpackCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("json")
-
-	require.NotNil(t, flag)
-	require.Equal(t, "bool", flag.Value.Type())
-	require.Equal(t, "false", flag.Value.String())
-}
-
-// Expectation: The "bundle unpack" command should have a "log-level" flag.
-func Test_NewBundleUnpackCmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newBundleUnpackCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-	flagval := flag.Value
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flagval.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
-}
-
 // Expectation: The "bundle unpack" command cannot run without arguments.
 func Test_NewBundleUnpackCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleUnpackCmd(t.Context())
+	cmd := newBundleUnpackCmd(t.Context(), &logging.Options{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -456,7 +436,7 @@ func Test_NewBundleUnpackCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewCreateCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "create", cmd.Name())
@@ -467,7 +447,7 @@ func Test_NewCreateCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewCreateCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -476,29 +456,11 @@ func Test_NewCreateCmd_HasConfigFlag_Success(t *testing.T) {
 	require.Empty(t, flag.DefValue)
 }
 
-// Expectation: The "create" command should have a "log-level" flag.
-func Test_NewCreateCmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newCreateCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-	flagval := flag.Value
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flagval.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
-}
-
 // Expectation: The "create" command should have a "mode" flag.
 func Test_NewCreateCmd_HasModeFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("mode")
 	flagval := flag.Value
@@ -512,24 +474,11 @@ func Test_NewCreateCmd_HasModeFlag_Success(t *testing.T) {
 	require.Equal(t, schema.CreateFolderMode, logflag.Value)
 }
 
-// Expectation: The "create" command should have a "json" flag.
-func Test_NewCreateCmd_HasJsonFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newCreateCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("json")
-
-	require.NotNil(t, flag)
-	require.Equal(t, "bool", flag.Value.Type())
-	require.Equal(t, "false", flag.Value.String())
-}
-
 // Expectation: The "create" command should have a "hidden" flag.
 func Test_NewCreateCmd_HasHiddenFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("hidden")
 
@@ -542,7 +491,7 @@ func Test_NewCreateCmd_HasHiddenFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasBundleFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("bundle")
 
@@ -555,7 +504,7 @@ func Test_NewCreateCmd_HasBundleFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasVerifyFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("verify")
 
@@ -568,7 +517,7 @@ func Test_NewCreateCmd_HasVerifyFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -580,7 +529,7 @@ func Test_NewCreateCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewCreateCmd_HasGlobFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("glob")
 
@@ -593,7 +542,7 @@ func Test_NewCreateCmd_HasGlobFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context())
+	cmd := newCreateCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -610,7 +559,7 @@ func Test_NewCreateCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "verify", cmd.Name())
@@ -621,7 +570,7 @@ func Test_NewVerifyCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -634,7 +583,7 @@ func Test_NewVerifyCmd_HasConfigFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasCacheFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("cache")
 
@@ -647,7 +596,7 @@ func Test_NewVerifyCmd_HasCacheFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasAgeFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("age")
 	flagval := flag.Value
@@ -664,7 +613,7 @@ func Test_NewVerifyCmd_HasAgeFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -681,7 +630,7 @@ func Test_NewVerifyCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("calc-run-interval")
 	flagval := flag.Value
@@ -695,42 +644,11 @@ func Test_NewVerifyCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 	require.Equal(t, 24*time.Hour, durflag.Value)
 }
 
-// Expectation: The "verify" command should have a "log-level" flag.
-func Test_NewVerifyCmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newVerifyCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-	flagval := flag.Value
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flagval.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
-}
-
-// Expectation: The "verify" command should have a "json" flag.
-func Test_NewVerifyCmd_HasJsonFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newVerifyCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("json")
-
-	require.NotNil(t, flag)
-	require.Equal(t, "bool", flag.Value.Type())
-	require.Equal(t, "false", flag.Value.String())
-}
-
 // Expectation: The "verify" command should have a "include-external" flag.
 func Test_NewVerifyCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("include-external")
 
@@ -743,7 +661,7 @@ func Test_NewVerifyCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -756,7 +674,7 @@ func Test_NewVerifyCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context())
+	cmd := newVerifyCmd(t.Context(), &logging.Options{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -768,49 +686,18 @@ func Test_NewVerifyCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewRepairCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "repair", cmd.Name())
 	require.True(t, cmd.HasFlags())
 }
 
-// Expectation: The "repair" command should have a "log-level" flag.
-func Test_NewRepairCmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newRepairCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-	flagval := flag.Value
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flagval.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
-}
-
-// Expectation: The "repair" command should have a "json" flag.
-func Test_NewRepairCmd_HasJsonFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newRepairCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("json")
-
-	require.NotNil(t, flag)
-	require.Equal(t, "bool", flag.Value.Type())
-	require.Equal(t, "false", flag.Value.String())
-}
-
 // Expectation: The "repair" command should have a "duration" flag.
 func Test_NewRepairCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -827,7 +714,7 @@ func Test_NewRepairCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasMinTestedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("min-tested")
 
@@ -840,7 +727,7 @@ func Test_NewRepairCmd_HasMinTestedFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasAttemptUnrepairablesFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("attempt-unrepairables")
 
@@ -853,7 +740,7 @@ func Test_NewRepairCmd_HasAttemptUnrepairablesFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasPurgeBackupsFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("purge-backups")
 
@@ -866,7 +753,7 @@ func Test_NewRepairCmd_HasPurgeBackupsFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasRestoreBackupsFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("restore-backups")
 
@@ -879,7 +766,7 @@ func Test_NewRepairCmd_HasRestoreBackupsFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasVerifyFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("verify")
 
@@ -892,7 +779,7 @@ func Test_NewRepairCmd_HasVerifyFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -905,7 +792,7 @@ func Test_NewRepairCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -918,7 +805,7 @@ func Test_NewRepairCmd_HasConfigFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasCacheFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("cache")
 
@@ -931,7 +818,7 @@ func Test_NewRepairCmd_HasCacheFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context())
+	cmd := newRepairCmd(t.Context(), &logging.Options{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -943,7 +830,7 @@ func Test_NewRepairCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewInfoCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "info", cmd.Name())
@@ -954,7 +841,7 @@ func Test_NewInfoCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewInfoCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -967,7 +854,7 @@ func Test_NewInfoCmd_HasConfigFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasCacheFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("cache")
 
@@ -980,7 +867,7 @@ func Test_NewInfoCmd_HasCacheFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasAgeFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("age")
 	flagval := flag.Value
@@ -997,7 +884,7 @@ func Test_NewInfoCmd_HasAgeFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -1014,7 +901,7 @@ func Test_NewInfoCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("calc-run-interval")
 	flagval := flag.Value
@@ -1028,28 +915,11 @@ func Test_NewInfoCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 	require.Equal(t, 24*time.Hour, durflag.Value)
 }
 
-// Expectation: The "info" command should have an "log-level" flag.
-func Test_NewInfoCmd_HasLogLevelFlag_Success(t *testing.T) {
-	t.Parallel()
-
-	cmd := newInfoCmd(t.Context())
-
-	flag := cmd.Flags().Lookup("log-level")
-
-	require.NotNil(t, flag)
-	require.Equal(t, "level", flag.Value.Type())
-	require.Equal(t, "info", flag.DefValue)
-
-	logflag, ok := flag.Value.(*flags.LogLevel)
-	require.True(t, ok)
-	require.Equal(t, slog.LevelInfo, logflag.Value)
-}
-
 // Expectation: The "info" command should have a "include-external" flag.
 func Test_NewInfoCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("include-external")
 
@@ -1062,7 +932,7 @@ func Test_NewInfoCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -1075,7 +945,7 @@ func Test_NewInfoCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_RequiresExactOneArg_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -1087,7 +957,7 @@ func Test_NewInfoCmd_RequiresExactOneArg_Error(t *testing.T) {
 func Test_NewInfoCmd_TooManyArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context())
+	cmd := newInfoCmd(t.Context(), &logging.Options{})
 	cmd.SetArgs([]string{"/data", "/extra"})
 
 	err := cmd.Execute()

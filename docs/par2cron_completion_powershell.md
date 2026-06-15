@@ -28,8 +28,12 @@ par2cron completion powershell [flags]
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

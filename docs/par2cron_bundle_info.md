@@ -38,15 +38,18 @@ Print information about bundle files in working directory:
 ### Options
 
 ```
-  -h, --help              help for info
-  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+  -h, --help   help for info
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

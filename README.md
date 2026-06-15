@@ -33,6 +33,7 @@
   - [Building from source (with embedded `par2`)](#building-from-source-with-embedded-par2)
   - [Running a built executable](#running-a-built-executable)
 - [Usage](#usage)
+  - [Global Flags](#global-flags)
   - [`par2cron create`](#par2cron-create)
   - [`par2cron verify`](#par2cron-verify)
   - [`par2cron repair`](#par2cron-repair)
@@ -64,6 +65,7 @@
 - [Performance](#performance)
   - [Manifest cache](#manifest-cache)
 - [Integrations](#integrations)
+- [Logging](#logging)
 - [Limitations](#limitations)
 - [License](#license)
 
@@ -245,8 +247,17 @@ The program is divided into separate commands to achieve its tasks:
 
 Detailed documentation for each command is available in the [docs/](docs/) directory.
 
-### `par2cron create`
+### Global Flags
+```
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
+```
 
+### `par2cron create`
 ```
 Scans a directory tree for "_par2cron" marker files
 Creates PAR2 sets for directories containing a marker file
@@ -272,8 +283,6 @@ Flags:
   -g, --glob string         PAR2 set default glob (files to include) (default "*")
   -h, --help                help for create
       --hidden              create PAR2 sets and related files as hidden (dotfiles)
-      --json                output structured logs in JSON format
-  -l, --log-level level     minimum level of emitted logs (debug|info|warn|error) (default info)
   -m, --mode mode           PAR2 set default mode; creates a set per (folder|nested|file|recursive) (default folder)
   -v, --verify              PAR2 sets must pass verification as part of creation
 ```
@@ -305,8 +314,6 @@ Flags:
   -d, --duration duration            time budget per run (best effort/soft limit)
   -h, --help                         help for verify
   -e, --include-external             include PAR2 sets without a par2cron manifest (and create one)
-      --json                         output structured logs in JSON format
-  -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
@@ -339,8 +346,6 @@ Flags:
   -c, --config string           path to a par2cron YAML configuration file
   -d, --duration duration       time budget per run (best effort/soft limit)
   -h, --help                    help for repair
-      --json                    output structured logs in JSON format
-  -l, --log-level level         minimum level of emitted logs (debug|info|warn|error) (default info)
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
@@ -375,8 +380,6 @@ Flags:
   -d, --duration duration            target time budget for each verify run (soft limit)
   -h, --help                         help for info
   -e, --include-external             include external PAR2 sets without a par2cron manifest
-      --json                         output in JSON format (result to stdout, logs to stderr)
-  -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
@@ -975,6 +978,48 @@ batteries-included plugin solution for the Unraid operating system, shipping
 with a web interface and taking care of all par2cron service orchestration as
 well as notifications. It can be installed through Unraid's "Community
 Applications" (Apps tab) ecosystem.
+
+## Logging
+
+par2cron uses structured logging and optionally ships logs to a remote
+[Seq](https://datalust.co/seq) server over its [CLEF](https://clef-json.org/)
+ingestion endpoint, in addition to console output.
+
+I absolutely love Seq - it gives you searchable, filterable structured logs with
+built-in alerting, making it easy to get notified when something goes wrong in
+your par2cron cycle. It can even function as a syslog target, so you can see
+everything in one place.
+
+Setting up Seq is as simple as running a single Docker container:
+
+```bash
+docker run \
+  --name seq \
+  -d \
+  --restart unless-stopped \
+  -e ACCEPT_EULA=Y \
+  -e SEQ_FIRSTRUN_ADMINPASSWORD=<password> \
+  -v <local path to store data>:/data \
+  -p 5341:80 \
+  datalust/seq
+```
+
+Then point par2cron at it using the [global flags](#global-flags):
+
+```bash
+par2cron create --seq-url http://your-seq-server:5341/ingest/clef /mnt/storage
+par2cron verify --seq-url http://your-seq-server:5341/ingest/clef /mnt/storage
+par2cron repair --seq-url http://your-seq-server:5341/ingest/clef /mnt/storage
+```
+
+You can also set per-command Seq targets using the configuration file.
+
+If authentication is enabled on your Seq instance, add `--seq-key` with your
+API key.
+
+All logs are always written to console regardless of whether Seq is enabled.
+Log delivery to Seq is non-blocking - undeliverable entries are dropped after
+failed retrying, so a Seq outage will never stall par2cron operations.
 
 ## Limitations
 

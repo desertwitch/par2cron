@@ -43,16 +43,18 @@ Output results as JSON (stdout/standard output):
   -d, --duration duration            target time budget for each verify run (soft limit)
   -h, --help                         help for info
   -e, --include-external             include external PAR2 sets without a par2cron manifest
-      --json                         output in JSON format (result to stdout, logs to stderr)
-  -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

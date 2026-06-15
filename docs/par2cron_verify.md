@@ -47,16 +47,18 @@ Verify sets not verified < 7 days, run around 2 hours:
   -d, --duration duration            time budget per run (best effort/soft limit)
   -h, --help                         help for verify
   -e, --include-external             include PAR2 sets without a par2cron manifest (and create one)
-      --json                         output structured logs in JSON format
-  -l, --log-level level              minimum level of emitted logs (debug|info|warn|error) (default info)
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO
