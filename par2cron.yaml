@@ -80,6 +80,20 @@ create:
   # Default: false
   json: false
 
+  # seq-url: CLEF ingestion endpoint of a remote Seq logging server
+  # When set, all logs are sent both to console and to Seq over HTTP(S)
+  # Undeliverable log entries are dropped after retrying (non-blocking)
+  #
+  # Format: "http://your-seq-server/ingest/clef"
+  # Default: "" (disabled)
+  seq-url: ""
+
+  # seq-key: API key for the remote Seq logging server
+  # Only required if authentication is enabled on the Seq server
+  #
+  # Default: "" (no API key)
+  seq-key: ""
+
 # ==============================================================================
 # VERIFY COMMAND SETTINGS
 # ==============================================================================
@@ -132,6 +146,13 @@ verify:
   # Default: "24h"
   calc-run-interval: "24h"
 
+  # cache: Directory for optional manifest cache (works best on fast storage)
+  # Caches manifests between commands so filesystem scanning completes faster
+  # If enabled, ensure using same cache directory for all applicable commands
+  #
+  # Default: "" (disabled)
+  cache: ""
+
   # log-level: Minimum level of emitted logs
   #
   # Options: "debug", "info", "warn", "error"
@@ -143,12 +164,19 @@ verify:
   # Default: false
   json: false
 
-  # cache: Directory for optional manifest cache (works best on fast storage)
-  # Caches manifests between commands so filesystem scanning completes faster
-  # If enabled, ensure using same cache directory for all applicable commands
+  # seq-url: CLEF ingestion endpoint of a remote Seq logging server
+  # When set, all logs are sent both to console and to Seq over HTTP(S)
+  # Undeliverable log entries are dropped after retrying (non-blocking)
   #
+  # Format: "http://your-seq-server/ingest/clef"
   # Default: "" (disabled)
-  cache: ""
+  seq-url: ""
+
+  # seq-key: API key for the remote Seq logging server
+  # Only required if authentication is enabled on the Seq server
+  #
+  # Default: "" (no API key)
+  seq-key: ""
 
 # ==============================================================================
 # REPAIR COMMAND SETTINGS
@@ -211,6 +239,13 @@ repair:
   # Default: false
   restore-backups: false
 
+  # cache: Directory for optional manifest cache (works best on fast storage)
+  # Caches manifests between commands so filesystem scanning completes faster
+  # If enabled, ensure using same cache directory for all applicable commands
+  #
+  # Default: "" (disabled)
+  cache: ""
+
   # log-level: Minimum level of emitted logs
   #
   # Options: "debug", "info", "warn", "error"
@@ -222,12 +257,19 @@ repair:
   # Default: false
   json: false
 
-  # cache: Directory for optional manifest cache (works best on fast storage)
-  # Caches manifests between commands so filesystem scanning completes faster
-  # If enabled, ensure using same cache directory for all applicable commands
+  # seq-url: CLEF ingestion endpoint of a remote Seq logging server
+  # When set, all logs are sent both to console and to Seq over HTTP(S)
+  # Undeliverable log entries are dropped after retrying (non-blocking)
   #
+  # Format: "http://your-seq-server/ingest/clef"
   # Default: "" (disabled)
-  cache: ""
+  seq-url: ""
+
+  # seq-key: API key for the remote Seq logging server
+  # Only required if authentication is enabled on the Seq server
+  #
+  # Default: "" (no API key)
+  seq-key: ""
 
 # ==============================================================================
 # INFO COMMAND SETTINGS
@@ -270,6 +312,13 @@ info:
   # Default: "24h"
   calc-run-interval: "24h"
 
+  # cache: Directory for optional manifest cache (works best on fast storage)
+  # Caches manifests between commands so filesystem scanning completes faster
+  # If enabled, ensure using same cache directory for all applicable commands
+  #
+  # Default: "" (disabled)
+  cache: ""
+
   # log-level: Minimum level of emitted logs
   #
   # Options: "debug", "info", "warn", "error"
@@ -281,9 +330,16 @@ info:
   # Default: false
   json: false
 
-  # cache: Directory for optional manifest cache (works best on fast storage)
-  # Caches manifests between commands so filesystem scanning completes faster
-  # If enabled, ensure using same cache directory for all applicable commands
+  # seq-url: CLEF ingestion endpoint of a remote Seq logging server
+  # When set, all logs are sent both to console and to Seq over HTTP(S)
+  # Undeliverable log entries are dropped after retrying (non-blocking)
   #
+  # Format: "http://your-seq-server/ingest/clef"
   # Default: "" (disabled)
-  cache: ""
+  seq-url: ""
+
+  # seq-key: API key for the remote Seq logging server
+  # Only required if authentication is enabled on the Seq server
+  #
+  # Default: "" (no API key)
+  seq-key: ""

@@ -29,17 +29,19 @@ par2cron bundle unpack [flags] <dir> [dir...]
 ### Options
 
 ```
-      --force             proceed regardless of errors/corruption (use with care)
-  -h, --help              help for unpack
-      --json              output structured logs in JSON format
-  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --force   proceed regardless of errors/corruption (use with care)
+  -h, --help    help for unpack
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

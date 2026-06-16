@@ -46,8 +46,6 @@ Repair repairable, verify after, run for around 1 hour:
   -c, --config string           path to a par2cron YAML configuration file
   -d, --duration duration       time budget per run (best effort/soft limit)
   -h, --help                    help for repair
-      --json                    output structured logs in JSON format
-  -l, --log-level level         minimum level of emitted logs (debug|info|warn|error) (default info)
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
@@ -58,8 +56,12 @@ Repair repairable, verify after, run for around 1 hour:
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

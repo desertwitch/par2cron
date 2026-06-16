@@ -26,16 +26,19 @@ Print MD5 hashes for a bundle or specific PAR2 file:
 ### Options
 
 ```
-      --all               attempt to parse all provided files (and not just PAR2 index files)
-  -h, --help              help for md5
-  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --all    attempt to parse all provided files (and not just PAR2 index files)
+  -h, --help   help for md5
 ```
 
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

@@ -86,3 +86,77 @@ func Test_Logger_With_Success(t *testing.T) {
 	require.Contains(t, output, "count")
 	require.Contains(t, output, "42")
 }
+
+// Expectation: With should preserve Options but return a distinct Logger with nil seqHandler.
+func Test_Logger_With_PreservesOptions(t *testing.T) {
+	t.Parallel()
+
+	buf := &testutil.SafeBuffer{}
+	ls := Options{
+		Logout:   buf,
+		WantJSON: false,
+	}
+
+	_ = ls.LogLevel.Set("debug")
+	logger := NewLogger(ls)
+	child := logger.With("component", "test")
+
+	require.Equal(t, logger.Options, child.Options)
+	require.Nil(t, child.seqHandler)
+}
+
+// Expectation: NewLogger with SeqURL should produce a fanoutHandler.
+func Test_NewLogger_WithSeqURL_ReturnsFanoutHandler(t *testing.T) {
+	t.Parallel()
+
+	ls := Options{
+		Logout: &testutil.SafeBuffer{},
+		SeqURL: "http://localhost:5341",
+		SeqKey: "test-api-key",
+	}
+
+	_ = ls.LogLevel.Set("info")
+	logger := NewLogger(ls)
+	require.NotNil(t, logger)
+	require.NotNil(t, logger.seqHandler)
+
+	_, ok := logger.Handler().(*fanoutHandler)
+	require.True(t, ok)
+	logger.Close()
+}
+
+// Expectation: NewLogger with SeqURL but no SeqKey should still produce a fanoutHandler.
+func Test_NewLogger_WithSeqURL_NoKey_ReturnsFanoutHandler(t *testing.T) {
+	t.Parallel()
+
+	ls := Options{
+		Logout: &testutil.SafeBuffer{},
+		SeqURL: "http://localhost:5341",
+	}
+
+	_ = ls.LogLevel.Set("info")
+	logger := NewLogger(ls)
+	require.NotNil(t, logger)
+	require.NotNil(t, logger.seqHandler)
+
+	_, ok := logger.Handler().(*fanoutHandler)
+	require.True(t, ok)
+	logger.Close()
+}
+
+// Expectation: Close should not panic when no Seq handler is configured.
+func Test_Logger_Close_NoSeq_Success(t *testing.T) {
+	t.Parallel()
+
+	ls := Options{
+		Logout:   &testutil.SafeBuffer{},
+		WantJSON: false,
+	}
+
+	_ = ls.LogLevel.Set("info")
+	logger := NewLogger(ls)
+
+	require.NotPanics(t, func() {
+		logger.Close()
+	})
+}

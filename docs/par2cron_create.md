@@ -55,8 +55,6 @@ Run for around 1 hour (as soft limit), hide created files:
   -g, --glob string         PAR2 set default glob (files to include) (default "*")
   -h, --help                help for create
       --hidden              create PAR2 sets and related files as hidden (dotfiles)
-      --json                output structured logs in JSON format
-  -l, --log-level level     minimum level of emitted logs (debug|info|warn|error) (default info)
   -m, --mode mode           PAR2 set default mode; creates a set per (folder|nested|file|recursive) (default folder)
   -v, --verify              PAR2 sets must pass verification as part of creation
 ```
@@ -64,8 +62,12 @@ Run for around 1 hour (as soft limit), hide created files:
 ### Options inherited from parent commands
 
 ```
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

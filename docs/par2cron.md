@@ -23,9 +23,13 @@ Full documentation at: https://github.com/desertwitch/par2cron
 ### Options
 
 ```
-  -h, --help           help for par2cron
-      --mprof string   write RAM allocation profile to file
-      --pprof string   write CPU performance profile to file
+  -h, --help              help for par2cron
+      --json              output results/logs in JSON format (where applicable)
+  -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --mprof string      write RAM allocation profile to file
+      --pprof string      write CPU performance profile to file
+      --seq-key string    API key for a (remote) Seq logging server
+      --seq-url string    CLEF ingestion URL for a (remote) Seq logging server
 ```
 
 ### SEE ALSO

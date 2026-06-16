@@ -37,6 +37,21 @@ for a central database and allowing protected directories to be moved between
 systems. Concurrent operation on the same directory tree is safe, using
 kernel-enforced file locking to prevent interference between instances.
 
+== GLOBAL FLAGS
+
+*--json*::
+  Output results/logs in JSON format (where applicable).
+*-l, --log-level* _level_::
+  Log level: debug, info, warn, error (default info).
+*--mprof* _string_::
+  Write RAM allocation profile to file.
+*--pprof* _string_::
+  Write CPU performance profile to file.
+*--seq-key* _string_::
+  API key for a (remote) Seq logging server.
+*--seq-url* _string_::
+  CLEF ingestion URL for a (remote) Seq logging server.
+
 == COMMANDS
 
 === par2cron create
@@ -53,10 +68,6 @@ Creates PAR2 sets for directories with marker files.
   Glob pattern for files to include (default `pass:[*]`).
 *--hidden*::
   Create PAR2 files as hidden (dotfiles).
-*--json*::
-  Output logs in JSON format.
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 *-m, --mode* _mode_::
   Creation mode: folder, nested, file, recursive (default folder).
 *-v, --verify*::
@@ -79,10 +90,6 @@ Verifies the existing PAR2 sets found in a directory tree.
   Time budget per run (soft limit).
 *-e, --include-external*::
   Include PAR2 sets without a par2cron manifest.
-*--json*::
-  Output logs in JSON format.
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 *--skip-not-created*::
   Skip sets without a creation record.
 
@@ -99,10 +106,6 @@ Repairs data flagged as needing repair during verification.
   Path to YAML configuration file.
 *-d, --duration* _duration_::
   Time budget per run (soft limit).
-*--json*::
-  Output logs in JSON format.
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 *-t, --min-tested* _int_::
   Require N corrupted verifications before repair.
 *-p, --purge-backups*::
@@ -131,10 +134,6 @@ Shows verification cycle statistics and configuration analysis.
   Target time budget per verify run.
 *-e, --include-external*::
   Include external PAR2 sets.
-*--json*::
-  Output in JSON format (result to stdout, logs to stderr).
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 *--skip-not-created*::
   Skip sets without a creation record.
 
@@ -144,10 +143,6 @@ Packs all existing PAR2 sets of a folder into bundles.
 
 *-e, --include-external*::
   Include PAR2 sets without a par2cron manifest.
-*--json*::
-  Output logs in JSON format.
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 *--skip-not-created*::
   Skip sets without a creation record.
 
@@ -157,17 +152,10 @@ Unpacks all existing bundles of a folder into PAR2 sets.
 
 *--force*::
   Proceed regardless of errors or corruption.
-*--json*::
-  Output logs in JSON format.
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 
 === par2cron bundle info
 
 Prints bundle information to standard output.
-
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 
 === par2cron tool md5
 
@@ -175,8 +163,6 @@ Extracts and displays MD5 checksums from PAR2 files.
 
 *--all*::
   Parse all provided files (not just PAR2 indexes).
-*-l, --log-level* _level_::
-  Log level: debug, info, warn, error (default info).
 
 === par2cron check-config
 

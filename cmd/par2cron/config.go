@@ -82,6 +82,8 @@ type configFileCreate struct {
 	Bundle      *bool             `yaml:"bundle"`
 
 	LogLevel *flags.LogLevel `yaml:"log-level"`
+	SeqURL   *string         `yaml:"seq-url"`
+	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
@@ -110,6 +112,12 @@ func (yamlCfg *configFileCreate) Merge(cfg *create.Options, logs *logging.Option
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
 		logs.LogLevel = *yamlCfg.LogLevel
 	}
+	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
+		logs.SeqURL = *yamlCfg.SeqURL
+	}
+	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
+		logs.SeqKey = *yamlCfg.SeqKey
+	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
 		logs.WantJSON = *yamlCfg.WantJSON
 	}
@@ -126,6 +134,8 @@ type configFileVerify struct {
 	SkipNotCreated  *bool           `yaml:"skip-not-created"`
 
 	LogLevel *flags.LogLevel `yaml:"log-level"`
+	SeqURL   *string         `yaml:"seq-url"`
+	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
@@ -154,6 +164,12 @@ func (yamlCfg *configFileVerify) Merge(cfg *verify.Options, logs *logging.Option
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
 		logs.LogLevel = *yamlCfg.LogLevel
 	}
+	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
+		logs.SeqURL = *yamlCfg.SeqURL
+	}
+	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
+		logs.SeqKey = *yamlCfg.SeqKey
+	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
 		logs.WantJSON = *yamlCfg.WantJSON
 	}
@@ -172,6 +188,8 @@ type configFileRepair struct {
 	RestoreBackups       *bool           `yaml:"restore-backups"`
 
 	LogLevel *flags.LogLevel `yaml:"log-level"`
+	SeqURL   *string         `yaml:"seq-url"`
+	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
@@ -206,6 +224,12 @@ func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, logs *logging.Option
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
 		logs.LogLevel = *yamlCfg.LogLevel
 	}
+	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
+		logs.SeqURL = *yamlCfg.SeqURL
+	}
+	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
+		logs.SeqKey = *yamlCfg.SeqKey
+	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
 		logs.WantJSON = *yamlCfg.WantJSON
 	}
@@ -220,6 +244,8 @@ type configFileInfo struct {
 	SkipNotCreated  *bool           `yaml:"skip-not-created"`
 
 	LogLevel *flags.LogLevel `yaml:"log-level"`
+	SeqURL   *string         `yaml:"seq-url"`
+	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
@@ -244,6 +270,12 @@ func (yamlCfg *configFileInfo) Merge(cfg *info.Options, logs *logging.Options, _
 	}
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
 		logs.LogLevel = *yamlCfg.LogLevel
+	}
+	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
+		logs.SeqURL = *yamlCfg.SeqURL
+	}
+	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
+		logs.SeqKey = *yamlCfg.SeqKey
 	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
 		logs.WantJSON = *yamlCfg.WantJSON
