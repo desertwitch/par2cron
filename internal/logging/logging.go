@@ -47,7 +47,7 @@ func NewLogger(opts Options) *Logger {
 	var logger *slog.Logger
 	var seqHandler *slogseq.SeqHandler
 	if opts.SeqURL != "" {
-		debugLogger := slog.New(consoleHandler)
+		consoleLogger := slog.New(consoleHandler)
 
 		attrs := []slog.Attr{
 			slog.String("app", "par2cron"),
@@ -55,13 +55,12 @@ func NewLogger(opts Options) *Logger {
 		if hostname, err := os.Hostname(); err == nil {
 			attrs = append(attrs, slog.String("hostname", hostname))
 		}
-
 		seqOpts := []slogseq.SeqOption{
 			slogseq.WithGlobalAttrs(attrs...),
 			slogseq.WithBatchSize(10), //nolint:mnd
 			slogseq.WithInsecure(),
 			slogseq.WithErrorHandlerFunc(func(err error) {
-				debugLogger.Debug("Failed to log to Seq", "error", err)
+				consoleLogger.Debug("Failed to log to Seq", "error", err)
 			}),
 		}
 		if opts.SeqKey != "" {
@@ -69,6 +68,9 @@ func NewLogger(opts Options) *Logger {
 		}
 
 		seqHandler = slogseq.NewSeqHandler(opts.SeqURL, seqOpts...)
+		if err := seqHandler.Ping(); err != nil {
+			consoleLogger.Error("Failed to connect to Seq server", "error", err)
+		}
 		logger = slog.New(&fanoutHandler{
 			handlers: []slog.Handler{consoleHandler, seqHandler},
 		})

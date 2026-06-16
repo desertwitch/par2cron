@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
-	github.com/desertwitch/slog-seq v0.7.0
+	github.com/desertwitch/slog-seq v0.8.1
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/klauspost/compress v1.18.6
 	github.com/lmittmann/tint v1.1.3
