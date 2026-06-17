@@ -1,6 +1,0 @@
-kind: Changed
-body: Manifest write failure on "create" is now a job-fatal error.
-time: 2026-06-11T10:35:43.313846511+02:00
-custom:
-    Issue: ""
-    PR: "77"

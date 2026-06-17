@@ -981,16 +981,18 @@ Applications" (Apps tab) ecosystem.
 
 ## Logging
 
-par2cron uses structured logging and optionally ships logs to a remote
-[Seq](https://datalust.co/seq) server over its [CLEF](https://clef-json.org/)
-ingestion endpoint, in addition to console output.
+par2cron uses structured logging via [slog](https://pkg.go.dev/log/slog) and
+writes all output to the console (as human readable text or `--json`). Optionally, logs can also be shipped to a [Seq](https://datalust.co/seq) server over its
+[CLEF](https://clef-json.org/) ingestion endpoint for searchable, filterable
+structured logs with built-in alerting.
 
-I absolutely love Seq - it gives you searchable, filterable structured logs with
-built-in alerting, making it easy to get notified when something goes wrong in
-your par2cron cycle. It can even function as a syslog target, so you can see
-everything in one place.
+If the initial connection to Seq fails, a warning is logged at Error level.
+par2cron will continue to attempt delivery in the background - any intermediate
+failures are logged at Debug level. Log delivery is non-blocking; undeliverable
+events are dropped after retrying, so a Seq outage will never stall par2cron
+operations.
 
-Setting up Seq is as simple as running a single Docker container:
+To set up a Seq instance:
 
 ```bash
 docker run \
@@ -1012,14 +1014,10 @@ par2cron verify --seq-url http://your-seq-server:5341/ingest/clef /mnt/storage
 par2cron repair --seq-url http://your-seq-server:5341/ingest/clef /mnt/storage
 ```
 
-You can also set per-command Seq targets using the configuration file.
+Per-command Seq targets can also be set through the configuration file.
 
 If authentication is enabled on your Seq instance, add `--seq-key` with your
 API key.
-
-All logs are always written to console regardless of whether Seq is enabled.
-Log delivery to Seq is non-blocking - undeliverable entries are dropped after
-failed retrying, so a Seq outage will never stall par2cron operations.
 
 ## Limitations
 
