@@ -1,6 +1,0 @@
-kind: Fixed
-body: PAR2 parsing taking very long to parse large files (such as bundles).
-time: 2026-06-11T10:28:40.036981949+02:00
-custom:
-    Issue: ""
-    PR: "74"

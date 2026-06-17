@@ -1,6 +1,0 @@
-kind: Fixed
-body: PAR2 operations now observe mid-I/O cancellation.
-time: 2026-06-11T10:25:42.08357552+02:00
-custom:
-    Issue: ""
-    PR: "78"

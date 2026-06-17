@@ -1,6 +1,0 @@
-kind: Changed
-body: Command "tool md5" now defaults to parsing only PAR2 index files (optional --all).
-time: 2026-06-11T10:30:09.851089987+02:00
-custom:
-    Issue: ""
-    PR: "76"

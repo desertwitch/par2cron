@@ -1,6 +1,0 @@
-kind: Added
-body: '`--seq-url` and `--seq-key` to send logs to a (remote) Seq logging server.'
-time: 2026-06-15T21:42:56.098488791+02:00
-custom:
-    Issue: ""
-    PR: ""

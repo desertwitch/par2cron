@@ -1,6 +1,0 @@
-kind: Changed
-body: PAR2 parsing now skips over valid unhandled packets instead of scanning through them.
-time: 2026-06-11T10:32:06.162328298+02:00
-custom:
-    Issue: ""
-    PR: "74"
