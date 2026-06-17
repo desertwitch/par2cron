@@ -939,7 +939,7 @@ func Test_readNextPacket_ParseHeaderError_Error(t *testing.T) {
 	invalidHeader := make([]byte, 64)
 	binary.LittleEndian.PutUint64(invalidHeader[8:16], 64) // length
 
-	_, err := readNextPacket(bytes.NewReader(invalidHeader), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(invalidHeader), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid PAR2 magic bytes")
 }
@@ -950,7 +950,7 @@ func Test_readNextPacket_HeaderEOF_Error(t *testing.T) {
 
 	emptyReader := bytes.NewReader([]byte{})
 
-	_, err := readNextPacket(emptyReader, false)
+	_, err := readNextPacket(t.Context(), emptyReader, false)
 	require.ErrorIs(t, err, io.EOF)
 }
 
@@ -960,7 +960,7 @@ func Test_readNextPacket_PartialHeader_Error(t *testing.T) {
 
 	partialHeader := make([]byte, 50)
 
-	_, err := readNextPacket(bytes.NewReader(partialHeader), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(partialHeader), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read packet header")
 }
@@ -980,7 +980,7 @@ func Test_readNextPacket_BodyEOF_Error(t *testing.T) {
 
 	// No body despite 100 bytes claimed...
 
-	_, err := readNextPacket(bytes.NewReader(header), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read packet body")
 }
@@ -1001,7 +1001,7 @@ func Test_readNextPacket_PartialBody_Error(t *testing.T) {
 	partialBody := make([]byte, 50) // Only 50 of 100 bytes
 	combined := slices.Concat(header, partialBody)
 
-	_, err := readNextPacket(bytes.NewReader(combined), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(combined), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read packet body")
 }
@@ -1025,7 +1025,7 @@ func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
 
 	combined := slices.Concat(header, body)
 
-	_, err := readNextPacket(bytes.NewReader(combined), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(combined), false)
 	require.ErrorIs(t, err, errUnhandledPacket)
 }
 
@@ -1042,7 +1042,7 @@ func Test_readNextPacket_LengthExceedsMaxInt64_Error(t *testing.T) {
 	hasher.Write(header[packetHashOffset:])
 	copy(header[16:32], hasher.Sum(nil))
 
-	_, err := readNextPacket(bytes.NewReader(header), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exceeds system capacity")
 }
@@ -1060,7 +1060,7 @@ func Test_readNextPacket_NegativeBodyLength_Error(t *testing.T) {
 	hasher.Write(header[packetHashOffset:])
 	copy(header[16:32], hasher.Sum(nil))
 
-	_, err := readNextPacket(bytes.NewReader(header), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "packet length")
 }
@@ -1079,7 +1079,7 @@ func Test_readNextPacket_ExceedingBodyLength_Error(t *testing.T) {
 	hasher.Write(header[packetHashOffset:])
 	copy(header[16:32], hasher.Sum(nil))
 
-	_, err := readNextPacket(bytes.NewReader(header), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid body length")
 }
@@ -1093,7 +1093,7 @@ func Test_readNextPacket_InvalidAlignment_Error(t *testing.T) {
 	// Set packet length to non-multiple of 4
 	binary.LittleEndian.PutUint64(packet[8:16], 65)
 
-	_, err := readNextPacket(bytes.NewReader(packet), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not aligned to 4 bytes")
 }
@@ -1104,7 +1104,7 @@ func Test_readNextPacket_PacketAtMaxSize_Success(t *testing.T) {
 	body := make([]byte, maxPacketSize)
 	packet := buildPacket(mainType, body, sID)
 
-	_, err := readNextPacket(bytes.NewReader(packet), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), false)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "invalid body length")
 }
@@ -1118,7 +1118,7 @@ func Test_readNextPacket_MD5ChecksumMismatch_Error(t *testing.T) {
 	// Corrupt the MD5 hash in the header (bytes 16-32)
 	packet[16] ^= 0xFF
 
-	_, err := readNextPacket(bytes.NewReader(packet), true)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to validate packet checksum")
 }

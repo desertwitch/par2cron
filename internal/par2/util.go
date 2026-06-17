@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"runtime/debug"
 	"slices"
@@ -16,6 +17,26 @@ import (
 )
 
 var errUnexpectedLength = errors.New("unexpected length")
+
+var _ io.Reader = (*contextReader)(nil)
+
+// contextReader is an implementation of [io.Reader] that is Context-aware for
+// receiving mid-transfer cancellation.
+type contextReader struct {
+	ctx    context.Context //nolint:containedctx
+	reader io.Reader
+}
+
+// Read wraps the [io.Reader] reading function while being aware of and handling
+// any mid-transfer Context cancellations.
+func (cr *contextReader) Read(p []byte) (int, error) {
+	select {
+	case <-cr.ctx.Done():
+		return 0, fmt.Errorf("context error: %w", cr.ctx.Err())
+	default:
+		return cr.reader.Read(p) //nolint:wrapcheck
+	}
+}
 
 // Copy creates a deep copy of the MainPacket (returning nil on nil reciver).
 func (m *MainPacket) Copy() *MainPacket {
