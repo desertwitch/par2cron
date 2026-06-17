@@ -77,7 +77,7 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 				errFileCorrupted, err)
 		}
 
-		entry, err := readNextPacket(r, checkMD5)
+		entry, err := readNextPacket(ctx, r, checkMD5)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				// Do not catch [io.ErrUnexpectedEOF] here, a packet could
@@ -280,7 +280,7 @@ func (s *setGrouper) Sets() []Set {
 // readNextPacket reads packets of interest from the PAR2.
 //
 //nolint:cyclop
-func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
+func readNextPacket(ctx context.Context, r io.ReadSeeker, checkMD5 bool) (any, error) {
 	// Read the 64-byte header
 	headerBytes := make([]byte, packetHeaderSize)
 	if _, err := io.ReadFull(r, headerBytes); err != nil {
@@ -312,6 +312,9 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	}
 	bodyLen := int64(header.length) - int64(packetHeaderSize)
 
+	// Wrap the reader for the body read to be Context-aware.
+	ctxReader := &contextReader{ctx, r}
+
 	// Read the body only for packets we care about, skip the others.
 	switch {
 	case bytes.Equal(header.packetType[:], mainType):
@@ -320,7 +323,7 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 	default:
 		// If the packet is valid (MD5) we can trust the packet length and skip past it.
 		if checkMD5 && bodyLen > 0 {
-			if err := verifyPacketStream(header, headerBytes, r, bodyLen); err != nil {
+			if err := verifyPacketStream(header, headerBytes, ctxReader, bodyLen); err != nil {
 				return nil, fmt.Errorf("failed to checksum body stream: %w", err)
 			}
 
@@ -339,7 +342,7 @@ func readNextPacket(r io.ReadSeeker, checkMD5 bool) (any, error) {
 
 	// Read the body into memory
 	bodyBytes := make([]byte, bodyLen)
-	if _, err := io.ReadFull(r, bodyBytes); err != nil {
+	if _, err := io.ReadFull(ctxReader, bodyBytes); err != nil {
 		return nil, fmt.Errorf("failed to read packet body: %w", err)
 	}
 

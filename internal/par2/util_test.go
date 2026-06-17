@@ -1,14 +1,57 @@
 package par2
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
+
+// Expectation: contextReader should pass through reads when the context is active.
+func Test_contextReader_Read_Success(t *testing.T) {
+	t.Parallel()
+
+	cr := &contextReader{ctx: t.Context(), reader: strings.NewReader("hello")}
+
+	buf := make([]byte, 5)
+	n, err := cr.Read(buf)
+
+	require.NoError(t, err)
+	require.Equal(t, 5, n)
+	require.Equal(t, "hello", string(buf))
+}
+
+// Expectation: contextReader should return a context error when the context is already cancelled.
+func Test_contextReader_Read_Cancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	cr := &contextReader{ctx: ctx, reader: strings.NewReader("hello")}
+
+	_, err := cr.Read(make([]byte, 5))
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "context error")
+}
+
+// Expectation: contextReader should propagate EOF from the underlying reader.
+func Test_contextReader_Read_EOF(t *testing.T) {
+	t.Parallel()
+
+	cr := &contextReader{ctx: t.Context(), reader: strings.NewReader("")}
+
+	_, err := cr.Read(make([]byte, 1))
+
+	require.ErrorIs(t, err, io.EOF)
+}
 
 // Expectation: MainPacket.Copy should return nil for nil receiver.
 func Test_MainPacket_Copy_NilReceiver_Success(t *testing.T) {
