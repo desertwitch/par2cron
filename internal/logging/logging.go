@@ -32,6 +32,8 @@ type Logger struct {
 }
 
 func NewLogger(opts Options) *Logger {
+	var logger *slog.Logger
+
 	var consoleHandler slog.Handler
 	if opts.WantJSON {
 		consoleHandler = slog.NewJSONHandler(opts.Logout, &slog.HandlerOptions{
@@ -44,13 +46,12 @@ func NewLogger(opts Options) *Logger {
 		})
 	}
 
-	var logger *slog.Logger
 	var seqHandler *slogseq.SeqHandler
 	if opts.SeqURL != "" {
 		consoleLogger := slog.New(consoleHandler)
 
 		attrs := []slog.Attr{
-			slog.String("app", "par2cron"),
+			slog.String("service", "par2cron"),
 		}
 		if hostname, err := os.Hostname(); err == nil {
 			attrs = append(attrs, slog.String("hostname", hostname))
