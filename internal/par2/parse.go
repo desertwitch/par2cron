@@ -79,6 +79,9 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 
 		entry, err := readNextPacket(ctx, r, checkMD5)
 		if err != nil {
+			if err := ctx.Err(); err != nil {
+				return nil, fmt.Errorf("context error: %w", err)
+			}
 			if errors.Is(err, io.EOF) {
 				// Do not catch [io.ErrUnexpectedEOF] here, a packet could
 				// claim an excessive length, cause it, and we'd skip others.

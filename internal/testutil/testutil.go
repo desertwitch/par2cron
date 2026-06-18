@@ -192,7 +192,7 @@ type MockBundleHandler struct {
 	PackFunc func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error
 }
 
-func (m *MockBundleHandler) Open(ctx context.Context, fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+func (m *MockBundleHandler) Open(_ context.Context, fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
 	if m.OpenFunc != nil {
 		return m.OpenFunc(fsys, bundlePath)
 	}
@@ -200,7 +200,7 @@ func (m *MockBundleHandler) Open(ctx context.Context, fsys afero.Fs, bundlePath 
 	return nil, errors.New("not implemented")
 }
 
-func (m *MockBundleHandler) Pack(ctx context.Context, fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+func (m *MockBundleHandler) Pack(_ context.Context, fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
 	if m.PackFunc != nil {
 		return m.PackFunc(fsys, bundlePath, recoverySetID, manifest, files)
 	}
