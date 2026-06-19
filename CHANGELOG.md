@@ -9,7 +9,7 @@ Recording of changes began after release version 0.5.3.
 For earlier changes, please refer instead to the Git commit log.
 
 
-## v0.6.0 - 2026-06-17
+## v0.6.0 - 2026-06-19
 ### Added
 * `tool md5` gains `--all` to parse all provided files (not just PAR2 indexes) ([#76](https://github.com/desertwitch/par2cron/pull/76))
 * `--seq-url` and `--seq-key` to send logs to a (remote) Seq logging server ([#80](https://github.com/desertwitch/par2cron/pull/80))
