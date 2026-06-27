@@ -23,6 +23,7 @@ Full documentation at: https://github.com/desertwitch/par2cron
 ### Options
 
 ```
+      --cgroup string     cgroup v2 directory to constrain par2 processes
   -h, --help              help for par2cron
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)

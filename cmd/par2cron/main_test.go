@@ -126,6 +126,19 @@ func Test_NewRootCmd_HasLogLevelFlag_Success(t *testing.T) {
 	require.Equal(t, "info", flag.DefValue)
 }
 
+// Expectation: The root command should have a "cgroup" persistent flag.
+func Test_NewRootCmd_HasCgroupFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	flag := cmd.PersistentFlags().Lookup("cgroup")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
 // Expectation: The root command should have a "seq-url" persistent flag.
 func Test_NewRootCmd_HasSeqURLFlag_Success(t *testing.T) {
 	t.Parallel()
@@ -273,7 +286,7 @@ func Test_NewRootCmd_HasToolCommand_Success(t *testing.T) {
 func Test_NewToolCmd_HasMD5Command_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newToolCmd(t.Context(), &logging.Options{})
+	cmd := newToolCmd(t.Context(), newGlobalOptions())
 
 	toolMD5Cmd, _, err := cmd.Find([]string{"md5"})
 
@@ -312,7 +325,7 @@ func Test_NewRootCmd_HasBundleCommand_Success(t *testing.T) {
 func Test_NewBundleCmd_HasPackCommand_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleCmd(t.Context(), &logging.Options{})
+	cmd := newBundleCmd(t.Context(), newGlobalOptions())
 
 	bundleCmd, _, err := cmd.Find([]string{"pack"})
 
@@ -325,7 +338,7 @@ func Test_NewBundleCmd_HasPackCommand_Success(t *testing.T) {
 func Test_NewBundleCmd_HasUnpackCommand_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleCmd(t.Context(), &logging.Options{})
+	cmd := newBundleCmd(t.Context(), newGlobalOptions())
 
 	bundleCmd, _, err := cmd.Find([]string{"unpack"})
 
@@ -338,7 +351,7 @@ func Test_NewBundleCmd_HasUnpackCommand_Success(t *testing.T) {
 func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleCmd(t.Context(), &logging.Options{})
+	cmd := newBundleCmd(t.Context(), newGlobalOptions())
 
 	bundleCmd, _, err := cmd.Find([]string{"info"})
 
@@ -351,7 +364,7 @@ func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
 func Test_NewBundlePackCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
+	cmd := newBundlePackCmd(t.Context(), newGlobalOptions())
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "pack", cmd.Name())
@@ -362,7 +375,7 @@ func Test_NewBundlePackCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewBundlePackCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
+	cmd := newBundlePackCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -375,7 +388,7 @@ func Test_NewBundlePackCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 func Test_NewBundlePackCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
+	cmd := newBundlePackCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("include-external")
 
@@ -388,7 +401,7 @@ func Test_NewBundlePackCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 func Test_NewBundlePackCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundlePackCmd(t.Context(), &logging.Options{})
+	cmd := newBundlePackCmd(t.Context(), newGlobalOptions())
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -400,7 +413,7 @@ func Test_NewBundlePackCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewBundleUnpackCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleUnpackCmd(t.Context(), &logging.Options{})
+	cmd := newBundleUnpackCmd(t.Context(), newGlobalOptions())
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "unpack", cmd.Name())
@@ -411,7 +424,7 @@ func Test_NewBundleUnpackCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewBundleUnpackCmd_HasForceFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleUnpackCmd(t.Context(), &logging.Options{})
+	cmd := newBundleUnpackCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("force")
 
@@ -424,7 +437,7 @@ func Test_NewBundleUnpackCmd_HasForceFlag_Success(t *testing.T) {
 func Test_NewBundleUnpackCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newBundleUnpackCmd(t.Context(), &logging.Options{})
+	cmd := newBundleUnpackCmd(t.Context(), newGlobalOptions())
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -436,7 +449,7 @@ func Test_NewBundleUnpackCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewCreateCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "create", cmd.Name())
@@ -447,7 +460,7 @@ func Test_NewCreateCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewCreateCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -460,7 +473,7 @@ func Test_NewCreateCmd_HasConfigFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasModeFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("mode")
 	flagval := flag.Value
@@ -478,7 +491,7 @@ func Test_NewCreateCmd_HasModeFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasHiddenFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("hidden")
 
@@ -491,7 +504,7 @@ func Test_NewCreateCmd_HasHiddenFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasBundleFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("bundle")
 
@@ -504,7 +517,7 @@ func Test_NewCreateCmd_HasBundleFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasVerifyFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("verify")
 
@@ -517,7 +530,7 @@ func Test_NewCreateCmd_HasVerifyFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -529,7 +542,7 @@ func Test_NewCreateCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewCreateCmd_HasGlobFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("glob")
 
@@ -542,7 +555,7 @@ func Test_NewCreateCmd_HasGlobFlag_Success(t *testing.T) {
 func Test_NewCreateCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newCreateCmd(t.Context(), &logging.Options{})
+	cmd := newCreateCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -559,7 +572,7 @@ func Test_NewCreateCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "verify", cmd.Name())
@@ -570,7 +583,7 @@ func Test_NewVerifyCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -583,7 +596,7 @@ func Test_NewVerifyCmd_HasConfigFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasCacheFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("cache")
 
@@ -596,7 +609,7 @@ func Test_NewVerifyCmd_HasCacheFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasAgeFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("age")
 	flagval := flag.Value
@@ -613,7 +626,7 @@ func Test_NewVerifyCmd_HasAgeFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -630,7 +643,7 @@ func Test_NewVerifyCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("calc-run-interval")
 	flagval := flag.Value
@@ -648,7 +661,7 @@ func Test_NewVerifyCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("include-external")
 
@@ -661,7 +674,7 @@ func Test_NewVerifyCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -674,7 +687,7 @@ func Test_NewVerifyCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 func Test_NewVerifyCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newVerifyCmd(t.Context(), &logging.Options{})
+	cmd := newVerifyCmd(t.Context(), newGlobalOptions())
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -686,7 +699,7 @@ func Test_NewVerifyCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewRepairCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "repair", cmd.Name())
@@ -697,7 +710,7 @@ func Test_NewRepairCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewRepairCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -714,7 +727,7 @@ func Test_NewRepairCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasMinTestedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("min-tested")
 
@@ -727,7 +740,7 @@ func Test_NewRepairCmd_HasMinTestedFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasAttemptUnrepairablesFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("attempt-unrepairables")
 
@@ -740,7 +753,7 @@ func Test_NewRepairCmd_HasAttemptUnrepairablesFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasPurgeBackupsFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("purge-backups")
 
@@ -753,7 +766,7 @@ func Test_NewRepairCmd_HasPurgeBackupsFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasRestoreBackupsFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("restore-backups")
 
@@ -766,7 +779,7 @@ func Test_NewRepairCmd_HasRestoreBackupsFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasVerifyFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("verify")
 
@@ -779,7 +792,7 @@ func Test_NewRepairCmd_HasVerifyFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -792,7 +805,7 @@ func Test_NewRepairCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -805,7 +818,7 @@ func Test_NewRepairCmd_HasConfigFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_HasCacheFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("cache")
 
@@ -818,7 +831,7 @@ func Test_NewRepairCmd_HasCacheFlag_Success(t *testing.T) {
 func Test_NewRepairCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRepairCmd(t.Context(), &logging.Options{})
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -830,7 +843,7 @@ func Test_NewRepairCmd_RequiresArgs_Error(t *testing.T) {
 func Test_NewInfoCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	require.NotNil(t, cmd)
 	require.Equal(t, "info", cmd.Name())
@@ -841,7 +854,7 @@ func Test_NewInfoCmd_DefaultArgs_Success(t *testing.T) {
 func Test_NewInfoCmd_HasConfigFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("config")
 
@@ -854,7 +867,7 @@ func Test_NewInfoCmd_HasConfigFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasCacheFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("cache")
 
@@ -867,7 +880,7 @@ func Test_NewInfoCmd_HasCacheFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasAgeFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("age")
 	flagval := flag.Value
@@ -884,7 +897,7 @@ func Test_NewInfoCmd_HasAgeFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasDurationFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("duration")
 	flagval := flag.Value
@@ -901,7 +914,7 @@ func Test_NewInfoCmd_HasDurationFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("calc-run-interval")
 	flagval := flag.Value
@@ -919,7 +932,7 @@ func Test_NewInfoCmd_HasCalcRunIntervalFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("include-external")
 
@@ -932,7 +945,7 @@ func Test_NewInfoCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("skip-not-created")
 
@@ -945,7 +958,7 @@ func Test_NewInfoCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 func Test_NewInfoCmd_RequiresExactOneArg_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
@@ -957,7 +970,7 @@ func Test_NewInfoCmd_RequiresExactOneArg_Error(t *testing.T) {
 func Test_NewInfoCmd_TooManyArgs_Error(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), &logging.Options{})
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 	cmd.SetArgs([]string{"/data", "/extra"})
 
 	err := cmd.Execute()

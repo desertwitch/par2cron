@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/afero"
 	"github.com/spf13/pflag"
@@ -15,7 +14,7 @@ import (
 
 type configMergeable[A any] interface {
 	*configFileCreate | *configFileVerify | *configFileRepair | *configFileInfo
-	Merge(opts A, logs *logging.Options, hasExternalArgs bool, setFlags map[string]bool)
+	Merge(opts A, global *globalOptions, hasExternalArgs bool, setFlags map[string]bool)
 }
 
 type preludeInput[A any, C configMergeable[A]] struct {
@@ -24,7 +23,7 @@ type preludeInput[A any, C configMergeable[A]] struct {
 	DashAt         int
 	ConfigPath     string
 	CommandOptions A
-	LogSettings    *logging.Options
+	GlobalOptions  *globalOptions
 	ExtractSection func(cfg *configFile) C
 	VisitFlags     func(fn func(*pflag.Flag))
 }
@@ -67,7 +66,7 @@ func runPrelude[A any, C configMergeable[A]](in *preludeInput[A, C]) (*preludeRe
 			in.VisitFlags(func(f *pflag.Flag) {
 				setFlags[f.Name] = true
 			})
-			section.Merge(in.CommandOptions, in.LogSettings, hasExternalArgs, setFlags)
+			section.Merge(in.CommandOptions, in.GlobalOptions, hasExternalArgs, setFlags)
 		}
 	}
 

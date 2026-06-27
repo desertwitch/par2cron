@@ -53,6 +53,7 @@ Verify sets not verified < 7 days, run around 2 hours:
 ### Options inherited from parent commands
 
 ```
+      --cgroup string     cgroup v2 directory to constrain par2 processes
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
       --mprof string      write RAM allocation profile to file

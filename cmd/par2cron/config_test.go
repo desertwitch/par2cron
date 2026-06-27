@@ -128,6 +128,7 @@ func Test_parseConfigFile_ValidConfig_Success(t *testing.T) {
   bundle: true
   seq-url: "http://127.0.0.1/seq"
   seq-key: "abcdef"
+  cgroup: "/sys/fs/cgroup/par2limit"
 verify:
   args: ["-B"]
   duration: "2h"
@@ -140,6 +141,7 @@ verify:
   cache: "/tmp/cache"
   seq-url: "http://127.0.0.1/seq"
   seq-key: "abcdef"
+  cgroup: "/sys/fs/cgroup/par2limit"
 repair:
   args: ["-C"]
   verify: true
@@ -154,6 +156,7 @@ repair:
   cache: "/tmp/cache"
   seq-url: "http://127.0.0.1/seq"
   seq-key: "abcdef"
+  cgroup: "/sys/fs/cgroup/par2limit"
 info:
   duration: "1h"
   age: "14d"
@@ -164,7 +167,8 @@ info:
   log-level: "error"
   cache: "/tmp/cache"
   seq-url: "http://127.0.0.1/seq"
-  seq-key: "abcdef"`
+  seq-key: "abcdef"
+  cgroup: "/sys/fs/cgroup/par2limit"`
 	require.NoError(t, afero.WriteFile(fs, "/par2cron.yaml", []byte(yamlContent), 0o644))
 
 	cfg, err := parseConfigFile(fs, "/par2cron.yaml")
@@ -271,6 +275,7 @@ func Test_configFileCreate_Merge_AllFields_Success(t *testing.T) {
 		Bundle:      new(true),
 		SeqURL:      new("url"),
 		SeqKey:      new("key"),
+		Cgroup:      new("/sys/fs/cgroup/par2limit"),
 	}
 	_ = yamlCfg.LogLevel.Set("debug")
 
@@ -288,7 +293,8 @@ func Test_configFileCreate_Merge_AllFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("info")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, []string{"-r20", "-n5"}, cfg.Par2Args)
 	require.Equal(t, "*.mp4", cfg.Par2Glob)
@@ -301,6 +307,7 @@ func Test_configFileCreate_Merge_AllFields_Success(t *testing.T) {
 	require.True(t, cfg.Bundle)
 	require.Equal(t, "url", logs.SeqURL)
 	require.Equal(t, "key", logs.SeqKey)
+	require.Equal(t, "/sys/fs/cgroup/par2limit", global.cgroupPath)
 }
 
 // Expectation: External args should take precedence over YAML config.
@@ -322,7 +329,7 @@ func Test_configFileCreate_Merge_ExternalArgsPrecedence_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("info")
 
-	yamlCfg.Merge(&cfg, &logs, true, map[string]bool{})
+	yamlCfg.Merge(&cfg, &globalOptions{logOptions: &logs}, true, map[string]bool{})
 
 	require.Equal(t, []string{"-r30", "-n10"}, cfg.Par2Args)
 }
@@ -342,6 +349,7 @@ func Test_configFileCreate_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		Bundle:      new(true),
 		SeqURL:      new("url"),
 		SeqKey:      new("key"),
+		Cgroup:      new("/sys/fs/cgroup/par2limit"),
 	}
 	_ = yamlCfg.LogLevel.Set("debug")
 
@@ -369,9 +377,11 @@ func Test_configFileCreate_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"bundle":    true,
 		"seq-url":   true,
 		"seq-key":   true,
+		"cgroup":    true,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, false, setFlags)
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, setFlags)
 
 	require.Equal(t, "*.txt", cfg.Par2Glob)
 	require.False(t, cfg.Par2Verify)
@@ -383,6 +393,7 @@ func Test_configFileCreate_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.False(t, cfg.Bundle)
 	require.Empty(t, logs.SeqURL)
 	require.Empty(t, logs.SeqKey)
+	require.Empty(t, global.cgroupPath)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values.
@@ -407,7 +418,8 @@ func Test_configFileCreate_Merge_NilFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("info")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs, cgroupPath: "/sys/fs/cgroup/existing"}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, []string{"-r10"}, cfg.Par2Args)
 	require.Equal(t, "*.mp4", cfg.Par2Glob)
@@ -415,6 +427,7 @@ func Test_configFileCreate_Merge_NilFields_Success(t *testing.T) {
 	require.Equal(t, schema.CreateFolderMode, cfg.Par2Mode.Value)
 	require.Equal(t, slog.LevelInfo, logs.LogLevel.Value)
 	require.False(t, logs.WantJSON)
+	require.Equal(t, "/sys/fs/cgroup/existing", global.cgroupPath)
 }
 
 // Expectation: Args should be cloned, not referenced.
@@ -436,7 +449,7 @@ func Test_configFileCreate_Merge_ArgsCloned_Success(t *testing.T) {
 		Stderr: io.Discard,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	yamlCfg.Merge(&cfg, &globalOptions{logOptions: &logs}, false, map[string]bool{})
 
 	cfg.Par2Args[0] = "-r99"
 
@@ -468,6 +481,7 @@ func Test_configFileVerify_Merge_AllFields_Success(t *testing.T) {
 		CacheDir:        new("/tmp/cache"),
 		SeqURL:          new("url"),
 		SeqKey:          new("key"),
+		Cgroup:          new("/sys/fs/cgroup/par2limit"),
 	}
 
 	cfg := verify.Options{
@@ -482,7 +496,8 @@ func Test_configFileVerify_Merge_AllFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("info")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, []string{"-B"}, cfg.Par2Args)
 	require.Equal(t, "2h0m0s", cfg.MaxDuration.Value.String())
@@ -495,6 +510,7 @@ func Test_configFileVerify_Merge_AllFields_Success(t *testing.T) {
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 	require.Equal(t, "url", logs.SeqURL)
 	require.Equal(t, "key", logs.SeqKey)
+	require.Equal(t, "/sys/fs/cgroup/par2limit", global.cgroupPath)
 }
 
 // Expectation: External args should take precedence over YAML config for verify.
@@ -515,7 +531,7 @@ func Test_configFileVerify_Merge_ExternalArgsPrecedence_Success(t *testing.T) {
 		Stderr: io.Discard,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, true, map[string]bool{})
+	yamlCfg.Merge(&cfg, &globalOptions{logOptions: &logs}, true, map[string]bool{})
 
 	require.Equal(t, []string{"-qq"}, cfg.Par2Args)
 }
@@ -537,6 +553,7 @@ func Test_configFileVerify_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		CacheDir:        new("/tmp/cache"),
 		SeqURL:          new("url"),
 		SeqKey:          new("key"),
+		Cgroup:          new("/sys/fs/cgroup/par2limit"),
 	}
 
 	cfg := verify.Options{}
@@ -557,9 +574,11 @@ func Test_configFileVerify_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"cache":            true,
 		"seq-url":          true,
 		"seq-key":          true,
+		"cgroup":           true,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, false, setFlags)
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, setFlags)
 
 	require.Equal(t, "1h0m0s", cfg.MaxDuration.Value.String())
 	require.Equal(t, "72h0m0s", cfg.MinAge.Value.String())
@@ -568,6 +587,7 @@ func Test_configFileVerify_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.Empty(t, cfg.CacheDir)
 	require.Empty(t, logs.SeqURL)
 	require.Empty(t, logs.SeqKey)
+	require.Empty(t, global.cgroupPath)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values for verify.
@@ -597,7 +617,8 @@ func Test_configFileVerify_Merge_NilFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("warn")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs, cgroupPath: "/sys/fs/cgroup/existing"}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, []string{"-q"}, cfg.Par2Args)
 	require.Equal(t, "2h0m0s", cfg.MaxDuration.Value.String())
@@ -607,6 +628,7 @@ func Test_configFileVerify_Merge_NilFields_Success(t *testing.T) {
 	require.True(t, cfg.SkipNotCreated)
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
+	require.Equal(t, "/sys/fs/cgroup/existing", global.cgroupPath)
 }
 
 // Expectation: Args should be cloned, not referenced for verify.
@@ -628,7 +650,7 @@ func Test_configFileVerify_Merge_ArgsCloned_Success(t *testing.T) {
 		Stderr: io.Discard,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	yamlCfg.Merge(&cfg, &globalOptions{logOptions: &logs}, false, map[string]bool{})
 
 	cfg.Par2Args[0] = "-qq"
 
@@ -658,6 +680,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 		CacheDir:             new("/tmp/cache"),
 		SeqURL:               new("url"),
 		SeqKey:               new("key"),
+		Cgroup:               new("/sys/fs/cgroup/par2limit"),
 	}
 
 	cfg := repair.Options{
@@ -674,7 +697,8 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("info")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, []string{"-B", "-q"}, cfg.Par2Args)
 	require.Equal(t, "2h0m0s", cfg.MaxDuration.Value.String())
@@ -689,6 +713,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 	require.Equal(t, "url", logs.SeqURL)
 	require.Equal(t, "key", logs.SeqKey)
+	require.Equal(t, "/sys/fs/cgroup/par2limit", global.cgroupPath)
 }
 
 // Expectation: External args should take precedence over YAML config for repair.
@@ -709,7 +734,7 @@ func Test_configFileRepair_Merge_ExternalArgsPrecedence_Success(t *testing.T) {
 		Stderr: io.Discard,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, true, map[string]bool{})
+	yamlCfg.Merge(&cfg, &globalOptions{logOptions: &logs}, true, map[string]bool{})
 
 	require.Equal(t, []string{"-qq"}, cfg.Par2Args)
 }
@@ -736,6 +761,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		CacheDir:             new("/tmp/cache"),
 		SeqURL:               new("url"),
 		SeqKey:               new("key"),
+		Cgroup:               new("/sys/fs/cgroup/par2limit"),
 	}
 
 	cfg := repair.Options{
@@ -764,9 +790,11 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"cache":                 true,
 		"seq-url":               true,
 		"seq-key":               true,
+		"cgroup":                true,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, false, setFlags)
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, setFlags)
 
 	require.Equal(t, "1h0m0s", cfg.MaxDuration.Value.String())
 	require.Equal(t, 3, cfg.MinTestedCount)
@@ -780,6 +808,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.Empty(t, cfg.CacheDir)
 	require.Empty(t, logs.SeqURL)
 	require.Empty(t, logs.SeqKey)
+	require.Empty(t, global.cgroupPath)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values for repair.
@@ -807,7 +836,8 @@ func Test_configFileRepair_Merge_NilFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("warn")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs, cgroupPath: "/sys/fs/cgroup/existing"}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, []string{"-q"}, cfg.Par2Args)
 	require.Equal(t, "2h0m0s", cfg.MaxDuration.Value.String())
@@ -816,6 +846,7 @@ func Test_configFileRepair_Merge_NilFields_Success(t *testing.T) {
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
 	require.False(t, logs.WantJSON)
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
+	require.Equal(t, "/sys/fs/cgroup/existing", global.cgroupPath)
 }
 
 // Expectation: Args should be cloned, not referenced for repair.
@@ -837,7 +868,7 @@ func Test_configFileRepair_Merge_ArgsCloned_Success(t *testing.T) {
 		Stderr: io.Discard,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	yamlCfg.Merge(&cfg, &globalOptions{logOptions: &logs}, false, map[string]bool{})
 
 	cfg.Par2Args[0] = "-qq"
 
@@ -868,6 +899,7 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 		CacheDir:        new("/tmp/cache"),
 		SeqURL:          new("url"),
 		SeqKey:          new("key"),
+		Cgroup:          new("/sys/fs/cgroup/par2limit"),
 	}
 
 	cfg := info.Options{}
@@ -880,7 +912,8 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("info")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, "1h0m0s", cfg.MaxDuration.Value.String())
 	require.Equal(t, "336h0m0s", cfg.MinAge.Value.String())
@@ -892,6 +925,7 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 	require.Equal(t, "url", logs.SeqURL)
 	require.Equal(t, "key", logs.SeqKey)
+	require.Equal(t, "/sys/fs/cgroup/par2limit", global.cgroupPath)
 }
 
 // Expectation: CLI flags should take precedence over YAML config for info.
@@ -915,6 +949,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		CacheDir:        new("/tmp/cache"),
 		SeqURL:          new("url"),
 		SeqKey:          new("key"),
+		Cgroup:          new("/sys/fs/cgroup/par2limit"),
 	}
 
 	cfg := info.Options{}
@@ -938,9 +973,11 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"cache":            true,
 		"seq-key":          true,
 		"seq-url":          true,
+		"cgroup":           true,
 	}
 
-	yamlCfg.Merge(&cfg, &logs, false, setFlags)
+	global := &globalOptions{logOptions: &logs}
+	yamlCfg.Merge(&cfg, global, false, setFlags)
 
 	require.Equal(t, "1h0m0s", cfg.MaxDuration.Value.String())
 	require.Equal(t, "72h0m0s", cfg.MinAge.Value.String())
@@ -951,6 +988,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.Empty(t, cfg.CacheDir)
 	require.Empty(t, logs.SeqURL)
 	require.Empty(t, logs.SeqKey)
+	require.Empty(t, global.cgroupPath)
 }
 
 // Expectation: Nil fields in YAML config should not override existing values for info.
@@ -977,11 +1015,13 @@ func Test_configFileInfo_Merge_NilFields_Success(t *testing.T) {
 	}
 	_ = logs.LogLevel.Set("warn")
 
-	yamlCfg.Merge(&cfg, &logs, false, map[string]bool{})
+	global := &globalOptions{logOptions: &logs, cgroupPath: "/sys/fs/cgroup/existing"}
+	yamlCfg.Merge(&cfg, global, false, map[string]bool{})
 
 	require.Equal(t, "2h0m0s", cfg.MaxDuration.Value.String())
 	require.Equal(t, "72h0m0s", cfg.MinAge.Value.String())
 	require.Equal(t, "6h0m0s", cfg.RunInterval.Value.String())
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
+	require.Equal(t, "/sys/fs/cgroup/existing", global.cgroupPath)
 }

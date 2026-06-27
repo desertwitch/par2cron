@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestLogging() *logging.Options {
+func newTestGlobal() *globalOptions {
 	logs := &logging.Options{
 		Logout: io.Discard,
 		Stdout: io.Discard,
@@ -25,7 +25,9 @@ func newTestLogging() *logging.Options {
 	}
 	_ = logs.LogLevel.Set("info")
 
-	return logs
+	return &globalOptions{
+		logOptions: logs,
+	}
 }
 
 func newTestCreateOptions() *create.Options {
@@ -51,7 +53,7 @@ func Test_runPrelude_DashAtZero_Error(t *testing.T) {
 		Args:           []string{},
 		DashAt:         0,
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -75,7 +77,7 @@ func Test_runPrelude_DashAtNegativeOne_Success(t *testing.T) {
 		Args:           []string{"/data"},
 		DashAt:         -1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -97,7 +99,7 @@ func Test_runPrelude_DashAtFollowedByPath_Error(t *testing.T) {
 		Args:           []string{"/data", "/backup"},
 		DashAt:         1,
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -122,7 +124,7 @@ func Test_runPrelude_DashAtEndOfArgs_Success(t *testing.T) {
 		Args:           []string{"/data"},
 		DashAt:         1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -152,7 +154,7 @@ func Test_runPrelude_HasExternalArgsPrecedence_Success(t *testing.T) {
 		DashAt:         1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -181,7 +183,7 @@ func Test_runPrelude_HasExternalArgsPrecedence_VerifyType_Success(t *testing.T) 
 		DashAt:         1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileVerify { return cfg.Verify },
 		VisitFlags:     noVisitFlags,
 	})
@@ -210,7 +212,7 @@ func Test_runPrelude_HasExternalArgsPrecedence_RepairType_Success(t *testing.T) 
 		DashAt:         1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileRepair { return cfg.Repair },
 		VisitFlags:     noVisitFlags,
 	})
@@ -234,7 +236,7 @@ func Test_runPrelude_ExternalArgsSplit_Success(t *testing.T) {
 		Args:           []string{"/data", "-r15", "-n5"},
 		DashAt:         1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -260,7 +262,7 @@ func Test_runPrelude_MultiplePathsWithExternalArgs_Success(t *testing.T) {
 		Args:           []string{"/data", "/backup", "-B"},
 		DashAt:         2,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -284,7 +286,7 @@ func Test_runPrelude_NoCheckPathAfterDash_Success(t *testing.T) {
 		Args:           []string{"/data", "-nonexistent-flag"},
 		DashAt:         1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -307,7 +309,7 @@ func Test_runPrelude_EmptyArgs_Success(t *testing.T) {
 		Args:           []string{},
 		DashAt:         -1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -331,7 +333,7 @@ func Test_runPrelude_PathsResolved_Success(t *testing.T) {
 		Args:           []string{"/data", "/backup"},
 		DashAt:         -1,
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -356,7 +358,7 @@ func Test_runPrelude_SinglePathNoDash_Success(t *testing.T) {
 		Args:           []string{"/data"},
 		DashAt:         -1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -377,7 +379,7 @@ func Test_runPrelude_PathNotExist_Error(t *testing.T) {
 		Args:           []string{"/nonexistent"},
 		DashAt:         -1,
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -399,7 +401,7 @@ func Test_runPrelude_PathNotDirectory_Error(t *testing.T) {
 		Args:           []string{"/notadir"},
 		DashAt:         -1,
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -421,7 +423,7 @@ func Test_runPrelude_SecondPathNotExist_Error(t *testing.T) {
 		Args:           []string{"/data", "/nonexistent"},
 		DashAt:         -1,
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -445,7 +447,7 @@ func Test_runPrelude_NoConfigPath_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "",
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { called = true; return cfg.Create }, //nolint:nlreturn
 		VisitFlags:     noVisitFlags,
 	})
@@ -468,7 +470,7 @@ func Test_runPrelude_ConfigFileNotFound_Error(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/nonexistent.yaml",
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -492,7 +494,7 @@ func Test_runPrelude_ConfigParseError_Error(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/bad.yaml",
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -520,7 +522,7 @@ func Test_runPrelude_ConfigFileValidationFails_Error(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -543,7 +545,7 @@ func Test_runPrelude_NilConfigSection_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: newTestCreateOptions(),
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -567,7 +569,7 @@ func Test_runPrelude_ConfigMergesIntoCommandOptions_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/par2cron.yaml", []byte(yamlContent), 0o644))
 
 	opts := newTestCreateOptions()
-	logs := newTestLogging()
+	global := newTestGlobal()
 
 	result, err := runPrelude(&preludeInput[*create.Options, *configFileCreate]{
 		FSys:           fs,
@@ -575,7 +577,7 @@ func Test_runPrelude_ConfigMergesIntoCommandOptions_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    logs,
+		GlobalOptions:  global,
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -602,7 +604,7 @@ func Test_runPrelude_ConfigMergesLogSettings_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/par2cron.yaml", []byte(yamlContent), 0o644))
 
 	opts := newTestCreateOptions()
-	logs := newTestLogging()
+	global := newTestGlobal()
 
 	result, err := runPrelude(&preludeInput[*create.Options, *configFileCreate]{
 		FSys:           fs,
@@ -610,15 +612,15 @@ func Test_runPrelude_ConfigMergesLogSettings_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    logs,
+		GlobalOptions:  global,
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
 
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.True(t, logs.WantJSON)
-	require.Equal(t, slog.LevelDebug, logs.LogLevel.Value)
+	require.True(t, global.logOptions.WantJSON)
+	require.Equal(t, slog.LevelDebug, global.logOptions.LogLevel.Value)
 }
 
 // Expectation: Config with duration should merge the duration value.
@@ -633,7 +635,7 @@ func Test_runPrelude_ConfigMergesDuration_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/par2cron.yaml", []byte(yamlContent), 0o644))
 
 	opts := newTestCreateOptions()
-	logs := newTestLogging()
+	global := newTestGlobal()
 
 	result, err := runPrelude(&preludeInput[*create.Options, *configFileCreate]{
 		FSys:           fs,
@@ -641,7 +643,7 @@ func Test_runPrelude_ConfigMergesDuration_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    logs,
+		GlobalOptions:  global,
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -670,7 +672,7 @@ func Test_runPrelude_ConfigMergesHiddenOption_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -700,7 +702,7 @@ func Test_runPrelude_ConfigMergeCausesValidateError_Error(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -738,7 +740,7 @@ func Test_runPrelude_VisitFlagsPreventOverride_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     fakeVisit,
 	})
@@ -766,7 +768,7 @@ func Test_runPrelude_ValidateUnsupportedGlob_Error(t *testing.T) {
 		Args:           []string{"/data"},
 		DashAt:         -1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -793,7 +795,7 @@ func Test_runPrelude_ValidateGenericError_Error(t *testing.T) {
 		Args:           []string{"/data"},
 		DashAt:         -1,
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -823,7 +825,7 @@ func Test_runPrelude_ConfigRecursiveShallowGlob_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileCreate { return cfg.Create },
 		VisitFlags:     noVisitFlags,
 	})
@@ -857,7 +859,7 @@ func Test_runPrelude_VerifyType_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileVerify { return cfg.Verify },
 		VisitFlags:     noVisitFlags,
 	})
@@ -889,7 +891,7 @@ func Test_runPrelude_VerifyConfigRunInterval_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileVerify { return cfg.Verify },
 		VisitFlags:     noVisitFlags,
 	})
@@ -922,7 +924,7 @@ func Test_runPrelude_RepairType_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileRepair { return cfg.Repair },
 		VisitFlags:     noVisitFlags,
 	})
@@ -954,7 +956,7 @@ func Test_runPrelude_RepairConfigOptions_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    newTestLogging(),
+		GlobalOptions:  newTestGlobal(),
 		ExtractSection: func(cfg *configFile) *configFileRepair { return cfg.Repair },
 		VisitFlags:     noVisitFlags,
 	})
@@ -980,7 +982,7 @@ func Test_runPrelude_InfoType_Success(t *testing.T) {
 
 	opts := &info.Options{}
 	_ = opts.RunInterval.Set("24h")
-	logs := newTestLogging()
+	global := newTestGlobal()
 
 	result, err := runPrelude(&preludeInput[*info.Options, *configFileInfo]{
 		FSys:           fs,
@@ -988,7 +990,7 @@ func Test_runPrelude_InfoType_Success(t *testing.T) {
 		DashAt:         -1,
 		ConfigPath:     "/par2cron.yaml",
 		CommandOptions: opts,
-		LogSettings:    logs,
+		GlobalOptions:  global,
 		ExtractSection: func(cfg *configFile) *configFileInfo { return cfg.Info },
 		VisitFlags:     noVisitFlags,
 	})
@@ -996,7 +998,7 @@ func Test_runPrelude_InfoType_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.True(t, opts.IncludeExternal)
-	require.True(t, logs.WantJSON)
+	require.True(t, global.logOptions.WantJSON)
 }
 
 // Expectation: A single valid directory should be resolved to its absolute path.
