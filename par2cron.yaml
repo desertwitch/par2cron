@@ -94,6 +94,13 @@ create:
   # Default: "" (no API key)
   seq-key: ""
 
+  # cgroup: Path to a cgroup v2 directory for resource management
+  # When set, spawned par2 processes are placed into the specified cgroup
+  # Resource limits should be configured externally via cgroup's control files
+  #
+  # Default: "" (disabled)
+  cgroup: ""
+
 # ==============================================================================
 # VERIFY COMMAND SETTINGS
 # ==============================================================================
@@ -177,6 +184,13 @@ verify:
   #
   # Default: "" (no API key)
   seq-key: ""
+
+  # cgroup: Path to a cgroup v2 directory for resource management
+  # When set, spawned par2 processes are placed into the specified cgroup
+  # Resource limits should be configured externally via cgroup's control files
+  #
+  # Default: "" (disabled)
+  cgroup: ""
 
 # ==============================================================================
 # REPAIR COMMAND SETTINGS
@@ -271,6 +285,13 @@ repair:
   # Default: "" (no API key)
   seq-key: ""
 
+  # cgroup: Path to a cgroup v2 directory for resource management
+  # When set, spawned par2 processes are placed into the specified cgroup
+  # Resource limits should be configured externally via cgroup's control files
+  #
+  # Default: "" (disabled)
+  cgroup: ""
+
 # ==============================================================================
 # INFO COMMAND SETTINGS
 # Set always to the same values used for "verify" settings (where applicable)
@@ -343,3 +364,10 @@ info:
   #
   # Default: "" (no API key)
   seq-key: ""
+
+  # cgroup: Path to a cgroup v2 directory for resource management
+  # When set, spawned par2 processes are placed into the specified cgroup
+  # Resource limits should be configured externally via cgroup's control files
+  #
+  # Default: "" (disabled)
+  cgroup: ""
