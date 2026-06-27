@@ -64,6 +64,7 @@
 - [Ignore Files](#ignore-files)
 - [Performance](#performance)
   - [Manifest cache](#manifest-cache)
+  - [Control groups](#control-groups)
 - [Integrations](#integrations)
 - [Logging](#logging)
 - [Limitations](#limitations)
@@ -249,6 +250,7 @@ Detailed documentation for each command is available in the [docs/](docs/) direc
 
 ### Global Flags
 ```
+      --cgroup string     cgroup v2 directory to constrain par2 processes
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
       --mprof string      write RAM allocation profile to file
@@ -970,6 +972,26 @@ cache size is therefore negligible compared to the performance benefit gained.
 > **Note:** When using `--cache`, it should be enabled for all applicable
 > commands and use the same directory path. This ensures all operations benefit
 > from the same cache and maximizes cache effectiveness.
+
+### Control groups
+
+Linux control groups (cgroups v2) allow constraining resources like CPU, memory,
+and I/O for processes placed inside them. par2cron supports using control groups
+via the `--cgroup` flag (or the `cgroup` configuration file directive), placing
+spawned `par2` processes directly into the specified cgroup at execution time.
+
+For example, to limit `par2` to 50% of total CPU across all cores:
+
+```bash
+mkdir -p /sys/fs/cgroup/par2cron
+CORES=$(nproc)
+QUOTA=$(( 50 * 100000 * CORES / 100 ))
+echo "$QUOTA 100000" > /sys/fs/cgroup/par2cron/cpu.max
+
+par2cron create --cgroup /sys/fs/cgroup/par2cron /mnt/data
+```
+
+> **Note:** `--cgroup` requires a Linux kernel 5.7+ and cgroups v2.
 
 ## Integrations
 

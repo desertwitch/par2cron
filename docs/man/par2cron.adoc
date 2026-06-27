@@ -39,6 +39,8 @@ kernel-enforced file locking to prevent interference between instances.
 
 == GLOBAL FLAGS
 
+*--cgroup* _string_::
+  Cgroup v2 directory to constrain par2 processes.
 *--json*::
   Output results/logs in JSON format (where applicable).
 *-l, --log-level* _level_::

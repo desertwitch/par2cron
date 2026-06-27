@@ -1,0 +1,6 @@
+kind: Added
+body: '`--cgroup` for using of control groups'
+time: 2026-06-27T15:52:16.818558766+02:00
+custom:
+    Issue: ""
+    PR: "86"

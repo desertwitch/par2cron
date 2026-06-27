@@ -11,7 +11,6 @@ import (
 	"github.com/desertwitch/par2cron/internal/create"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/info"
-	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/repair"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
@@ -81,13 +80,14 @@ type configFileCreate struct {
 	HideFiles   *bool             `yaml:"hidden"`
 	Bundle      *bool             `yaml:"bundle"`
 
+	Cgroup   *string         `yaml:"cgroup"`
 	LogLevel *flags.LogLevel `yaml:"log-level"`
 	SeqURL   *string         `yaml:"seq-url"`
 	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
-func (yamlCfg *configFileCreate) Merge(cfg *create.Options, logs *logging.Options, hasExternalArgs bool, setFlags map[string]bool) {
+func (yamlCfg *configFileCreate) Merge(cfg *create.Options, global *globalOptions, hasExternalArgs bool, setFlags map[string]bool) {
 	if yamlCfg.Par2Args != nil && !hasExternalArgs {
 		cfg.Par2Args = slices.Clone(*yamlCfg.Par2Args)
 	}
@@ -109,17 +109,20 @@ func (yamlCfg *configFileCreate) Merge(cfg *create.Options, logs *logging.Option
 	if yamlCfg.Bundle != nil && !setFlags["bundle"] {
 		cfg.Bundle = *yamlCfg.Bundle
 	}
+	if yamlCfg.Cgroup != nil && !setFlags["cgroup"] {
+		global.cgroupPath = *yamlCfg.Cgroup
+	}
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
-		logs.LogLevel = *yamlCfg.LogLevel
+		global.logOptions.LogLevel = *yamlCfg.LogLevel
 	}
 	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
-		logs.SeqURL = *yamlCfg.SeqURL
+		global.logOptions.SeqURL = *yamlCfg.SeqURL
 	}
 	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
-		logs.SeqKey = *yamlCfg.SeqKey
+		global.logOptions.SeqKey = *yamlCfg.SeqKey
 	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
-		logs.WantJSON = *yamlCfg.WantJSON
+		global.logOptions.WantJSON = *yamlCfg.WantJSON
 	}
 }
 
@@ -133,13 +136,14 @@ type configFileVerify struct {
 	IncludeExternal *bool           `yaml:"include-external"`
 	SkipNotCreated  *bool           `yaml:"skip-not-created"`
 
+	Cgroup   *string         `yaml:"cgroup"`
 	LogLevel *flags.LogLevel `yaml:"log-level"`
 	SeqURL   *string         `yaml:"seq-url"`
 	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
-func (yamlCfg *configFileVerify) Merge(cfg *verify.Options, logs *logging.Options, hasExternalArgs bool, setFlags map[string]bool) {
+func (yamlCfg *configFileVerify) Merge(cfg *verify.Options, global *globalOptions, hasExternalArgs bool, setFlags map[string]bool) {
 	if yamlCfg.Par2Args != nil && !hasExternalArgs {
 		cfg.Par2Args = slices.Clone(*yamlCfg.Par2Args)
 	}
@@ -161,17 +165,20 @@ func (yamlCfg *configFileVerify) Merge(cfg *verify.Options, logs *logging.Option
 	if yamlCfg.SkipNotCreated != nil && !setFlags["skip-not-created"] {
 		cfg.SkipNotCreated = *yamlCfg.SkipNotCreated
 	}
+	if yamlCfg.Cgroup != nil && !setFlags["cgroup"] {
+		global.cgroupPath = *yamlCfg.Cgroup
+	}
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
-		logs.LogLevel = *yamlCfg.LogLevel
+		global.logOptions.LogLevel = *yamlCfg.LogLevel
 	}
 	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
-		logs.SeqURL = *yamlCfg.SeqURL
+		global.logOptions.SeqURL = *yamlCfg.SeqURL
 	}
 	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
-		logs.SeqKey = *yamlCfg.SeqKey
+		global.logOptions.SeqKey = *yamlCfg.SeqKey
 	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
-		logs.WantJSON = *yamlCfg.WantJSON
+		global.logOptions.WantJSON = *yamlCfg.WantJSON
 	}
 }
 
@@ -187,13 +194,14 @@ type configFileRepair struct {
 	PurgeBackups         *bool           `yaml:"purge-backups"`
 	RestoreBackups       *bool           `yaml:"restore-backups"`
 
+	Cgroup   *string         `yaml:"cgroup"`
 	LogLevel *flags.LogLevel `yaml:"log-level"`
 	SeqURL   *string         `yaml:"seq-url"`
 	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
-func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, logs *logging.Options, hasExternalArgs bool, setFlags map[string]bool) {
+func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, global *globalOptions, hasExternalArgs bool, setFlags map[string]bool) {
 	if yamlCfg.Par2Args != nil && !hasExternalArgs {
 		cfg.Par2Args = slices.Clone(*yamlCfg.Par2Args)
 	}
@@ -221,17 +229,20 @@ func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, logs *logging.Option
 	if yamlCfg.RestoreBackups != nil && !setFlags["restore-backups"] {
 		cfg.RestoreBackups = *yamlCfg.RestoreBackups
 	}
+	if yamlCfg.Cgroup != nil && !setFlags["cgroup"] {
+		global.cgroupPath = *yamlCfg.Cgroup
+	}
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
-		logs.LogLevel = *yamlCfg.LogLevel
+		global.logOptions.LogLevel = *yamlCfg.LogLevel
 	}
 	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
-		logs.SeqURL = *yamlCfg.SeqURL
+		global.logOptions.SeqURL = *yamlCfg.SeqURL
 	}
 	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
-		logs.SeqKey = *yamlCfg.SeqKey
+		global.logOptions.SeqKey = *yamlCfg.SeqKey
 	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
-		logs.WantJSON = *yamlCfg.WantJSON
+		global.logOptions.WantJSON = *yamlCfg.WantJSON
 	}
 }
 
@@ -243,13 +254,14 @@ type configFileInfo struct {
 	IncludeExternal *bool           `yaml:"include-external"`
 	SkipNotCreated  *bool           `yaml:"skip-not-created"`
 
+	Cgroup   *string         `yaml:"cgroup"`
 	LogLevel *flags.LogLevel `yaml:"log-level"`
 	SeqURL   *string         `yaml:"seq-url"`
 	SeqKey   *string         `yaml:"seq-key"`
 	WantJSON *bool           `yaml:"json"`
 }
 
-func (yamlCfg *configFileInfo) Merge(cfg *info.Options, logs *logging.Options, _ bool, setFlags map[string]bool) {
+func (yamlCfg *configFileInfo) Merge(cfg *info.Options, global *globalOptions, _ bool, setFlags map[string]bool) {
 	if yamlCfg.CacheDir != nil && !setFlags["cache"] {
 		cfg.CacheDir = *yamlCfg.CacheDir
 	}
@@ -268,16 +280,19 @@ func (yamlCfg *configFileInfo) Merge(cfg *info.Options, logs *logging.Options, _
 	if yamlCfg.SkipNotCreated != nil && !setFlags["skip-not-created"] {
 		cfg.SkipNotCreated = *yamlCfg.SkipNotCreated
 	}
+	if yamlCfg.Cgroup != nil && !setFlags["cgroup"] {
+		global.cgroupPath = *yamlCfg.Cgroup
+	}
 	if yamlCfg.LogLevel != nil && !setFlags["log-level"] {
-		logs.LogLevel = *yamlCfg.LogLevel
+		global.logOptions.LogLevel = *yamlCfg.LogLevel
 	}
 	if yamlCfg.SeqURL != nil && !setFlags["seq-url"] {
-		logs.SeqURL = *yamlCfg.SeqURL
+		global.logOptions.SeqURL = *yamlCfg.SeqURL
 	}
 	if yamlCfg.SeqKey != nil && !setFlags["seq-key"] {
-		logs.SeqKey = *yamlCfg.SeqKey
+		global.logOptions.SeqKey = *yamlCfg.SeqKey
 	}
 	if yamlCfg.WantJSON != nil && !setFlags["json"] {
-		logs.WantJSON = *yamlCfg.WantJSON
+		global.logOptions.WantJSON = *yamlCfg.WantJSON
 	}
 }
