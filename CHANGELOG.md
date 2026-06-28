@@ -9,6 +9,10 @@ Recording of changes began after release version 0.5.3.
 For earlier changes, please refer instead to the Git commit log.
 
 
+## v0.7.0 - 2026-06-28
+### Added
+* `--cgroup` for using [control groups](https://github.com/desertwitch/par2cron#control-groups) to constrain `par2` ([#86](https://github.com/desertwitch/par2cron/pull/86))
+
 ## v0.6.0 - 2026-06-19
 ### Added
 * `tool md5` gains `--all` to parse all provided files (not just PAR2 indexes) ([#76](https://github.com/desertwitch/par2cron/pull/76))
