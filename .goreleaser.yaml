@@ -34,7 +34,7 @@ builds:
     - 386
 
 source:
-  enabled: true
+  enabled: false
 
 archives:
   -

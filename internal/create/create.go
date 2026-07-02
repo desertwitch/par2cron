@@ -448,7 +448,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 
 	if len(protectableElements) == 0 {
 		logger := prog.creationLogger(ctx, job, job.workingDir)
-		logger.Warn("Nothing to protect (discarding the job)")
+		logger.Warn("Nothing to protect (no files matching)")
 
 		return nil, errNoFilesToProtect
 	}
