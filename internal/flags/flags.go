@@ -26,7 +26,7 @@ var (
 	errInvalidValue = errors.New("invalid value")
 )
 
-type Duration struct {
+type Duration struct { //nolint:recvcheck
 	Raw   string
 	Value time.Duration
 }
@@ -89,7 +89,6 @@ func (f *LogLevel) String() string {
 	return f.Raw
 }
 
-//nolint:goconst
 func (f *LogLevel) Set(s string) error {
 	s = strings.ToLower(strings.TrimSpace(s))
 

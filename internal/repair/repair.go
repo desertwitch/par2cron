@@ -228,7 +228,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 			results.Error++
 		}
 
-		*meta.JobMeta = *(schema.NewJobMeta(job.par2Path, job.manifest, job.isBundle))
+		*meta.JobMeta = *schema.NewJobMeta(job.par2Path, job.manifest, job.isBundle)
 	}
 
 	if err := ctx.Err(); err != nil {

@@ -3,6 +3,8 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 permissions:
   contents: read
 
@@ -33,6 +35,8 @@ jobs:
           - { os: windows, runner: windows-latest, tool: par2cmdline,  action: repair, script: ./scripts/bundle-windows-repair-par2cmdline-latest.ps1 }
           - { os: linux,   runner: ubuntu-latest,  tool: par2cmdline,  action: verify, script: ./scripts/bundle-linux-verify-par2cmdline-latest.sh }
           - { os: linux,   runner: ubuntu-latest,  tool: par2cmdline,  action: repair, script: ./scripts/bundle-linux-repair-par2cmdline-latest.sh }
+          - { os: linux,   runner: ubuntu-latest,  tool: par2cmdline-master,  action: verify, script: ./scripts/bundle-linux-verify-par2cmdline-master.sh }
+          - { os: linux,   runner: ubuntu-latest,  tool: par2cmdline-master,  action: repair, script: ./scripts/bundle-linux-repair-par2cmdline-master.sh }
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6

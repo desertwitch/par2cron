@@ -44,7 +44,7 @@ var ErrDataCorrupt = errors.New("data corrupt")
 // any corruption in either. Corruption in file packets only reduces the chance
 // of extracting a bundled PAR2 data stream later, while corruption in bundled
 // PAR2 data streams is handled gracefully by downstream PAR2 parsing programs.
-type Bundle struct {
+type Bundle struct { //nolint:recvcheck
 	f    afero.File // os.O_RDWR
 	size int64      // guaranteed > 0
 
