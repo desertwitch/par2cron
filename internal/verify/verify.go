@@ -269,7 +269,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			// Write back to cache only on success, otherwise verification time or other
 			// not finalized (pre-verificational) changes will taint the cached metadata.
 			// Keeping this consistent with only paths that call to util.WriteManifest().
-			*meta.JobMeta = *(schema.NewJobMeta(job.par2Path, job.manifest, job.isBundle))
+			*meta.JobMeta = *schema.NewJobMeta(job.par2Path, job.manifest, job.isBundle)
 		} else if errors.Is(err, schema.ErrFileIsLocked) {
 			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++

@@ -154,7 +154,7 @@ Precompiled packages for common distributions are available from the
 **Debian / Ubuntu:**
 
 ```bash
-sudo dpkg -i ./par2cron_*.deb
+sudo apt install ./par2cron_*.deb
 ```
 
 **Fedora / RHEL-based:**
