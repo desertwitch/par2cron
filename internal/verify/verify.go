@@ -259,8 +259,8 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 						"repairPossible", job.manifest.Verification.RepairPossible,
 					)
 				} else {
-					logger.Error("Job completed with corruption detected, "+
-						"but beware protected files may have been edited (newer mtimes)",
+					logger.Error("Job completed with corruption detected; "+
+						"beware protected files may have been edited (newer mtimes)",
 						"runDuration", job.manifest.Verification.Duration.String(),
 						"exitCode", job.manifest.Verification.ExitCode,
 						"repairNeeded", job.manifest.Verification.RepairNeeded,
