@@ -17,6 +17,7 @@ type JobMeta struct {
 	HasVerification bool // mf.Verification
 	RepairNeeded    bool // mf.Verification
 	RepairPossible  bool // mf.Verification
+	MaybeEdited     bool // mf.Verification
 }
 
 func NewJobMeta(par2path string, mf *Manifest, isBundle bool) *JobMeta {
@@ -39,6 +40,7 @@ func NewJobMeta(par2path string, mf *Manifest, isBundle bool) *JobMeta {
 			meta.RepairNeeded = mf.Verification.RepairNeeded
 			meta.RepairPossible = mf.Verification.RepairPossible
 			meta.CountCorrupted = mf.Verification.CountCorrupted
+			meta.MaybeEdited = mf.Verification.MaybeEdited
 		}
 	}
 

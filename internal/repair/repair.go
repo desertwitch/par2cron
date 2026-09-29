@@ -26,6 +26,7 @@ type Options struct {
 	MaxDuration          flags.Duration
 	MinTestedCount       int
 	SkipNotCreated       bool
+	SkipMaybeEdited      bool
 	AttemptUnrepairables bool
 	PurgeBackups         bool
 	RestoreBackups       bool
@@ -320,7 +321,15 @@ func (prog *Service) isRepairCandidate(ctx context.Context, meta *schema.JobMeta
 	}
 
 	if meta.RepairNeeded && (meta.CountCorrupted >= opts.MinTestedCount) {
-		if opts.AttemptUnrepairables || meta.RepairPossible {
+		if meta.RepairPossible || opts.AttemptUnrepairables {
+			if meta.MaybeEdited && opts.SkipMaybeEdited {
+				logger := prog.repairLogger(ctx, meta, nil)
+				logger.Warn("Skipping repair, protected files may have been edited " +
+					"(newer mtimes; --skip-maybe-edited)")
+
+				return false
+			}
+
 			return true
 		}
 	}

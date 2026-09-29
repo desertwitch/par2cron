@@ -114,6 +114,8 @@ Repairs data flagged as needing repair during verification.
   Remove backup files after successful repair.
 *-r, --restore-backups*::
   Restore backups after unsuccessful repair.
+*--skip-maybe-edited*::
+  Skip sets where protected files have newer mtimes.
 *--skip-not-created*::
   Skip sets without a creation record.
 *-v, --verify*::

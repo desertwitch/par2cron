@@ -72,16 +72,18 @@ func (c *CreationManifest) UnmarshalJSON(data []byte) error {
 }
 
 type VerificationManifest struct {
-	ProgramVersion string        `json:"program_version"`
-	Par2Version    string        `json:"par2_version"`
-	Count          int           `json:"count"`
-	CountCorrupted int           `json:"count_corrupted"`
-	Time           time.Time     `json:"time"`
-	Args           []string      `json:"args"`
-	ExitCode       int           `json:"exit_code"`
-	RepairNeeded   bool          `json:"repair_needed"`
-	RepairPossible bool          `json:"repair_possible"`
-	Duration       time.Duration `json:"duration_ns"`
+	ProgramVersion  string        `json:"program_version"`
+	Par2Version     string        `json:"par2_version"`
+	Count           int           `json:"count"`
+	CountCorrupted  int           `json:"count_corrupted"`
+	Time            time.Time     `json:"time"`
+	TimeLastHealthy time.Time     `json:"time_last_healthy"`
+	Args            []string      `json:"args"`
+	ExitCode        int           `json:"exit_code"`
+	RepairNeeded    bool          `json:"repair_needed"`
+	RepairPossible  bool          `json:"repair_possible"`
+	MaybeEdited     bool          `json:"maybe_edited"`
+	Duration        time.Duration `json:"duration_ns"`
 }
 
 func NewVerificationManifest() *VerificationManifest {

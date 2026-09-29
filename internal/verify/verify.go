@@ -139,7 +139,7 @@ func (prog *Service) saveCache(ctx context.Context, cache schema.Cache, opts Opt
 	}
 }
 
-//nolint:funlen
+//nolint:funlen,gocognit
 func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options) (util.ResultTracker, error) {
 	errs := []error{}
 	results := util.NewResultTracker()
@@ -241,7 +241,7 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 			"lastVerified", meta.lastVerifiedStr(),
 		)
 
-		if err := prog.RunVerify(ctx, job, false); err == nil {
+		if err := prog.RunVerify(ctx, job, false); err == nil { //nolint:nestif
 			if job.manifest.Verification.ExitCode == schema.Par2ExitCodeSuccess {
 				logger.Info("Job completed with success",
 					"runDuration", job.manifest.Verification.Duration.String(),
@@ -251,12 +251,22 @@ func (prog *Service) Verify(ctx context.Context, rootDirs []string, opts Options
 				)
 				results.Success++
 			} else {
-				logger.Error("Job completed with corruption detected",
-					"runDuration", job.manifest.Verification.Duration.String(),
-					"exitCode", job.manifest.Verification.ExitCode,
-					"repairNeeded", job.manifest.Verification.RepairNeeded,
-					"repairPossible", job.manifest.Verification.RepairPossible,
-				)
+				if !job.manifest.Verification.MaybeEdited {
+					logger.Error("Job completed with corruption detected",
+						"runDuration", job.manifest.Verification.Duration.String(),
+						"exitCode", job.manifest.Verification.ExitCode,
+						"repairNeeded", job.manifest.Verification.RepairNeeded,
+						"repairPossible", job.manifest.Verification.RepairPossible,
+					)
+				} else {
+					logger.Error("Job completed with corruption detected, "+
+						"but beware protected files may have been edited (newer mtimes)",
+						"runDuration", job.manifest.Verification.Duration.String(),
+						"exitCode", job.manifest.Verification.ExitCode,
+						"repairNeeded", job.manifest.Verification.RepairNeeded,
+						"repairPossible", job.manifest.Verification.RepairPossible,
+					)
+				}
 
 				if job.manifest.Verification.RepairPossible {
 					errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, schema.ErrExitRepairable))
@@ -627,6 +637,14 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 		return err
 	}
 
+	if job.manifest.Verification.ExitCode == schema.Par2ExitCodeSuccess {
+		job.manifest.Verification.MaybeEdited = false
+		job.manifest.Verification.TimeLastHealthy = job.manifest.Verification.Time
+	} else {
+		// Determine if the files may have intentionally been edited.
+		job.manifest.Verification.MaybeEdited = prog.wasMaybeEdited(job)
+	}
+
 	job.manifest.Verification.Count++
 
 	if err := util.WriteManifest(ctx, prog.fsys, prog.bundler, job.manifestPath, job.manifest, job.isBundle); err != nil {
@@ -641,7 +659,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 
 func (prog *Service) parseExitCode(job *Job, err error) error {
 	if err == nil {
-		job.manifest.Verification.ExitCode = 0
+		job.manifest.Verification.ExitCode = schema.Par2ExitCodeSuccess
 	} else {
 		c := util.AsExitCode(err)
 		if c == nil {
@@ -677,6 +695,42 @@ func (prog *Service) parseExitCode(job *Job, err error) error {
 	default:
 		return err // Unhandled exit code, return the error.
 	}
+}
+
+// wasMaybeEdited is a best-effort heuristic: it stays silent when unsure,
+// as the contract of the program (and PAR2 in general) is mostly WORM files.
+func (prog *Service) wasMaybeEdited(job *Job) bool {
+	if job.manifest.Creation == nil {
+		return false
+	}
+
+	if job.manifest.Creation.Time.IsZero() && job.manifest.Verification.TimeLastHealthy.IsZero() {
+		return false
+	}
+
+	ref := job.manifest.Verification.TimeLastHealthy
+	if job.manifest.Verification.TimeLastHealthy.IsZero() {
+		ref = job.manifest.Creation.Time
+	}
+
+	for _, e := range job.manifest.Creation.Elements {
+		// Empty names resolve to the working directory, and
+		// directory mtimes reflect entry changes, not edits.
+		if e.Name == "" || e.IsDir {
+			continue
+		}
+
+		info, err := util.LstatIfPossible(prog.fsys, filepath.Join(job.workingDir, e.Name))
+		if err != nil {
+			continue
+		}
+
+		if info.ModTime().After(ref) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (prog *Service) considerBacklog(metas []*JobMeta, opts Options) {

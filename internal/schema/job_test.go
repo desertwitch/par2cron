@@ -27,6 +27,7 @@ func Test_NewJobMeta_NilManifest_Success(t *testing.T) {
 	require.False(t, meta.HasManifest)
 	require.False(t, meta.HasCreation)
 	require.False(t, meta.HasVerification)
+	require.False(t, meta.MaybeEdited)
 
 	require.False(t, meta.Walked)
 	require.False(t, meta.RepairNeeded)
@@ -100,6 +101,7 @@ func Test_NewJobMeta_WithVerification_Success(t *testing.T) {
 	mf.Verification.RepairNeeded = true
 	mf.Verification.RepairPossible = true
 	mf.Verification.CountCorrupted = 3
+	mf.Verification.MaybeEdited = true
 
 	meta := NewJobMeta("test"+Par2Extension, mf, false)
 
@@ -111,6 +113,7 @@ func Test_NewJobMeta_WithVerification_Success(t *testing.T) {
 	require.Equal(t, verifyDuration, meta.VerifyDuration)
 	require.True(t, meta.RepairNeeded)
 	require.True(t, meta.RepairPossible)
+	require.True(t, meta.MaybeEdited)
 	require.Equal(t, 3, meta.CountCorrupted)
 }
 

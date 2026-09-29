@@ -148,6 +148,7 @@ repair:
   duration: "2h"
   min-tested: 3
   skip-not-created: true
+  skip-maybe-edited: true
   attempt-unrepairables: true
   log-level: "warn"
   json: true
@@ -671,6 +672,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 		MaxDuration:          &maxDur,
 		MinTestedCount:       new(5),
 		SkipNotCreated:       new(true),
+		SkipMaybeEdited:      new(true),
 		LogLevel:             &LogLevel,
 		WantJSON:             new(true),
 		AttemptUnrepairables: new(true),
@@ -704,6 +706,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 	require.Equal(t, "2h0m0s", cfg.MaxDuration.Value.String())
 	require.Equal(t, 5, cfg.MinTestedCount)
 	require.True(t, cfg.SkipNotCreated)
+	require.True(t, cfg.SkipMaybeEdited)
 	require.Equal(t, slog.LevelDebug, logs.LogLevel.Value)
 	require.True(t, logs.WantJSON)
 	require.True(t, cfg.AttemptUnrepairables)
@@ -752,6 +755,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		MaxDuration:          &maxDur,
 		MinTestedCount:       new(10),
 		SkipNotCreated:       new(true),
+		SkipMaybeEdited:      new(true),
 		LogLevel:             &LogLevel,
 		WantJSON:             new(true),
 		AttemptUnrepairables: new(true),
@@ -782,6 +786,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"duration":              true,
 		"min-tested":            true,
 		"skip-not-created":      true,
+		"skip-maybe-edited":     true,
 		"log-level":             true,
 		"json":                  true,
 		"attempt-unrepairables": true,
@@ -799,6 +804,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.Equal(t, "1h0m0s", cfg.MaxDuration.Value.String())
 	require.Equal(t, 3, cfg.MinTestedCount)
 	require.False(t, cfg.SkipNotCreated)
+	require.False(t, cfg.SkipMaybeEdited)
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
 	require.False(t, logs.WantJSON)
 	require.False(t, cfg.AttemptUnrepairables)

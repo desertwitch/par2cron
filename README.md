@@ -351,6 +351,7 @@ Flags:
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
+      --skip-maybe-edited       skip PAR2 sets where protected files may have been edited (newer mtimes)
       --skip-not-created        skip PAR2 sets without a par2cron manifest containing a creation record
   -v, --verify                  PAR2 sets must pass verification as part of repair
 ```
@@ -1048,6 +1049,15 @@ data. It simply has no concept of data being updated, instead flagging such
 updates as possible corruption. If you need to update any protected files,
 you will need to manually delete the PAR2 set and then have it recreated using
 the marker file approach (equals the process for new sets of protectable data).
+
+As a best-effort safeguard, verification warns when a corrupted PAR2 set has
+protected files with newer modification times than its last healthy
+verification, as these files may have been edited rather than corrupted. A
+repair would revert such edits to the protected state (with the edited files
+kept as backups, unless `--purge-backups` is set). The `--skip-maybe-edited`
+argument of `repair` holds back such PAR2 sets for manual inspection instead.
+Beware that modification times can also change for benign reasons, for example
+when files are restored from backups without preserving their timestamps.
 
 A par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in
