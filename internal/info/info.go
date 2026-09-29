@@ -153,6 +153,10 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 		prog.printCycleInfo(js, metas, opts, now)
 	}
 
+	if opts.MinAge.Value > 0 {
+		prog.printOverdueInfo(metas, opts, now)
+	}
+
 	return nil
 }
 
@@ -259,4 +263,59 @@ func (prog *Service) printCycleInfo(js verify.Stats, jobs []*verify.JobMeta, opt
 		fmt.Fprintf(prog.log.Options.Stdout, "    (which excludes %d jobs with unknown duration)\n", js.UnknownCount)
 	}
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
+}
+
+func (prog *Service) printOverdueInfo(jobs []*verify.JobMeta, opts Options, now time.Time) {
+	if opts.MinAge.Value <= 0 {
+		return
+	}
+
+	var overdueRun, overdueCycle int
+	var maxLag time.Duration
+	var maxLagJob *verify.JobMeta
+
+	for _, job := range jobs {
+		if !job.HasVerification || job.VerifyTime.IsZero() {
+			continue
+		}
+
+		// How long the job has been due (negative = not yet due).
+		lag := now.Sub(job.VerifyTime.Add(opts.MinAge.Value))
+		if lag <= opts.RunInterval.Value {
+			continue // Due jobs are expected to be picked up within one run.
+		}
+
+		overdueRun++
+		if lag > opts.MinAge.Value {
+			overdueCycle++
+		}
+
+		if lag > maxLag {
+			maxLag = lag
+			maxLagJob = job
+		}
+	}
+
+	fmt.Fprintf(prog.log.Options.Stdout, "Overdue jobs (--age %s, running par2cron every %s):\n", &opts.MinAge, &opts.RunInterval)
+
+	if overdueRun == 0 {
+		fmt.Fprintf(prog.log.Options.Stdout, "  Overdue: NONE (all due jobs were picked up on time)\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "\n")
+
+		return
+	}
+
+	fmt.Fprintf(prog.log.Options.Stdout, "  Due for longer than one run: %d\n", overdueRun)
+	fmt.Fprintf(prog.log.Options.Stdout, "  Due for longer than one full cycle: %d\n", overdueCycle)
+	fmt.Fprintf(prog.log.Options.Stdout, "  Most overdue: %s (by %s)\n", filepath.Base(maxLagJob.Par2Path), util.FmtDur(maxLag))
+	fmt.Fprintf(prog.log.Options.Stdout, "\n")
+
+	if overdueCycle > 0 {
+		fmt.Fprintf(prog.log.Options.Stdout, "Warning: %d jobs have been due for longer than one full cycle\n", overdueCycle)
+		fmt.Fprintf(prog.log.Options.Stdout, "  Check for backlog warnings, repeated failures, and if par2cron actually runs\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "\n")
+	} else if opts.MaxDuration.Value > 0 {
+		fmt.Fprintf(prog.log.Options.Stdout, "Short delays are normal with --duration, keep an eye out for backlog warnings\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "\n")
+	}
 }

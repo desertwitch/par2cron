@@ -904,6 +904,14 @@ either `--age` or `--duration` needs adjusting. The `info` command provides a
 detailed analysis of your chosen arguments and can be helpful for tracking
 verification progress and backlog health.
 
+While the backlog warning is a forecast based on known durations, the `info`
+command also reports which PAR2 sets are actually overdue when given `--age`.
+Sets due for longer than one run are counted separately from sets due for
+longer than a full cycle. Short delays are normal when using `--duration`, but
+sets overdue by a full cycle point to a too small budget, repeated failures, or
+par2cron not running as scheduled. With `--json`, the same numbers are available
+as `overdue_info` for monitoring and scripts.
+
 As `--duration` is a soft limit, users needing a hard limit can wrap par2cron in
 [timeout(1)](https://man7.org/linux/man-pages/man1/timeout.1.html) which sends
 `SIGTERM` upon expiration; while safe to do, this is not recommended for most
