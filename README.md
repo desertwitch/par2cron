@@ -9,12 +9,12 @@
     <a href="https://github.com/desertwitch/par2cron/releases"><img alt="Release" src="https://img.shields.io/github/release/desertwitch/par2cron.svg"></a>
     <a href="https://go.dev/"><img alt="Go Version" src="https://img.shields.io/badge/Go-%3E%3D%201.26.0-%23007d9c"></a>
     <a href="https://pkg.go.dev/github.com/desertwitch/par2cron"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/desertwitch/par2cron.svg"></a>
-    <a href="https://goreportcard.com/report/github.com/desertwitch/par2cron"><img alt="Go Report" src="https://goreportcard.com/badge/github.com/desertwitch/par2cron"></a>
+    <a href="https://app.codecov.io/gh/desertwitch/par2cron"><img alt="Codecov" src="https://codecov.io/github/desertwitch/par2cron/graph/badge.svg?token=SLUM5DRVHR"></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/desertwitch/par2cron"></a>
     <br>
-    <a href="https://app.codecov.io/gh/desertwitch/par2cron"><img alt="Codecov" src="https://codecov.io/github/desertwitch/par2cron/graph/badge.svg?token=SLUM5DRVHR"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml"><img alt="Lint" src="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml"><img alt="Tests" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml/badge.svg"></a>
+    <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-fuzz.yml"><img alt="Fuzz" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-fuzz.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml"><img alt="Build" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml/badge.svg"></a>
 </div>
 
