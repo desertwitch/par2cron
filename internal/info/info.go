@@ -174,7 +174,7 @@ func (prog *Service) printAgeInfo(js verify.Stats, opts Options) {
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
 	if opts.MinAge.Value < opts.RunInterval.Value {
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: --age (%s) is less than --calc-run-interval (%s)\n", &opts.MinAge, &opts.RunInterval)
+		fmt.Fprintf(prog.log.Options.Stdout, "  Warning: --age (%s) is less than --calc-run-interval (%s)\n", &opts.MinAge, &opts.RunInterval)
 		fmt.Fprintf(prog.log.Options.Stdout, "  Files will always be stale, increase --age or run more frequently\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	}
@@ -199,9 +199,9 @@ func (prog *Service) printDurationInfo(js verify.Stats, opts Options) {
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
 	if js.LargestDuration > opts.MaxDuration.Value {
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: Largest job (%s) exceeds --duration %s\n", util.FmtDur(js.LargestDuration), &opts.MaxDuration)
-		fmt.Fprintf(prog.log.Options.Stdout, "  Job: %s\n", filepath.Base(js.LargestJob.Par2Path))
-		fmt.Fprintf(prog.log.Options.Stdout, "  At least one job will overshoot the soft duration limit when it runs (to avoid starvation)\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "  Warning: The largest recorded job exceeds the given --duration\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "  Largest job: %s (taking %s)\n", filepath.Base(js.LargestJob.Par2Path), util.FmtDur(js.LargestJob.VerifyDuration))
+		fmt.Fprintf(prog.log.Options.Stdout, "  It will overshoot the soft duration limit when it runs (to avoid starvation)\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	}
 }
@@ -228,8 +228,10 @@ func (prog *Service) printBacklogInfo(js verify.Stats, opts Options) {
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	} else {
 		fmt.Fprintf(prog.log.Options.Stdout, "  Backlog: UNHEALTHY (shortfall: %s)\n", util.FmtDur(-margin))
-		fmt.Fprintf(prog.log.Options.Stdout, "    To clear: run once without --duration, then fix arguments (increase --age and/or --duration)\n")
-		fmt.Fprintf(prog.log.Options.Stdout, "    With the current arguments, the backlog will continue to grow indefinitely (INSANE CONFIGURATION)\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "\n")
+
+		fmt.Fprintf(prog.log.Options.Stdout, "  Warning: With the current configuration, the backlog will continue to grow\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "  Run once without --duration, then fix arguments (increase --age and/or --duration)\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	}
 }
@@ -311,11 +313,12 @@ func (prog *Service) printOverdueInfo(jobs []*verify.JobMeta, opts Options, now 
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 
 	if overdueCycle > 0 {
-		fmt.Fprintf(prog.log.Options.Stdout, "Warning: %d jobs have been due for longer than one full cycle\n", overdueCycle)
+		fmt.Fprintf(prog.log.Options.Stdout, "  Warning: %d jobs have been due for longer than one full cycle\n", overdueCycle)
 		fmt.Fprintf(prog.log.Options.Stdout, "  Check for backlog warnings, repeated failures, and if par2cron actually runs\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	} else if opts.MaxDuration.Value > 0 {
-		fmt.Fprintf(prog.log.Options.Stdout, "Short delays are normal with --duration, keep an eye out for backlog warnings\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "  Short delays are normal with --duration, but look out for backlog warnings\n")
+		fmt.Fprintf(prog.log.Options.Stdout, "  If backlog is reported as unhealthy, you need to adjust --age or --duration\n")
 		fmt.Fprintf(prog.log.Options.Stdout, "\n")
 	}
 }

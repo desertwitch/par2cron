@@ -612,7 +612,7 @@ func Test_Service_Info_UnhealthyBacklog_Success(t *testing.T) {
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "UNHEALTHY")
-	require.Contains(t, output, "INSANE CONFIGURATION")
+	require.Contains(t, output, "continue to grow")
 }
 
 // Expectation: The manifest should be parsed and the correct information be shown.
@@ -648,7 +648,7 @@ func Test_Service_Info_LargeJobWarning_Success(t *testing.T) {
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "Largest job")
-	require.Contains(t, output, "exceeds --duration")
+	require.Contains(t, output, "exceeds the given --duration")
 }
 
 // Expectation: A cancellation should be respected and the correct error returned.
@@ -1107,8 +1107,8 @@ func Test_Service_printDurationInfo_LargeJobWarning_Success(t *testing.T) {
 	prog.printDurationInfo(js, args)
 
 	output := stdoutBuf.String()
-	require.Contains(t, output, "Warning: Largest job")
-	require.Contains(t, output, "exceeds --duration")
+	require.Contains(t, output, "Warning: The largest recorded job")
+	require.Contains(t, output, "exceeds the given --duration")
 	require.Contains(t, output, "large.par2")
 }
 
@@ -1212,7 +1212,7 @@ func Test_Service_printBacklogInfo_Unhealthy_Success(t *testing.T) {
 
 	output := stdoutBuf.String()
 	require.Contains(t, output, "UNHEALTHY")
-	require.Contains(t, output, "INSANE CONFIGURATION")
+	require.Contains(t, output, "continue to grow")
 }
 
 // Expectation: The printBacklogInfo should not output anything when MinAge is zero.
