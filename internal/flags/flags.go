@@ -11,7 +11,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/spf13/pflag"
 	"github.com/xhit/go-str2duration/v2"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 var (

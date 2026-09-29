@@ -40,7 +40,7 @@ func NewLogger(opts Options) *Logger {
 			Level: opts.LogLevel.Value,
 		})
 	} else {
-		consoleHandler = tint.NewHandler(opts.Logout, &tint.Options{
+		consoleHandler = tint.NewTextHandler(opts.Logout, &tint.Options{
 			Level:      opts.LogLevel.Value,
 			TimeFormat: time.TimeOnly,
 		})
