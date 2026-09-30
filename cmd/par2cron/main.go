@@ -277,9 +277,9 @@ func newBundleCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 
 	bundlePackCmd := newBundlePackCmd(ctx, globalOptions)
 	bundleUnpackCmd := newBundleUnpackCmd(ctx, globalOptions)
-	bundleInfoCmd := newBundleInfoCmd(ctx, globalOptions)
+	bundleDebugCmd := newBundleDebugCmd(ctx, globalOptions)
 
-	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd, bundleInfoCmd)
+	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd, bundleDebugCmd)
 
 	return bundleCmd
 }
@@ -389,18 +389,18 @@ func newBundleUnpackCmd(ctx context.Context, globalOptions *globalOptions) *cobr
 	return bundleUnpackCmd
 }
 
-func newBundleInfoCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Command {
+func newBundleDebugCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Command {
 	fsys := afero.NewOsFs()
 
 	globalOptions.logOptions.Logout = os.Stderr
 	globalOptions.logOptions.Stdout = os.Stdout
 	globalOptions.logOptions.Stderr = os.Stderr
 
-	bundleInfoCmd := &cobra.Command{
-		Use:     bundleInfoUsage,
-		Short:   bundleInfoHelpShort,
-		Long:    bundleInfoHelpLong,
-		Example: bundleInfoHelpExample,
+	bundleDebugCmd := &cobra.Command{
+		Use:     bundleDebugUsage,
+		Short:   bundleDebugHelpShort,
+		Long:    bundleDebugHelpLong,
+		Example: bundleDebugHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			runner, rerr := newRunner(globalOptions)
@@ -411,20 +411,20 @@ func newBundleInfoCmd(ctx context.Context, globalOptions *globalOptions) *cobra.
 
 			prog := NewProgram(fsys, *globalOptions.logOptions, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
 			defer prog.Shutdown()
-			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "info"))
+			defer recoverOperationPanic(&ret, prog.log.With("op", "bundle", "mode", "debug"))
 
-			ctx := context.WithValue(ctx, schema.ModeKey, "info")
+			ctx := context.WithValue(ctx, schema.ModeKey, "debug")
 
 			err := prog.BundlerService.OutputJSON(ctx, args)
 			if err != nil {
-				return fmt.Errorf("bundle: info: %w", err)
+				return fmt.Errorf("bundle: debug: %w", err)
 			}
 
 			return nil
 		},
 	}
 
-	return bundleInfoCmd
+	return bundleDebugCmd
 }
 
 func newCheckConfigCmd(_ context.Context) *cobra.Command {

@@ -347,17 +347,17 @@ func Test_NewBundleCmd_HasUnpackCommand_Success(t *testing.T) {
 	require.Equal(t, "unpack", bundleCmd.Name())
 }
 
-// Expectation: The bundle command should have a "info" subcommand.
-func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
+// Expectation: The bundle command should have a "debug" subcommand.
+func Test_NewBundleCmd_HasDebugCommand_Success(t *testing.T) {
 	t.Parallel()
 
 	cmd := newBundleCmd(t.Context(), newGlobalOptions())
 
-	bundleCmd, _, err := cmd.Find([]string{"info"})
+	bundleCmd, _, err := cmd.Find([]string{"debug"})
 
 	require.NoError(t, err)
 	require.NotNil(t, bundleCmd)
-	require.Equal(t, "info", bundleCmd.Name())
+	require.Equal(t, "debug", bundleCmd.Name())
 }
 
 // Expectation: The "bundle pack" command should have flags.
