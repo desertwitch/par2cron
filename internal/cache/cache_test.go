@@ -188,6 +188,19 @@ func Test_GobCache_Set_SetsWalkedTrue_Success(t *testing.T) {
 	require.True(t, c.items["/a.par2"].Walked)
 }
 
+// Expectation: Set should set the saved state to false.
+func Test_GobCache_Set_SetsSavedFalse_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	c := NewGobCache(fsys, "/cache", "test")
+
+	m := &schema.JobMeta{Par2Path: "/a.par2", Saved: true}
+	c.Set("/a.par2", m)
+
+	require.False(t, c.items["/a.par2"].Saved)
+}
+
 // Expectation: ResetWalked should set all items to not walked.
 func Test_GobCache_ResetWalked_ClearsAllWalkedState_Success(t *testing.T) {
 	t.Parallel()
@@ -327,6 +340,24 @@ func Test_GobCache_Save_ResetsWalkedState_Success(t *testing.T) {
 	c2 := NewGobCache(fsys, dir, "test")
 	require.NoError(t, c2.Load())
 	require.False(t, c2.items["/a.par2"].Walked)
+}
+
+// Expectation: Save should set the saved state of all entries to true.
+func Test_GobCache_Save_SetsSavedTrue_Success(t *testing.T) {
+	t.Parallel()
+
+	dir := "/"
+	fsys := afero.NewMemMapFs()
+
+	c := NewGobCache(fsys, dir, "test")
+	c.Set("/a.par2", &schema.JobMeta{Par2Path: "/a.par2"})
+	require.False(t, c.items["/a.par2"].Saved)
+
+	require.NoError(t, c.Save())
+
+	c2 := NewGobCache(fsys, dir, "test")
+	require.NoError(t, c2.Load())
+	require.True(t, c2.items["/a.par2"].Saved)
 }
 
 // Expectation: Save and Load should work with an empty cache.

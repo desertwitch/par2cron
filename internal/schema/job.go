@@ -10,7 +10,6 @@ type JobMeta struct {
 	VerifyDuration  time.Duration // mf.Verification
 	CountCorrupted  int           // mf.Verification
 	MetaVersion     uint8
-	Walked          bool
 	IsBundle        bool
 	HasManifest     bool
 	HasCreation     bool // mf.Creation
@@ -18,6 +17,9 @@ type JobMeta struct {
 	RepairNeeded    bool // mf.Verification
 	RepairPossible  bool // mf.Verification
 	MaybeEdited     bool // mf.Verification
+
+	Saved  bool // Was committed to the cache (durable on disk)
+	Walked bool // Was discovered by filesystem walk (exists on disk)
 }
 
 func NewJobMeta(par2path string, mf *Manifest, isBundle bool) *JobMeta {
