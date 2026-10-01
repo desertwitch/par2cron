@@ -78,20 +78,10 @@ release:
 
 changelog:
   use: github
-  sort: asc
   filters:
     exclude:
     - "^Merge"
     - "\\(ci\\)"
-  groups:
-    - title: 'New features'
-      regexp: '^.*?feat[\(:]'
-      order: 0
-    - title: 'Bug fixes'
-      regexp: '^.*?fix[\(:]'
-      order: 10
-    - title: 'Other work'
-      order: 999
 
 nfpms:
   - package_name: par2cron
