@@ -235,15 +235,16 @@ func newToolMD5Cmd(ctx context.Context, globalOptions *globalOptions) *cobra.Com
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	toolMD5Cmd := &cobra.Command{
 		Use:     toolMD5Usage,
 		Short:   toolMD5HelpShort,
 		Example: toolMD5HelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
+		PreRun: func(_ *cobra.Command, _ []string) {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+		},
 		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			runner, rerr := newRunner(globalOptions)
 			if rerr != nil {
@@ -292,16 +293,16 @@ func newBundlePackCmd(ctx context.Context, globalOptions *globalOptions) *cobra.
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	bundlePackCmd := &cobra.Command{
 		Use:   bundlePackUsage,
 		Short: bundlePackHelpShort,
 		Long:  bundlePackHelpLong,
 		Args:  wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(_ *cobra.Command, args []string) error {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+
 			resolved, err := resolvePathArgs(fsys, args)
 			if err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -345,16 +346,16 @@ func newBundleUnpackCmd(ctx context.Context, globalOptions *globalOptions) *cobr
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	bundleUnpackCmd := &cobra.Command{
 		Use:   bundleUnpackUsage,
 		Short: bundleUnpackHelpShort,
 		Long:  bundleUnpackHelpLong,
 		Args:  wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(_ *cobra.Command, args []string) error {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+
 			resolved, err := resolvePathArgs(fsys, args)
 			if err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -394,16 +395,17 @@ func newBundleUnpackCmd(ctx context.Context, globalOptions *globalOptions) *cobr
 func newBundleDebugCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Command {
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	bundleDebugCmd := &cobra.Command{
 		Use:     bundleDebugUsage,
 		Short:   bundleDebugHelpShort,
 		Long:    bundleDebugHelpLong,
 		Example: bundleDebugHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
+		PreRun: func(_ *cobra.Command, _ []string) {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+		},
 		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			runner, rerr := newRunner(globalOptions)
 			if rerr != nil {
@@ -459,10 +461,6 @@ func newCreateCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	_ = createOptions.Par2Mode.Set(schema.CreateFolderMode)
 
 	createCmd := &cobra.Command{
@@ -472,6 +470,10 @@ func newCreateCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 		Example: createHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+
 			if err := checkForPar2(ctx, &util.CtxRunner{}, globalOptions.logOptions.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
@@ -533,10 +535,6 @@ func newVerifyCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	_ = verifyOptions.RunInterval.Set("24h")
 
 	verifyCmd := &cobra.Command{
@@ -546,6 +544,10 @@ func newVerifyCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 		Example: verifyHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+
 			if err := checkForPar2(ctx, &util.CtxRunner{}, globalOptions.logOptions.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
@@ -607,10 +609,6 @@ func newRepairCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	repairCmd := &cobra.Command{
 		Use:     repairUsage,
 		Short:   repairHelpShort,
@@ -618,6 +616,10 @@ func newRepairCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 		Example: repairHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+
 			if err := checkForPar2(ctx, &util.CtxRunner{}, globalOptions.logOptions.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
@@ -681,10 +683,6 @@ func newInfoCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	_ = infoOptions.RunInterval.Set("24h")
 
 	infoCmd := &cobra.Command{
@@ -694,6 +692,10 @@ func newInfoCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 		Example: infoHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+
 			result, err := runPrelude(&preludeInput[*info.Options, *configFileInfo]{
 				FSys:           fsys,
 				Args:           args,
@@ -748,10 +750,6 @@ func newListCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 
 	fsys := afero.NewOsFs()
 
-	globalOptions.logOptions.Logout = os.Stderr
-	globalOptions.logOptions.Stdout = os.Stdout
-	globalOptions.logOptions.Stderr = os.Stderr
-
 	listCmd := &cobra.Command{
 		Use:     listUsage,
 		Short:   listHelpShort,
@@ -759,6 +757,10 @@ func newListCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 		Example: listHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
 		PreRunE: func(_ *cobra.Command, args []string) error {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+
 			resolved, err := resolvePathArgs(fsys, args)
 			if err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
