@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -126,7 +127,7 @@ func (prog *Service) printTable(metas []*verify.JobMeta) error {
 		if m.HasVerification {
 			corrupt = strconv.Itoa(m.CountCorrupted)
 			verified = m.VerifyTime.Local().Format("2006-01-02T15:04:05") //nolint:gosmopolitan
-			dur = util.FmtDur(m.VerifyDuration)
+			dur = m.VerifyDuration.Round(time.Second).String()
 		}
 
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
