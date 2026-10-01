@@ -1,0 +1,6 @@
+kind: Changed
+body: store times as UTC in manifests and JSON output
+time: 2026-10-01T08:25:20.501666697+02:00
+custom:
+    Issue: ""
+    PR: "91"

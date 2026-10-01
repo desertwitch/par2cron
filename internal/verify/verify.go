@@ -624,9 +624,10 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 	cmdArgs = append(cmdArgs, "--")
 	cmdArgs = append(cmdArgs, job.par2Path)
 
-	job.manifest.Verification.Time = time.Now()
+	start := time.Now()
+	job.manifest.Verification.Time = start.UTC()
 	err := prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
-	job.manifest.Verification.Duration = time.Since(job.manifest.Verification.Time)
+	job.manifest.Verification.Duration = time.Since(start)
 
 	if err := prog.parseExitCode(job, err); err != nil {
 		err = fmt.Errorf("par2cmdline: %w", err)

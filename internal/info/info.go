@@ -125,10 +125,10 @@ func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) 
 	fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Total verification time:", util.FmtDur(js.TotalDuration))
 	fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Average job duration:", util.FmtDur(js.AvgDuration))
 	if !js.FirstVerification.IsZero() {
-		fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Earliest verification time:", js.FirstVerification.Format(time.RFC1123))
+		fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Earliest verification time:", js.FirstVerification.Local().Format(time.RFC1123)) //nolint:gosmopolitan
 	}
 	if !js.LastVerification.IsZero() {
-		fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Latest verification time:", js.LastVerification.Format(time.RFC1123))
+		fmt.Fprintf(prog.log.Options.Stdout, "%-30s %s\n", "Latest verification time:", js.LastVerification.Local().Format(time.RFC1123)) //nolint:gosmopolitan
 	}
 	fmt.Fprintf(prog.log.Options.Stdout, "\n")
 

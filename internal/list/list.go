@@ -125,7 +125,7 @@ func (prog *Service) printTable(metas []*verify.JobMeta) error {
 		}
 		if m.HasVerification {
 			corrupt = strconv.Itoa(m.CountCorrupted)
-			verified = m.VerifyTime.Format("2006-01-02T15:04")
+			verified = m.VerifyTime.Local().Format("2006-01-02T15:04:05") //nolint:gosmopolitan
 			dur = util.FmtDur(m.VerifyDuration)
 		}
 

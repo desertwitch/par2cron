@@ -564,9 +564,10 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 		}
 	}
 
-	job.manifest.Repair.Time = time.Now()
+	start := time.Now()
+	job.manifest.Repair.Time = start.UTC()
 	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
-	job.manifest.Repair.Duration = time.Since(job.manifest.Repair.Time)
+	job.manifest.Repair.Duration = time.Since(start)
 
 	if err != nil {
 		needsRestore = true

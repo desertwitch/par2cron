@@ -224,7 +224,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 
 	result := &Result{
 		Roots:   slices.Clone(rootDirs),
-		Time:    now,
+		Time:    now.UTC(),
 		Options: &opts,
 	}
 

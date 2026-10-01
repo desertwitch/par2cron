@@ -88,6 +88,8 @@ func HashFile(fsys afero.Fs, filePath string) (string, error) {
 }
 
 func WriteManifest(ctx context.Context, fsys afero.Fs, bundler schema.BundleHandler, path string, m *schema.Manifest, isBundle bool) error {
+	m.NormalizeTimes()
+
 	// Update versions here, as we un- and re-marshalled to a possibly
 	// new manifest format (adding new fields and dropping old fields).
 	m.ProgramVersion = schema.ProgramVersion

@@ -228,7 +228,7 @@ func Test_Service_List_WithJobs_Success(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(stdoutBuf.String()), "\n")
 	require.Len(t, lines, 2)
 	require.True(t, strings.HasPrefix(lines[1], "healthy"))
-	require.Contains(t, lines[1], "2024-01-15T12:00")
+	require.Contains(t, lines[1], verifiedAt.Local().Format("2006-01-02T15:04:05"))
 	require.Contains(t, lines[1], util.FmtDur(5*time.Minute))
 	require.True(t, strings.HasSuffix(lines[1], "/data/test"+schema.Par2Extension))
 }
@@ -628,7 +628,7 @@ func Test_Service_printTable_AllStatuses_Success(t *testing.T) {
 	require.True(t, strings.HasSuffix(lines[3], "/data/unverified.par2"))
 
 	require.True(t, strings.HasPrefix(lines[4], "healthy"))
-	require.Contains(t, lines[4], "2024-01-15T12:00")
+	require.Contains(t, lines[4], verifiedAt.Local().Format("2006-01-02T15:04:05"))
 	require.True(t, strings.HasSuffix(lines[4], "/data/healthy.par2"))
 }
 
