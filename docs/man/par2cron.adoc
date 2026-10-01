@@ -14,6 +14,8 @@ par2cron - PAR2 integrity and self-repair engine
 
 *par2cron info* [_flags_] _dir_ [_dir_...]
 
+*par2cron list* [_flags_] _dir_ [_dir_...]
+
 *par2cron bundle pack* [_flags_] _dir_ [_dir_...]
 
 *par2cron bundle unpack* [_flags_] _dir_ [_dir_...]
@@ -141,6 +143,16 @@ Shows verification cycle statistics and configuration analysis.
 *--skip-not-created*::
   Skip sets without a creation record.
 
+=== par2cron list
+
+Lists all par2cron-managed PAR2 sets and their status.
+
+*--cache* _string_::
+  Manifest cache directory; best on fast storage.
+  Use same cache folder for all supporting operations.
+*--skip-not-created*::
+  Skip sets without a creation record.
+
 === par2cron bundle pack
 
 Packs all existing PAR2 sets of a folder into bundles.
@@ -200,8 +212,8 @@ corrupted or incomplete files, meaning the above applies to *SIGPIPE* equally.
 
 par2cron logs are written to standard error (*stderr*) using structured logging
 (text or JSON). Output from the *par2*(1) program is written to standard output
-(*stdout*). The *info* command writes its result to *stdout* and structured
-logs to *stderr*.
+(*stdout*). The *info* and *list* commands write their result to *stdout* and
+structured logs to *stderr*.
 
 == FILES
 

@@ -34,6 +34,7 @@
   - [`par2cron verify`](#par2cron-verify)
   - [`par2cron repair`](#par2cron-repair)
   - [`par2cron info`](#par2cron-info)
+  - [`par2cron list`](#par2cron-list)
   - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron tool`](#par2cron-tool)
   - [`par2cron check-config`](#par2cron-check-config)
@@ -238,6 +239,7 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron verify`       | Verifies existing PAR2 sets in a directory tree         |
 | `par2cron repair`       | Repairs corrupted files using PAR2 recovery data        |
 | `par2cron info`         | Shows verification cycle and configuration statistics   |
+| `par2cron list`         | Lists all par2cron-managed PAR2 sets and their status   |
 | `par2cron bundle`       | Commands for interacting with par2cron's bundle format  |
 | `par2cron tool`         | Useful utility commands for interacting with PAR2 files |
 | `par2cron check-config` | Validates a par2cron YAML configuration file            |
@@ -380,6 +382,30 @@ Flags:
   -h, --help                         help for info
   -e, --include-external             include external PAR2 sets without a par2cron manifest
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
+```
+
+### `par2cron list`
+```
+Lists all par2cron-managed PAR2 sets and their status
+
+Usage:
+  par2cron list [flags] <dir> [dir...]
+
+Examples:
+
+List all PAR2 sets with their current status:
+  par2cron list /mnt/storage
+
+Show only PAR2 sets with corruption found:
+  par2cron list /mnt/storage | grep -E '^(unrepairable|repairable) '
+
+Output results as JSON (stdout/standard output):
+  par2cron list --json /mnt/storage
+
+Flags:
+      --cache string       directory for optional manifest cache (use same for all commands)
+  -h, --help               help for list
+      --skip-not-created   skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
 ### `par2cron bundle`

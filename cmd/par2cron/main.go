@@ -45,6 +45,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/bundler"
 	"github.com/desertwitch/par2cron/internal/create"
 	"github.com/desertwitch/par2cron/internal/info"
+	"github.com/desertwitch/par2cron/internal/list"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/repair"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -190,12 +191,13 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	repairCmd := newRepairCmd(ctx, globalOptions)
 
 	infoCmd := newInfoCmd(ctx, globalOptions)
+	listCmd := newListCmd(ctx, globalOptions)
 	toolCmd := newToolCmd(ctx, globalOptions)
 	bundleCmd := newBundleCmd(ctx, globalOptions)
 	checkConfigCmd := newCheckConfigCmd(ctx)
 	genMarkdownCmd := newGenMarkdownCmd(rootCmd)
 
-	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, toolCmd, bundleCmd, checkConfigCmd, genMarkdownCmd)
+	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, listCmd, toolCmd, bundleCmd, checkConfigCmd, genMarkdownCmd)
 
 	return rootCmd
 }
@@ -740,11 +742,63 @@ func newInfoCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 	return infoCmd
 }
 
+func newListCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Command {
+	var listOptions list.Options
+	var resolvedPaths []string
+
+	fsys := afero.NewOsFs()
+
+	globalOptions.logOptions.Logout = os.Stderr
+	globalOptions.logOptions.Stdout = os.Stdout
+	globalOptions.logOptions.Stderr = os.Stderr
+
+	listCmd := &cobra.Command{
+		Use:     listUsage,
+		Short:   listHelpShort,
+		Long:    listHelpLong,
+		Example: listHelpExample,
+		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
+		PreRunE: func(_ *cobra.Command, args []string) error {
+			resolved, err := resolvePathArgs(fsys, args)
+			if err != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+
+			resolvedPaths = slices.Clone(resolved)
+
+			return nil
+		},
+		RunE: func(_ *cobra.Command, _ []string) (ret error) { //nolint:nonamedreturns
+			runner, rerr := newRunner(globalOptions)
+			if rerr != nil {
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, rerr)
+			}
+			defer runner.Close()
+
+			prog := NewProgram(fsys, *globalOptions.logOptions, runner, &util.BundleHandler{}, &util.Par2Handler{}, util.GobCacheHandler{})
+			defer prog.Shutdown()
+			defer recoverOperationPanic(&ret, prog.log.With("op", "list"))
+
+			err := prog.ListService.List(ctx, resolvedPaths, listOptions)
+			if err != nil {
+				return fmt.Errorf("list: %w", err)
+			}
+
+			return nil
+		},
+	}
+	listCmd.Flags().BoolVar(&listOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	listCmd.Flags().StringVar(&listOptions.CacheDir, "cache", "", "directory for optional manifest cache (use same for all commands)")
+
+	return listCmd
+}
+
 type Program struct {
 	CreationService     *create.Service
 	VerificationService *verify.Service
 	RepairService       *repair.Service
 	InfoService         *info.Service
+	ListService         *list.Service
 	BundlerService      *bundler.Service
 	ToolService         *tool.Service
 
@@ -766,6 +820,7 @@ func NewProgram(
 		VerificationService: verify.NewService(fsys, log, r, b, c),
 		RepairService:       repair.NewService(fsys, log, r, b, c),
 		InfoService:         info.NewService(fsys, log, r, b, c),
+		ListService:         list.NewService(fsys, log, r, b, c),
 		BundlerService:      bundler.NewService(fsys, log, b, p),
 		ToolService:         tool.NewService(fsys, log, b, p),
 
