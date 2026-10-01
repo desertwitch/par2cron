@@ -26,6 +26,7 @@ type Options struct {
 	MaxDuration          flags.Duration
 	MinTestedCount       int
 	SkipNotCreated       bool
+	SkipMaybeEdited      bool
 	AttemptUnrepairables bool
 	PurgeBackups         bool
 	RestoreBackups       bool
@@ -40,6 +41,7 @@ type Service struct {
 	fsys afero.Fs
 
 	log     *logging.Logger
+	logbase *logging.Logger
 	runner  schema.CommandRunner
 	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
@@ -56,6 +58,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 
 	return &Service{
 		fsys:    fsys,
+		logbase: log,
 		log:     log.With("op", "repair"),
 		runner:  runner,
 		walker:  walker,
@@ -320,7 +323,15 @@ func (prog *Service) isRepairCandidate(ctx context.Context, meta *schema.JobMeta
 	}
 
 	if meta.RepairNeeded && (meta.CountCorrupted >= opts.MinTestedCount) {
-		if opts.AttemptUnrepairables || meta.RepairPossible {
+		if meta.RepairPossible || opts.AttemptUnrepairables {
+			if meta.MaybeEdited && opts.SkipMaybeEdited {
+				logger := prog.repairLogger(ctx, meta, nil)
+				logger.Warn("Skipping repair, protected files may have been edited " +
+					"(newer mtimes; --skip-maybe-edited)")
+
+				return false
+			}
+
 			return true
 		}
 	}
@@ -553,9 +564,10 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 		}
 	}
 
-	job.manifest.Repair.Time = time.Now()
+	start := time.Now()
+	job.manifest.Repair.Time = start.UTC()
 	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
-	job.manifest.Repair.Duration = time.Since(job.manifest.Repair.Time)
+	job.manifest.Repair.Duration = time.Since(start)
 
 	if err != nil {
 		needsRestore = true
@@ -579,7 +591,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
+		vs := verify.NewService(prog.fsys, prog.logbase, prog.runner, prog.bundler, prog.cacher)
 		vj := verify.NewJob(job.par2Path, verify.Options{}, job.manifest, job.isBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {

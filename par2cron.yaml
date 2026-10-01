@@ -233,6 +233,15 @@ repair:
   # Default: false
   skip-not-created: false
 
+  # skip-maybe-edited: Skip PAR2 sets where protected files may have been edited
+  # A set is flagged by verification when files have newer mtimes than the last
+  # healthy verification (best-effort heuristic, not a guarantee of such edits)
+  # Beware files can have a changed mtime for various benign reasons, including
+  # when manually restored from backups to "fix" a previously unrepairable set
+  #
+  # Default: false
+  skip-maybe-edited: false
+
   # attempt-unrepairables: Attempt to repair PAR2 sets verified as unrepairable
   # Use with caution as will result in non-zero exit codes on (partial) failure
   #

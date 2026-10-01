@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/schema"
-	"github.com/stretchr/testify/assert/yaml"
 	"github.com/stretchr/testify/require"
+	"go.yaml.in/yaml/v3"
 )
 
 // Expectation: The function should take an empty string.

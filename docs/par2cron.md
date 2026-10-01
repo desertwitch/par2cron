@@ -40,6 +40,7 @@ Full documentation at: https://github.com/desertwitch/par2cron
 * [par2cron completion](par2cron_completion.md)	 - Generate the autocompletion script for the specified shell
 * [par2cron create](par2cron_create.md)	 - Creates PAR2 sets for directories with marker files
 * [par2cron info](par2cron_info.md)	 - Shows verification cycle and configuration statistics
+* [par2cron list](par2cron_list.md)	 - Lists all par2cron-managed PAR2 sets and their status
 * [par2cron repair](par2cron_repair.md)	 - Repairs any corrupted files using the PAR2 recovery data
 * [par2cron tool](par2cron_tool.md)	 - Useful utility commands for interacting with PAR2 files
 * [par2cron verify](par2cron_verify.md)	 - Verifies the existing PAR2 sets found in a directory tree

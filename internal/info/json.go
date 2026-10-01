@@ -41,6 +41,9 @@ type Result struct {
 	// CycleInfo contains verification progress within the current cycle window.
 	CycleInfo *CycleInfo `json:"cycle_info,omitempty"`
 
+	// OverdueInfo contains jobs that were due but not verified in time.
+	OverdueInfo *OverdueInfo `json:"overdue_info,omitempty"`
+
 	// Warning indicates issues encountered during enumeration.
 	Warning string `json:"warning,omitempty"`
 }
@@ -162,6 +165,24 @@ type CycleInfo struct {
 	Warning string `json:"warning,omitempty"`
 }
 
+// OverdueInfo contains jobs that were due for verification but not picked up in time.
+type OverdueInfo struct {
+	// OverdueRunCount is the number of jobs due for longer than one run interval.
+	OverdueRunCount int `json:"overdue_run_count"`
+
+	// OverdueCycleCount is the number of jobs due for longer than a full --age cycle.
+	OverdueCycleCount int `json:"overdue_cycle_count"`
+
+	// MostOverdueJob is the filename of the job that has been due the longest.
+	MostOverdueJob string `json:"most_overdue_job,omitempty"`
+
+	// MostOverdueBy is how long the most overdue job has been due.
+	MostOverdueBy time.Duration `json:"most_overdue_by_ns,omitempty"`
+
+	// Warning indicates jobs that have been due for longer than one full cycle.
+	Warning string `json:"warning,omitempty"`
+}
+
 func (prog *Service) PrintJSON(ctx context.Context, rootDirs []string, opts Options) error {
 	result, err := prog.Result(ctx, rootDirs, opts)
 	if err != nil {
@@ -198,12 +219,12 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 
 	now := time.Now()
 
-	vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
+	vs := verify.NewService(prog.fsys, prog.logbase, prog.runner, prog.bundler, prog.cacher)
 	va := verify.Options{IncludeExternal: opts.IncludeExternal, SkipNotCreated: opts.SkipNotCreated}
 
 	result := &Result{
 		Roots:   slices.Clone(rootDirs),
-		Time:    now,
+		Time:    now.UTC(),
 		Options: &opts,
 	}
 
@@ -273,6 +294,10 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 
 	if opts.MinAge.Value > 0 && js.TotalDuration > 0 && js.JobCount > 0 {
 		result.CycleInfo = prog.buildCycleInfo(js, metas, opts, now)
+	}
+
+	if opts.MinAge.Value > 0 {
+		result.OverdueInfo = prog.buildOverdueInfo(metas, opts, now)
 	}
 
 	return result, nil
@@ -368,6 +393,44 @@ func (prog *Service) buildCycleInfo(js verify.Stats, jobs []*verify.JobMeta, opt
 	if js.UnknownCount > 0 {
 		info.UnknownCount = js.UnknownCount
 		info.Warning = fmt.Sprintf("cycle_info excludes %d unknown duration jobs", info.UnknownCount)
+	}
+
+	return info
+}
+
+func (prog *Service) buildOverdueInfo(jobs []*verify.JobMeta, opts Options, now time.Time) *OverdueInfo {
+	info := &OverdueInfo{}
+
+	var maxLagJob *verify.JobMeta
+	for _, job := range jobs {
+		if !job.HasVerification || job.VerifyTime.IsZero() {
+			continue
+		}
+
+		// How long the job has been due (negative = not yet due).
+		lag := now.Sub(job.VerifyTime.Add(opts.MinAge.Value))
+		if lag <= opts.RunInterval.Value {
+			continue // Due jobs are expected to be picked up within one run.
+		}
+
+		info.OverdueRunCount++
+		if lag > opts.MinAge.Value {
+			info.OverdueCycleCount++
+		}
+
+		if lag > info.MostOverdueBy {
+			info.MostOverdueBy = lag
+			maxLagJob = job
+		}
+	}
+
+	if maxLagJob != nil {
+		info.MostOverdueJob = filepath.Base(maxLagJob.Par2Path)
+	}
+
+	if info.OverdueCycleCount > 0 {
+		info.Warning = fmt.Sprintf("%d jobs have been due for longer than one full cycle; "+
+			"check for backlog warnings, repeated failures, and if par2cron actually runs", info.OverdueCycleCount)
 	}
 
 	return info

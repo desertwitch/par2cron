@@ -2430,6 +2430,55 @@ func Test_Service_Enumerate_CacheHit_BelowMinTestedCount_Success(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Not a candidate for repair")
 }
 
+// Expectation: Enumerate should call Set on the cache for uncached entries.
+func Test_Service_Enumerate_CacheMiss_SetsCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+		CountCorrupted: 1,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	var setCalled bool
+	var setKey string
+	cache := &testutil.MockCache{
+		GetFunc: func(key string) (*schema.JobMeta, bool) {
+			return nil, false
+		},
+		SetFunc: func(key string, meta *schema.JobMeta) {
+			setCalled = true
+			setKey = key
+		},
+	}
+
+	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.True(t, setCalled)
+	require.Equal(t, "/data/test"+schema.Par2Extension, setKey)
+}
+
 // Expectation: Enumerate should use a cached bundle entry instead of opening the bundle from disk.
 func Test_Service_Enumerate_Bundle_CacheHit_Success(t *testing.T) {
 	t.Parallel()
@@ -2485,55 +2534,6 @@ func Test_Service_Enumerate_Bundle_CacheHit_Success(t *testing.T) {
 	require.Equal(t, cachedMeta, jobs[0].JobMeta)
 	require.True(t, jobs[0].IsBundle)
 	require.False(t, openCalled)
-}
-
-// Expectation: Enumerate should call Set on the cache for uncached entries.
-func Test_Service_Enumerate_CacheMiss_SetsCache_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
-
-	mf := schema.NewManifest("test" + schema.Par2Extension)
-	mf.Verification = &schema.VerificationManifest{
-		RepairNeeded:   true,
-		RepairPossible: true,
-		CountCorrupted: 1,
-	}
-	mfData, err := json.Marshal(mf)
-	require.NoError(t, err)
-	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("debug")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
-
-	var setCalled bool
-	var setKey string
-	cache := &testutil.MockCache{
-		GetFunc: func(key string) (*schema.JobMeta, bool) {
-			return nil, false
-		},
-		SetFunc: func(key string, meta *schema.JobMeta) {
-			setCalled = true
-			setKey = key
-		},
-	}
-
-	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
-	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
-
-	require.NoError(t, err)
-	require.Len(t, jobs, 1)
-	require.True(t, setCalled)
-	require.Equal(t, "/data/test"+schema.Par2Extension, setKey)
 }
 
 // Expectation: Enumerate should call Set on the cache for uncached bundle entries.
@@ -2596,6 +2596,132 @@ func Test_Service_Enumerate_Bundle_CacheMiss_SetsCache_Success(t *testing.T) {
 	require.Len(t, jobs, 1)
 	require.True(t, setCalled)
 	require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, setKey)
+}
+
+// Expectation: A repair candidate flagged as maybe edited should be skipped when --skip-maybe-edited is set.
+func Test_Service_Enumerate_SkipMaybeEdited_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+		MaybeEdited:    true,
+	}
+
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{
+		Par2Args:        []string{"-v"},
+		SkipMaybeEdited: true,
+	}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "--skip-maybe-edited")
+}
+
+// Expectation: A non-candidate flagged as maybe edited should be skipped without the --skip-maybe-edited warning.
+func Test_Service_Enumerate_SkipMaybeEdited_NotCandidate_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		CountCorrupted: 1,
+		RepairNeeded:   true,
+		RepairPossible: true,
+		MaybeEdited:    true,
+	}
+
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{
+		Par2Args:        []string{"-v"},
+		MinTestedCount:  2,
+		SkipMaybeEdited: true,
+	}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "Not a candidate for repair")
+	require.NotContains(t, logBuf.String(), "--skip-maybe-edited")
+}
+
+// Expectation: A repair candidate flagged as maybe edited should be returned when --skip-maybe-edited is unset.
+func Test_Service_Enumerate_NoSkipMaybeEdited_MaybeEdited_NoSkip_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+		MaybeEdited:    true,
+	}
+
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{
+		Par2Args:        []string{"-v"},
+		SkipMaybeEdited: false,
+	}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.NotContains(t, logBuf.String(), "--skip-maybe-edited")
 }
 
 // Expectation: loadManifest should return a valid manifest when the file is present and well-formed.

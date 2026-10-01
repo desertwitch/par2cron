@@ -311,7 +311,7 @@ func Test_Job_lastVerifiedStr_WithVerification_Success(t *testing.T) {
 	result := meta.lastVerifiedStr()
 
 	require.NotEqual(t, "-", result)
-	require.Equal(t, now.String(), result)
+	require.Equal(t, now.Local().String(), result)
 }
 
 // Expectation: A zero duration should be returned when no manifest exists.

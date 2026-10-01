@@ -1,4 +1,4 @@
-//nolint:cyclop
+//nolint:cyclop,gocyclo
 package main
 
 import (
@@ -16,7 +16,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/desertwitch/par2cron/internal/verify"
 	"github.com/spf13/afero"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 type configFile struct {
@@ -190,6 +190,7 @@ type configFileRepair struct {
 	MaxDuration          *flags.Duration `yaml:"duration"`
 	MinTestedCount       *int            `yaml:"min-tested"`
 	SkipNotCreated       *bool           `yaml:"skip-not-created"`
+	SkipMaybeEdited      *bool           `yaml:"skip-maybe-edited"`
 	AttemptUnrepairables *bool           `yaml:"attempt-unrepairables"`
 	PurgeBackups         *bool           `yaml:"purge-backups"`
 	RestoreBackups       *bool           `yaml:"restore-backups"`
@@ -219,6 +220,9 @@ func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, global *globalOption
 	}
 	if yamlCfg.SkipNotCreated != nil && !setFlags["skip-not-created"] {
 		cfg.SkipNotCreated = *yamlCfg.SkipNotCreated
+	}
+	if yamlCfg.SkipMaybeEdited != nil && !setFlags["skip-maybe-edited"] {
+		cfg.SkipMaybeEdited = *yamlCfg.SkipMaybeEdited
 	}
 	if yamlCfg.AttemptUnrepairables != nil && !setFlags["attempt-unrepairables"] {
 		cfg.AttemptUnrepairables = *yamlCfg.AttemptUnrepairables

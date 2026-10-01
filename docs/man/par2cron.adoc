@@ -14,11 +14,13 @@ par2cron - PAR2 integrity and self-repair engine
 
 *par2cron info* [_flags_] _dir_ [_dir_...]
 
+*par2cron list* [_flags_] _dir_ [_dir_...]
+
 *par2cron bundle pack* [_flags_] _dir_ [_dir_...]
 
 *par2cron bundle unpack* [_flags_] _dir_ [_dir_...]
 
-*par2cron bundle info* [_flags_] _file_ [_file_...]
+*par2cron bundle debug* [_flags_] _file_ [_file_...]
 
 *par2cron tool md5* [_flags_] _par2file_ [_par2file_...]
 
@@ -114,6 +116,8 @@ Repairs data flagged as needing repair during verification.
   Remove backup files after successful repair.
 *-r, --restore-backups*::
   Restore backups after unsuccessful repair.
+*--skip-maybe-edited*::
+  Skip sets where protected files have newer mtimes.
 *--skip-not-created*::
   Skip sets without a creation record.
 *-v, --verify*::
@@ -139,6 +143,16 @@ Shows verification cycle statistics and configuration analysis.
 *--skip-not-created*::
   Skip sets without a creation record.
 
+=== par2cron list
+
+Lists all par2cron-managed PAR2 sets and their status.
+
+*--cache* _string_::
+  Manifest cache directory; best on fast storage.
+  Use same cache folder for all supporting operations.
+*--skip-not-created*::
+  Skip sets without a creation record.
+
 === par2cron bundle pack
 
 Packs all existing PAR2 sets of a folder into bundles.
@@ -155,9 +169,9 @@ Unpacks all existing bundles of a folder into PAR2 sets.
 *--force*::
   Proceed regardless of errors or corruption.
 
-=== par2cron bundle info
+=== par2cron bundle debug
 
-Prints bundle information to standard output.
+Prints bundle debug information to standard output.
 
 === par2cron tool md5
 
@@ -198,8 +212,8 @@ corrupted or incomplete files, meaning the above applies to *SIGPIPE* equally.
 
 par2cron logs are written to standard error (*stderr*) using structured logging
 (text or JSON). Output from the *par2*(1) program is written to standard output
-(*stdout*). The *info* command writes its result to *stdout* and structured
-logs to *stderr*.
+(*stdout*). The *info* and *list* commands write their result to *stdout* and
+structured logs to *stderr*.
 
 == FILES
 

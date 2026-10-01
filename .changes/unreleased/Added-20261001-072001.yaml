@@ -1,0 +1,6 @@
+kind: Added
+body: '`list` command to list all par2cron-managed PAR2 sets and their status'
+time: 2026-10-01T07:20:01.189503109+02:00
+custom:
+    Issue: ""
+    PR: "91"

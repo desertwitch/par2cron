@@ -442,7 +442,7 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 			Size:    fi.Size(),
 			Mode:    fi.Mode(),
 			IsDir:   fi.IsDir(),
-			ModTime: fi.ModTime(),
+			ModTime: fi.ModTime().UTC(),
 		})
 	}
 
@@ -601,9 +601,10 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 	mf.Creation.Args = slices.Clone(job.par2Args)
 	mf.Creation.Elements = elements
 
-	mf.Creation.Time = time.Now()
+	start := time.Now()
+	mf.Creation.Time = start.UTC()
 	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
-	mf.Creation.Duration = time.Since(mf.Creation.Time)
+	mf.Creation.Duration = time.Since(start)
 
 	if err != nil {
 		needsCleanup = true

@@ -99,7 +99,7 @@ func (meta *JobMeta) lastVerifiedStr() string {
 		return ""
 	}
 
-	return meta.VerifyTime.String()
+	return meta.VerifyTime.Local().String() //nolint:gosmopolitan
 }
 
 func (meta *JobMeta) lastDuration() time.Duration {

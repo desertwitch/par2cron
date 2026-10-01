@@ -9,18 +9,14 @@
     <a href="https://github.com/desertwitch/par2cron/releases"><img alt="Release" src="https://img.shields.io/github/release/desertwitch/par2cron.svg"></a>
     <a href="https://go.dev/"><img alt="Go Version" src="https://img.shields.io/badge/Go-%3E%3D%201.26.0-%23007d9c"></a>
     <a href="https://pkg.go.dev/github.com/desertwitch/par2cron"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/desertwitch/par2cron.svg"></a>
-    <a href="https://goreportcard.com/report/github.com/desertwitch/par2cron"><img alt="Go Report" src="https://goreportcard.com/badge/github.com/desertwitch/par2cron"></a>
+    <a href="https://app.codecov.io/gh/desertwitch/par2cron"><img alt="Codecov" src="https://codecov.io/github/desertwitch/par2cron/graph/badge.svg?token=SLUM5DRVHR"></a>
     <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/desertwitch/par2cron"></a>
     <br>
-    <a href="https://app.codecov.io/gh/desertwitch/par2cron"><img alt="Codecov" src="https://codecov.io/github/desertwitch/par2cron/graph/badge.svg?token=SLUM5DRVHR"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml"><img alt="Lint" src="https://github.com/desertwitch/par2cron/actions/workflows/golangci-lint.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml"><img alt="Tests" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-tests.yml/badge.svg"></a>
+    <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-fuzz.yml"><img alt="Fuzz" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-fuzz.yml/badge.svg"></a>
     <a href="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml"><img alt="Build" src="https://github.com/desertwitch/par2cron/actions/workflows/golang-build.yml/badge.svg"></a>
-</div>
-
-<div align="center">
-<sup>This software is in development, expect more frequent releases until a stable release.</sup>
-</div>
+</div><br>
 
 ## Table of Contents
 
@@ -38,6 +34,7 @@
   - [`par2cron verify`](#par2cron-verify)
   - [`par2cron repair`](#par2cron-repair)
   - [`par2cron info`](#par2cron-info)
+  - [`par2cron list`](#par2cron-list)
   - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron tool`](#par2cron-tool)
   - [`par2cron check-config`](#par2cron-check-config)
@@ -242,6 +239,7 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron verify`       | Verifies existing PAR2 sets in a directory tree         |
 | `par2cron repair`       | Repairs corrupted files using PAR2 recovery data        |
 | `par2cron info`         | Shows verification cycle and configuration statistics   |
+| `par2cron list`         | Lists all par2cron-managed PAR2 sets and their status   |
 | `par2cron bundle`       | Commands for interacting with par2cron's bundle format  |
 | `par2cron tool`         | Useful utility commands for interacting with PAR2 files |
 | `par2cron check-config` | Validates a par2cron YAML configuration file            |
@@ -351,6 +349,7 @@ Flags:
   -t, --min-tested int          repair only when verified as corrupted at least X times
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
+      --skip-maybe-edited       skip PAR2 sets where protected files may have been edited (newer mtimes)
       --skip-not-created        skip PAR2 sets without a par2cron manifest containing a creation record
   -v, --verify                  PAR2 sets must pass verification as part of repair
 ```
@@ -385,6 +384,30 @@ Flags:
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
+### `par2cron list`
+```
+Lists all par2cron-managed PAR2 sets and their status
+
+Usage:
+  par2cron list [flags] <dir> [dir...]
+
+Examples:
+
+List all PAR2 sets with their current status:
+  par2cron list /mnt/storage
+
+Show only PAR2 sets with corruption found:
+  par2cron list /mnt/storage | grep -E '^(unrepairable|repairable) '
+
+Output results as JSON (stdout/standard output):
+  par2cron list --json /mnt/storage
+
+Flags:
+      --cache string       directory for optional manifest cache (use same for all commands)
+  -h, --help               help for list
+      --skip-not-created   skip PAR2 sets without a par2cron manifest containing a creation record
+```
+
 ### `par2cron bundle`
 ```
 Commands for interacting with par2cron's bundle format
@@ -393,7 +416,7 @@ Usage:
   par2cron bundle [command]
 
 Available Commands:
-  info        Prints bundle information to standard output
+  debug       Prints bundle debug information to standard output
   pack        Packs all existing PAR2 sets of a folder into bundles
   unpack      Unpacks all existing bundles of a folder into PAR2 sets
 
@@ -907,6 +930,14 @@ either `--age` or `--duration` needs adjusting. The `info` command provides a
 detailed analysis of your chosen arguments and can be helpful for tracking
 verification progress and backlog health.
 
+While the backlog warning is a forecast based on known durations, the `info`
+command also reports which PAR2 sets are actually overdue when given `--age`.
+Sets due for longer than one run are counted separately from sets due for
+longer than a full cycle. Short delays are normal when using `--duration`, but
+sets overdue by a full cycle point to a too small budget, repeated failures, or
+par2cron not running as scheduled. With `--json`, the same numbers are available
+as `overdue_info` for monitoring and scripts.
+
 As `--duration` is a soft limit, users needing a hard limit can wrap par2cron in
 [timeout(1)](https://man7.org/linux/man-pages/man1/timeout.1.html) which sends
 `SIGTERM` upon expiration; while safe to do, this is not recommended for most
@@ -1048,6 +1079,15 @@ data. It simply has no concept of data being updated, instead flagging such
 updates as possible corruption. If you need to update any protected files,
 you will need to manually delete the PAR2 set and then have it recreated using
 the marker file approach (equals the process for new sets of protectable data).
+
+As a best-effort safeguard, verification warns when a corrupted PAR2 set has
+protected files with newer modification times than its last healthy
+verification, as these files may have been edited rather than corrupted. A
+repair would revert such edits to the protected state (with the edited files
+kept as backups, unless `--purge-backups` is set). The `--skip-maybe-edited`
+argument of `repair` holds back such PAR2 sets for manual inspection instead.
+Beware that modification times can also change for benign reasons, for example
+when files are restored from backups without preserving their timestamps.
 
 A par2cron-generated PAR2 set will consist of at least 4 files and possibly more
 depending on your `par2` arguments. This can cause significant file clutter in

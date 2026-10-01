@@ -38,6 +38,20 @@ func createWithManifest(t *testing.T, fs afero.Fs, path string) {
 	require.NoError(t, afero.WriteFile(fs, path+schema.Par2Extension+schema.ManifestExtension, by, 0o644))
 }
 
+// createWithCustomManifest writes a PAR2 file and the given manifest (with matching hash).
+func createWithCustomManifest(t *testing.T, fs afero.Fs, path string, mf *schema.Manifest) {
+	t.Helper()
+
+	mf.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("par2data")))
+
+	by, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	require.NoError(t, fs.MkdirAll(filepath.Dir(path), 0o755))
+	require.NoError(t, afero.WriteFile(fs, path+schema.Par2Extension, []byte("par2data"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, path+schema.Par2Extension+schema.ManifestExtension, by, 0o644))
+}
+
 // countingFailOpenFs wraps an afero.Fs and fails Open calls for files matching failPattern
 // only after the first N successful opens.
 type countingFailOpenFs struct {
@@ -540,6 +554,7 @@ func Test_Service_Verify_CorruptionDetected_Repairable_Error(t *testing.T) {
 	require.ErrorIs(t, err, schema.ErrExitRepairable)
 
 	require.Contains(t, logBuf.String(), "Job completed with corruption detected")
+	require.NotContains(t, logBuf.String(), "may have been edited")
 }
 
 // Expectation: The program should run the verification with the correct outcome.
@@ -570,6 +585,89 @@ func Test_Service_Verify_CorruptionDetected_Unrepairable_Error(t *testing.T) {
 	require.ErrorIs(t, err, schema.ErrExitUnrepairable)
 
 	require.Contains(t, logBuf.String(), "Job completed with corruption detected")
+	require.NotContains(t, logBuf.String(), "may have been edited")
+}
+
+// Expectation: A repairable corruption with a protected file newer than the last
+// successful verification should be flagged as maybe edited and logged as such.
+func Test_Service_Verify_CorruptionDetected_Repairable_MaybeEdited_Error(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+	createWithCustomManifest(t, fs, "/data/test", mf)
+
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairPossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.ErrorIs(t, err, schema.ErrExitRepairable)
+
+	require.Contains(t, logBuf.String(), "Job completed with corruption detected")
+	require.Contains(t, logBuf.String(), "may have been edited")
+}
+
+// Expectation: An unrepairable corruption with a protected file newer than the last
+// successful verification should be flagged as maybe edited and logged as such.
+func Test_Service_Verify_CorruptionDetected_Unrepairable_MaybeEdited_Error(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+	createWithCustomManifest(t, fs, "/data/test", mf)
+
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairImpossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
+	require.ErrorIs(t, err, schema.ErrExitUnrepairable)
+
+	require.Contains(t, logBuf.String(), "Job completed with corruption detected")
+	require.Contains(t, logBuf.String(), "may have been edited")
 }
 
 // Expectation: The program should run the verification with the correct outcome.
@@ -3048,6 +3146,390 @@ func Test_Service_RunVerify_Bundle_ManifestWriteError_Error(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Failed to write par2cron manifest")
 }
 
+// Expectation: A successful verification should clear a previous maybe edited flag and
+// move the last successful verification time to this verification's start time (persisted).
+func Test_Service_RunVerify_Success_ClearsMaybeEdited_UpdatesTimeLastHealthy_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	job.manifest.Verification = &schema.VerificationManifest{TimeLastHealthy: base, MaybeEdited: true}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	manifestData, err := afero.ReadFile(fs, job.manifestPath)
+	require.NoError(t, err)
+
+	mf := &schema.Manifest{}
+	require.NoError(t, json.Unmarshal(manifestData, mf))
+
+	require.False(t, mf.Verification.MaybeEdited)
+	require.True(t, mf.Verification.TimeLastHealthy.After(base))
+	require.True(t, mf.Verification.TimeLastHealthy.Equal(mf.Verification.Time))
+}
+
+// Expectation: A repairable corruption with a protected file newer than the last
+// successful verification should set the maybe edited flag and keep the reference time.
+func Test_Service_RunVerify_Repairable_NewerFile_SetsMaybeEdited_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairPossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	job.manifest.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	require.True(t, job.manifest.Verification.MaybeEdited)
+	require.True(t, job.manifest.Verification.TimeLastHealthy.Equal(base))
+}
+
+// Expectation: A corruption with protected files older than the last successful
+// verification should not set the maybe edited flag and keep the reference time.
+func Test_Service_RunVerify_Repairable_OlderFile_NotMaybeEdited_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(-time.Hour), base.Add(-time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairPossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	job.manifest.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	require.False(t, job.manifest.Verification.MaybeEdited)
+	require.True(t, job.manifest.Verification.TimeLastHealthy.Equal(base))
+}
+
+// Expectation: A previously set maybe edited flag should be re-evaluated (and cleared)
+// on a corruption where no protected file is newer than the last successful verification.
+func Test_Service_RunVerify_Repairable_OlderFile_ClearsPreviousMaybeEdited_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(-time.Hour), base.Add(-time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairPossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	job.manifest.Verification = &schema.VerificationManifest{TimeLastHealthy: base, MaybeEdited: true}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	require.False(t, job.manifest.Verification.MaybeEdited)
+	require.True(t, job.manifest.Verification.TimeLastHealthy.Equal(base))
+}
+
+// Expectation: Without a previous successful verification, the creation time should be
+// used as reference, setting the maybe edited flag for a newer protected file.
+func Test_Service_RunVerify_Repairable_FallbackCreationTime_SetsMaybeEdited_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairPossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Creation = &schema.CreationManifest{Time: base, Elements: []schema.FsElement{{Name: "file.txt"}}}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	require.True(t, job.manifest.Verification.MaybeEdited)
+	require.True(t, job.manifest.Verification.TimeLastHealthy.IsZero())
+}
+
+// Expectation: A corruption on a PAR2 set without creation manifest (e.g. external)
+// should never set the maybe edited flag (best effort).
+func Test_Service_RunVerify_Repairable_NoCreation_NotMaybeEdited_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairPossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	require.False(t, job.manifest.Verification.MaybeEdited)
+	require.True(t, job.manifest.Verification.TimeLastHealthy.Equal(base))
+}
+
+// Expectation: An unrepairable corruption with a protected file newer than the last
+// successful verification should set the maybe edited flag and keep the reference time.
+func Test_Service_RunVerify_Unrepairable_NewerFile_SetsMaybeEdited_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, schema.Par2ExitCodeRepairImpossible)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	job.manifest.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	require.NoError(t, prog.RunVerify(t.Context(), job, false))
+
+	require.True(t, job.manifest.Verification.MaybeEdited)
+	require.True(t, job.manifest.Verification.TimeLastHealthy.Equal(base))
+}
+
+// Expectation: An unhandled exit code should neither touch the maybe edited flag
+// nor move the last successful verification time.
+func Test_Service_RunVerify_UnhandledExitCode_KeepsMaybeEditedFields_Error(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte{}, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(-time.Hour), base.Add(-time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			return testutil.CreateExitError(t, ctx, 99)
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+		manifest:     schema.NewManifest("test" + schema.Par2Extension),
+	}
+	job.manifest.SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // ""
+	job.manifest.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	job.manifest.Verification = &schema.VerificationManifest{TimeLastHealthy: base, MaybeEdited: true}
+
+	require.Error(t, prog.RunVerify(t.Context(), job, false))
+
+	require.True(t, job.manifest.Verification.MaybeEdited)
+	require.True(t, job.manifest.Verification.TimeLastHealthy.Equal(base))
+
+	manifestExists, _ := afero.Exists(fs, job.manifestPath)
+	require.False(t, manifestExists)
+}
+
 // Expectation: The exit code should be parsed according to expectations.
 func Test_Service_parseExitCode_CodeSuccess_Success(t *testing.T) {
 	t.Parallel()
@@ -3162,6 +3644,357 @@ func Test_Service_parseExitCode_UnhandledCode_Error(t *testing.T) {
 	require.ErrorIs(t, prog.parseExitCode(job, err), err)
 
 	require.Equal(t, 99, job.manifest.Verification.ExitCode)
+}
+
+// Expectation: A set without creation manifest should never be considered edited.
+func Test_Service_wasMaybeEdited_NoCreation_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: Without any reference time (neither creation nor verification) nothing should be considered edited.
+func Test_Service_wasMaybeEdited_NoReferenceTime_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base, base))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: A protected file newer than the last successful verification should be considered edited.
+func Test_Service_wasMaybeEdited_NewerThanSucceeded_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: A protected file older than the last successful verification should not be considered edited.
+func Test_Service_wasMaybeEdited_OlderThanSucceeded_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(-time.Second), base.Add(-time.Second)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: A protected file with exactly the reference time should not be considered edited.
+func Test_Service_wasMaybeEdited_EqualToSucceeded_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base, base))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: The last successful verification time should take precedence over the creation time.
+func Test_Service_wasMaybeEdited_PrefersSucceededOverCreation_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	// After creation, but before the last successful verification.
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(-time.Hour), base.Add(-time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: A missing protected file should be ignored rather than considered edited.
+func Test_Service_wasMaybeEdited_MissingElement_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "missing.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: A missing protected file should not stop the check of the remaining protected files.
+func Test_Service_wasMaybeEdited_MissingElementThenNewer_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{
+		Time:     base.Add(-24 * time.Hour),
+		Elements: []schema.FsElement{{Name: "missing.txt"}, {Name: "file.txt"}},
+	}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: Protected files in subfolders (deep globs) should be resolved relative to the working directory.
+func Test_Service_wasMaybeEdited_NestedElement_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/sub", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/sub/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/sub/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "sub/file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: A creation manifest without any elements should never be considered edited.
+func Test_Service_wasMaybeEdited_NoElements_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour)}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: A directory element should be skipped, as directory mtimes reflect entry changes, not edits.
+func Test_Service_wasMaybeEdited_DirectoryElement_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/sub", 0o755))
+	require.NoError(t, fs.Chtimes("/data/sub", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "sub", IsDir: true}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
+}
+
+// Expectation: An element with an empty name should be skipped rather than resolving to the working directory.
+func Test_Service_wasMaybeEdited_EmptyElementName_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, fs.Chtimes("/data", base.Add(time.Hour), base.Add(time.Hour)))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: ""}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(job))
 }
 
 // Expectation: A backlog warning should be thrown when the backlog is growing.

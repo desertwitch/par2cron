@@ -81,6 +81,7 @@ func (c *GobCache) Get(key string) (*schema.JobMeta, bool) {
 // It also sets the walked state to true, the element has been seen.
 func (c *GobCache) Set(key string, meta *schema.JobMeta) {
 	meta.Walked = true
+	meta.Saved = false
 	c.items[key] = meta
 }
 
@@ -188,6 +189,7 @@ func (c *GobCache) Save() error {
 
 	for _, meta := range c.items {
 		meta.Walked = false
+		meta.Saved = true
 		if err := enc.Encode(*meta); err != nil {
 			return fmt.Errorf("failed to encode value: %w", err)
 		}

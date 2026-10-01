@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +29,108 @@ func Test_NewManifest_Success(t *testing.T) {
 	require.Nil(t, mf.Creation)
 	require.Nil(t, mf.Verification)
 	require.Nil(t, mf.Repair)
+}
+
+// Expectation: NormalizeTimes should convert all timestamps to UTC without changing the instants.
+func Test_Manifest_NormalizeTimes_Success(t *testing.T) {
+	t.Parallel()
+
+	cest := time.FixedZone("CEST", 2*60*60)
+
+	creationTime := time.Date(2026, 9, 18, 15, 57, 1, 123456789, cest)
+	modTime := time.Date(2026, 9, 17, 10, 0, 0, 987654321, cest)
+	verifyTime := time.Date(2026, 9, 18, 16, 0, 0, 0, cest)
+	healthyTime := time.Date(2026, 9, 18, 16, 5, 0, 0, cest)
+	repairTime := time.Date(2026, 9, 18, 17, 0, 0, 0, cest)
+
+	mf := NewManifest("test" + Par2Extension)
+	mf.Creation = NewCreationManifest()
+	mf.Creation.Time = creationTime
+	mf.Creation.Elements = []FsElement{{Name: "test.txt", ModTime: modTime}}
+	mf.Verification = NewVerificationManifest()
+	mf.Verification.Time = verifyTime
+	mf.Verification.TimeLastHealthy = healthyTime
+	mf.Repair = NewRepairManifest()
+	mf.Repair.Time = repairTime
+
+	mf.NormalizeTimes()
+
+	require.Equal(t, time.UTC, mf.Creation.Time.Location())
+	require.True(t, creationTime.Equal(mf.Creation.Time))
+
+	require.Equal(t, time.UTC, mf.Creation.Elements[0].ModTime.Location())
+	require.True(t, modTime.Equal(mf.Creation.Elements[0].ModTime))
+	require.Equal(t, 987654321, mf.Creation.Elements[0].ModTime.Nanosecond())
+
+	require.Equal(t, time.UTC, mf.Verification.Time.Location())
+	require.True(t, verifyTime.Equal(mf.Verification.Time))
+
+	require.Equal(t, time.UTC, mf.Verification.TimeLastHealthy.Location())
+	require.True(t, healthyTime.Equal(mf.Verification.TimeLastHealthy))
+
+	require.Equal(t, time.UTC, mf.Repair.Time.Location())
+	require.True(t, repairTime.Equal(mf.Repair.Time))
+}
+
+// Expectation: NormalizeTimes should not panic when manifest sections are missing.
+func Test_Manifest_NormalizeTimes_NilSections_Success(t *testing.T) {
+	t.Parallel()
+
+	mf := NewManifest("test" + Par2Extension)
+
+	require.NotPanics(t, mf.NormalizeTimes)
+
+	require.Nil(t, mf.Creation)
+	require.Nil(t, mf.Verification)
+	require.Nil(t, mf.Repair)
+}
+
+// Expectation: NormalizeTimes should keep zero timestamps as zero.
+func Test_Manifest_NormalizeTimes_ZeroTimes_Success(t *testing.T) {
+	t.Parallel()
+
+	mf := NewManifest("test" + Par2Extension)
+	mf.Verification = NewVerificationManifest()
+
+	mf.NormalizeTimes()
+
+	require.True(t, mf.Verification.Time.IsZero())
+	require.True(t, mf.Verification.TimeLastHealthy.IsZero())
+}
+
+// Expectation: A normalized manifest should marshal all timestamps in UTC and round-trip to the same instants.
+func Test_Manifest_NormalizeTimes_MarshalJSON_Success(t *testing.T) {
+	t.Parallel()
+
+	cest := time.FixedZone("CEST", 2*60*60)
+
+	creationTime := time.Date(2026, 9, 18, 15, 57, 1, 0, cest)
+	modTime := time.Date(2026, 9, 17, 10, 0, 0, 0, cest)
+	verifyTime := time.Date(2026, 9, 18, 16, 0, 0, 0, cest)
+
+	mf := NewManifest("test" + Par2Extension)
+	mf.Creation = NewCreationManifest()
+	mf.Creation.Time = creationTime
+	mf.Creation.Elements = []FsElement{{Name: "test.txt", ModTime: modTime}}
+	mf.Verification = NewVerificationManifest()
+	mf.Verification.Time = verifyTime
+
+	mf.NormalizeTimes()
+
+	data, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	require.NotContains(t, string(data), "+02:00")
+	require.Contains(t, string(data), `"2026-09-18T13:57:01Z"`)
+	require.Contains(t, string(data), `"2026-09-17T08:00:00Z"`)
+	require.Contains(t, string(data), `"2026-09-18T14:00:00Z"`)
+
+	var decoded Manifest
+	require.NoError(t, json.Unmarshal(data, &decoded))
+
+	require.True(t, creationTime.Equal(decoded.Creation.Time))
+	require.True(t, modTime.Equal(decoded.Creation.Elements[0].ModTime))
+	require.True(t, verifyTime.Equal(decoded.Verification.Time))
 }
 
 // Expectation: The unmarshalling should work according to expectations.

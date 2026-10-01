@@ -31,6 +31,27 @@ func NewManifest(par2Name string) *Manifest {
 	}
 }
 
+// NormalizeTimes converts all timestamps to UTC. The instants are
+// unchanged; only their location is, so stored manifests are uniform.
+// It is a seatbelt to call right before the manifest is written to disk.
+func (m *Manifest) NormalizeTimes() {
+	if c := m.Creation; c != nil {
+		c.Time = c.Time.UTC()
+		for i := range c.Elements {
+			c.Elements[i].ModTime = c.Elements[i].ModTime.UTC()
+		}
+	}
+
+	if v := m.Verification; v != nil {
+		v.Time = v.Time.UTC()
+		v.TimeLastHealthy = v.TimeLastHealthy.UTC()
+	}
+
+	if r := m.Repair; r != nil {
+		r.Time = r.Time.UTC()
+	}
+}
+
 type CreationManifest struct {
 	ProgramVersion string        `json:"program_version"`
 	Par2Version    string        `json:"par2_version"`
@@ -72,16 +93,18 @@ func (c *CreationManifest) UnmarshalJSON(data []byte) error {
 }
 
 type VerificationManifest struct {
-	ProgramVersion string        `json:"program_version"`
-	Par2Version    string        `json:"par2_version"`
-	Count          int           `json:"count"`
-	CountCorrupted int           `json:"count_corrupted"`
-	Time           time.Time     `json:"time"`
-	Args           []string      `json:"args"`
-	ExitCode       int           `json:"exit_code"`
-	RepairNeeded   bool          `json:"repair_needed"`
-	RepairPossible bool          `json:"repair_possible"`
-	Duration       time.Duration `json:"duration_ns"`
+	ProgramVersion  string        `json:"program_version"`
+	Par2Version     string        `json:"par2_version"`
+	Count           int           `json:"count"`
+	CountCorrupted  int           `json:"count_corrupted"`
+	Time            time.Time     `json:"time"`
+	TimeLastHealthy time.Time     `json:"time_last_healthy"`
+	Args            []string      `json:"args"`
+	ExitCode        int           `json:"exit_code"`
+	RepairNeeded    bool          `json:"repair_needed"`
+	RepairPossible  bool          `json:"repair_possible"`
+	MaybeEdited     bool          `json:"maybe_edited"`
+	Duration        time.Duration `json:"duration_ns"`
 }
 
 func NewVerificationManifest() *VerificationManifest {

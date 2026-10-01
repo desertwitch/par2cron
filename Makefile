@@ -22,7 +22,7 @@ MAN_DIR = $(DOCS_DIR)/man
 MAN_ADOC = $(MAN_DIR)/par2cron.adoc
 COMPLETIONS_DIR = $(DOCS_DIR)/completions
 
-.PHONY: all $(BINARY) $(BINARY)-embed benchmark check check-slop clean debug docs docs-clean docs-man docs-markdown docs-pdf docs-text docs-completions generate help info is-clean lint test test-fuzz-quick test-fuzz-long test-coverage vendor
+.PHONY: all $(BINARY) $(BINARY)-embed benchmark check check-config check-slop clean debug docs docs-clean docs-man docs-markdown docs-pdf docs-text docs-completions generate help info is-clean lint test test-fuzz-quick test-fuzz-long test-coverage vendor
 
 all: vendor $(BINARY) ## Runs the entire build chain for the application
 
@@ -43,8 +43,12 @@ benchmark: ## Runs the benchmark suite
 
 check: ## Runs all static analysis and tests on the application code
 	@$(MAKE) check-slop
+	@$(MAKE) check-config
 	@$(MAKE) lint
 	@$(MAKE) test
+
+check-config: ## Checks the default configuration file for syntax errors
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go run $(SRC_DIR) check-config par2cron.yaml
 
 check-slop: ## Checks relevant text files for punctuation used by AI
 	@grep -RInP \

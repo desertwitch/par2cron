@@ -217,6 +217,7 @@ func Test_Service_PrintJSON_NoKnownDurations_Success(t *testing.T) {
 	require.Nil(t, result.DurationInfo)
 	require.Nil(t, result.BacklogInfo)
 	require.Nil(t, result.CycleInfo)
+	require.Nil(t, result.OverdueInfo)
 }
 
 // Expectation: The JSON output should be valid and decode back to the Result struct.
@@ -777,6 +778,7 @@ func Test_Service_PrintJSON_AllSections_Success(t *testing.T) {
 	require.NotNil(t, result.DurationInfo)
 	require.NotNil(t, result.BacklogInfo)
 	require.NotNil(t, result.CycleInfo)
+	require.NotNil(t, result.OverdueInfo)
 	require.Empty(t, result.Warning)
 }
 
@@ -820,6 +822,7 @@ func Test_Service_PrintJSON_MinimalSections_Success(t *testing.T) {
 	require.Nil(t, result.DurationInfo)
 	require.Nil(t, result.BacklogInfo)
 	require.Nil(t, result.CycleInfo)
+	require.Nil(t, result.OverdueInfo)
 }
 
 // Expectation: PrintJSON should not load the cache when CacheDir is empty.
@@ -1649,4 +1652,304 @@ func Test_Service_buildCycleInfo_MixedJobs_Success(t *testing.T) {
 	require.Equal(t, 4, info.TotalCount)
 	require.Equal(t, 5*time.Minute, info.VerifiedDuration)
 	require.Equal(t, 1, info.UnknownCount)
+}
+
+// Expectation: The JSON output should include OverdueInfo without overdue jobs when --age is set.
+func Test_Service_PrintJSON_OverdueInfo_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now(),
+		Duration: 5 * time.Minute,
+	}
+	require.NoError(t, writeTestManifest(t, fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, manifest))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
+
+	var result Result
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+
+	require.NotNil(t, result.OverdueInfo)
+	require.Zero(t, result.OverdueInfo.OverdueRunCount)
+	require.Zero(t, result.OverdueInfo.OverdueCycleCount)
+	require.Empty(t, result.OverdueInfo.MostOverdueJob)
+	require.Empty(t, result.OverdueInfo.Warning)
+}
+
+// Expectation: The JSON output should include OverdueInfo with a warning for a job overdue by one full cycle.
+func Test_Service_PrintJSON_OverdueInfo_OverdueCycle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now().Add(-20 * 24 * time.Hour),
+		Duration: 5 * time.Minute,
+	}
+	require.NoError(t, writeTestManifest(t, fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, manifest))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
+
+	var result Result
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+
+	require.NotNil(t, result.OverdueInfo)
+	require.Equal(t, 1, result.OverdueInfo.OverdueRunCount)
+	require.Equal(t, 1, result.OverdueInfo.OverdueCycleCount)
+	require.Equal(t, "test"+schema.Par2Extension, result.OverdueInfo.MostOverdueJob)
+	require.Greater(t, result.OverdueInfo.MostOverdueBy, 7*24*time.Hour)
+	require.NotEmpty(t, result.OverdueInfo.Warning)
+}
+
+// Expectation: The OverdueInfo should report no overdue jobs when all are within one run.
+func Test_Service_buildOverdueInfo_NoneOverdue_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	// Not yet due.
+	notDue := schema.NewManifest("notdue" + schema.Par2Extension)
+	notDue.Verification = &schema.VerificationManifest{
+		Time:     now.Add(-3 * 24 * time.Hour),
+		Duration: 5 * time.Minute,
+	}
+
+	// Due, but still within one run interval.
+	dueInRun := schema.NewManifest("dueinrun" + schema.Par2Extension)
+	dueInRun.Verification = &schema.VerificationManifest{
+		Time:     now.Add(-7*24*time.Hour - 12*time.Hour),
+		Duration: 5 * time.Minute,
+	}
+
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/notdue"+schema.Par2Extension, notDue, false)),
+		verify.NewJobMeta(schema.NewJobMeta("/data/dueinrun"+schema.Par2Extension, dueInRun, false)),
+	}
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+
+	info := prog.buildOverdueInfo(metas, args, now)
+
+	require.Zero(t, info.OverdueRunCount)
+	require.Zero(t, info.OverdueCycleCount)
+	require.Empty(t, info.MostOverdueJob)
+	require.Zero(t, info.MostOverdueBy)
+	require.Empty(t, info.Warning)
+}
+
+// Expectation: The OverdueInfo should count a job overdue by one run without a warning.
+func Test_Service_buildOverdueInfo_OverdueRun_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     now.Add(-7*24*time.Hour - 2*24*time.Hour),
+		Duration: 5 * time.Minute,
+	}
+
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
+	}
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+
+	info := prog.buildOverdueInfo(metas, args, now)
+
+	require.Equal(t, 1, info.OverdueRunCount)
+	require.Zero(t, info.OverdueCycleCount)
+	require.Equal(t, "test"+schema.Par2Extension, info.MostOverdueJob)
+	require.Equal(t, 2*24*time.Hour, info.MostOverdueBy)
+	require.Empty(t, info.Warning)
+}
+
+// Expectation: The OverdueInfo should count a job overdue by one full cycle and include a warning.
+func Test_Service_buildOverdueInfo_OverdueCycle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	manifest := schema.NewManifest("test" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     now.Add(-7*24*time.Hour - 10*24*time.Hour),
+		Duration: 5 * time.Minute,
+	}
+
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/test"+schema.Par2Extension, manifest, false)),
+	}
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+
+	info := prog.buildOverdueInfo(metas, args, now)
+
+	require.Equal(t, 1, info.OverdueRunCount)
+	require.Equal(t, 1, info.OverdueCycleCount)
+	require.Equal(t, 10*24*time.Hour, info.MostOverdueBy)
+	require.Contains(t, info.Warning, "1 jobs have been due for longer than one full cycle")
+}
+
+// Expectation: The OverdueInfo should report the job with the largest lag as most overdue.
+func Test_Service_buildOverdueInfo_MostOverdue_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	lesser := schema.NewManifest("lesser" + schema.Par2Extension)
+	lesser.Verification = &schema.VerificationManifest{
+		Time:     now.Add(-7*24*time.Hour - 2*24*time.Hour),
+		Duration: 5 * time.Minute,
+	}
+
+	greater := schema.NewManifest("greater" + schema.Par2Extension)
+	greater.Verification = &schema.VerificationManifest{
+		Time:     now.Add(-7*24*time.Hour - 3*24*time.Hour),
+		Duration: 5 * time.Minute,
+	}
+
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/lesser"+schema.Par2Extension, lesser, false)),
+		verify.NewJobMeta(schema.NewJobMeta("/data/greater"+schema.Par2Extension, greater, false)),
+	}
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+
+	info := prog.buildOverdueInfo(metas, args, now)
+
+	require.Equal(t, 2, info.OverdueRunCount)
+	require.Equal(t, "greater"+schema.Par2Extension, info.MostOverdueJob)
+	require.Equal(t, 3*24*time.Hour, info.MostOverdueBy)
+}
+
+// Expectation: The OverdueInfo should skip jobs without verification or with a zero verification time.
+func Test_Service_buildOverdueInfo_SkipsUnverifiedAndZeroTime_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	now := time.Date(2024, 1, 15, 12, 0, 0, 0, time.UTC)
+
+	zeroTime := schema.NewManifest("zerotime" + schema.Par2Extension)
+	zeroTime.Verification = &schema.VerificationManifest{
+		Duration: 5 * time.Minute,
+	}
+
+	metas := []*verify.JobMeta{
+		verify.NewJobMeta(schema.NewJobMeta("/data/unverified"+schema.Par2Extension, nil, false)),
+		verify.NewJobMeta(schema.NewJobMeta("/data/zerotime"+schema.Par2Extension, zeroTime, false)),
+	}
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	_ = args.MinAge.Set("7d")
+
+	info := prog.buildOverdueInfo(metas, args, now)
+
+	require.Zero(t, info.OverdueRunCount)
+	require.Zero(t, info.OverdueCycleCount)
+	require.Empty(t, info.MostOverdueJob)
+	require.Zero(t, info.MostOverdueBy)
 }

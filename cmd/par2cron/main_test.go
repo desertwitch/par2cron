@@ -256,6 +256,19 @@ func Test_NewRootCmd_HasInfoCommand_Success(t *testing.T) {
 	require.Equal(t, "info", infoCmd.Name())
 }
 
+// Expectation: The root command should have a "list" subcommand.
+func Test_NewRootCmd_HasListCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	listCmd, _, err := cmd.Find([]string{"list"})
+
+	require.NoError(t, err)
+	require.NotNil(t, listCmd)
+	require.Equal(t, "list", listCmd.Name())
+}
+
 // Expectation: The root command should have a "check-config" subcommand.
 func Test_NewRootCmd_HasCheckConfigCommand_Success(t *testing.T) {
 	t.Parallel()
@@ -347,17 +360,17 @@ func Test_NewBundleCmd_HasUnpackCommand_Success(t *testing.T) {
 	require.Equal(t, "unpack", bundleCmd.Name())
 }
 
-// Expectation: The bundle command should have a "info" subcommand.
-func Test_NewBundleCmd_HasInfoCommand_Success(t *testing.T) {
+// Expectation: The bundle command should have a "debug" subcommand.
+func Test_NewBundleCmd_HasDebugCommand_Success(t *testing.T) {
 	t.Parallel()
 
 	cmd := newBundleCmd(t.Context(), newGlobalOptions())
 
-	bundleCmd, _, err := cmd.Find([]string{"info"})
+	bundleCmd, _, err := cmd.Find([]string{"debug"})
 
 	require.NoError(t, err)
 	require.NotNil(t, bundleCmd)
-	require.Equal(t, "info", bundleCmd.Name())
+	require.Equal(t, "debug", bundleCmd.Name())
 }
 
 // Expectation: The "bundle pack" command should have flags.
@@ -955,7 +968,7 @@ func Test_NewInfoCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 }
 
 // Expectation: The "info" command cannot run without arguments.
-func Test_NewInfoCmd_RequiresExactOneArg_Error(t *testing.T) {
+func Test_NewInfoCmd_RequiresArgs_Error(t *testing.T) {
 	t.Parallel()
 
 	cmd := newInfoCmd(t.Context(), newGlobalOptions())
@@ -966,12 +979,49 @@ func Test_NewInfoCmd_RequiresExactOneArg_Error(t *testing.T) {
 	require.Error(t, err)
 }
 
-// Expectation: The "info" command cannot run with too many arguments.
-func Test_NewInfoCmd_TooManyArgs_Error(t *testing.T) {
+// Expectation: The "list" command should have flags.
+func Test_NewListCmd_DefaultArgs_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newInfoCmd(t.Context(), newGlobalOptions())
-	cmd.SetArgs([]string{"/data", "/extra"})
+	cmd := newListCmd(t.Context(), newGlobalOptions())
+
+	require.NotNil(t, cmd)
+	require.Equal(t, "list", cmd.Name())
+	require.True(t, cmd.HasFlags())
+}
+
+// Expectation: The "list" command should have a "skip-not-created" flag.
+func Test_NewListCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newListCmd(t.Context(), newGlobalOptions())
+
+	flag := cmd.Flags().Lookup("skip-not-created")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.DefValue)
+}
+
+// Expectation: The "list" command should have a "cache" flag.
+func Test_NewListCmd_HasCacheFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newListCmd(t.Context(), newGlobalOptions())
+
+	flag := cmd.Flags().Lookup("cache")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "string", flag.Value.Type())
+	require.Empty(t, flag.DefValue)
+}
+
+// Expectation: The "list" command cannot run without arguments.
+func Test_NewListCmd_RequiresArgs_Error(t *testing.T) {
+	t.Parallel()
+
+	cmd := newListCmd(t.Context(), newGlobalOptions())
+	cmd.SetArgs([]string{})
 
 	err := cmd.Execute()
 

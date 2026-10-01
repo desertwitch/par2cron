@@ -1,0 +1,6 @@
+kind: Security
+body: 'changed deprecated yaml backend to `go.yaml.in/yaml/v3`'
+time: 2026-09-29T11:11:59.055399504+02:00
+custom:
+    Issue: ""
+    PR: "91"
