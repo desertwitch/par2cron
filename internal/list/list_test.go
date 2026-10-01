@@ -192,7 +192,7 @@ func Test_Service_List_NoJobs_Success(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(stdoutBuf.String()), "\n")
 	require.Len(t, lines, 1)
-	require.Equal(t, []string{"STATUS", "VERIFIED", "DURATION", "FAILURES", "CACHED", "PATH"}, strings.Fields(lines[0]))
+	require.Equal(t, []string{"STATUS", "VERIFIED", "DURATION", "FAILURES", "EDITED", "CACHED", "PATH"}, strings.Fields(lines[0]))
 }
 
 // Expectation: The manifest should be parsed and the correct row be shown.
@@ -599,6 +599,7 @@ func Test_Service_printTable_AllStatuses_Success(t *testing.T) {
 	repairable.CountCorrupted = 3
 	repairable.RepairNeeded = true
 	repairable.RepairPossible = true
+	repairable.MaybeEdited = true
 
 	unverified := newTestMeta("/data/unverified.par2")
 	unverified.HasManifest = true
@@ -622,6 +623,7 @@ func Test_Service_printTable_AllStatuses_Success(t *testing.T) {
 	require.True(t, strings.HasPrefix(lines[2], "repairable"))
 	require.Contains(t, lines[2], "3")
 	require.Contains(t, lines[2], "N")
+	require.Contains(t, lines[2], "Y")
 	require.True(t, strings.HasSuffix(lines[2], "/data/repairable.par2"))
 
 	require.True(t, strings.HasPrefix(lines[3], "unverified"))
@@ -630,6 +632,13 @@ func Test_Service_printTable_AllStatuses_Success(t *testing.T) {
 	require.True(t, strings.HasPrefix(lines[4], "healthy"))
 	require.Contains(t, lines[4], verifiedAt.Local().Format("2006-01-02T15:04:05"))
 	require.True(t, strings.HasSuffix(lines[4], "/data/healthy.par2"))
+
+	require.Equal(t, []string{
+		"healthy",
+		verifiedAt.Local().Format("2006-01-02T15:04:05"),
+		(5 * time.Minute).String(),
+		"0", "N", "N", "/data/healthy.par2",
+	}, strings.Fields(lines[4]))
 }
 
 // Expectation: printTable should print dashes for the fields of an unverified job.
@@ -656,7 +665,7 @@ func Test_Service_printTable_Unverified_Dashes_Success(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(stdoutBuf.String()), "\n")
 	require.Len(t, lines, 2)
-	require.Equal(t, []string{"unverified", "-", "-", "-", "N", "/data/unverified.par2"}, strings.Fields(lines[1]))
+	require.Equal(t, []string{"unverified", "-", "-", "-", "-", "N", "/data/unverified.par2"}, strings.Fields(lines[1]))
 }
 
 // Expectation: printTable should align the path column across all rows.

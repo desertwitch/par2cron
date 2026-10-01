@@ -117,9 +117,9 @@ func (prog *Service) List(ctx context.Context, rootDirs []string, opts Options) 
 func (prog *Service) printTable(metas []*verify.JobMeta) error {
 	w := tabwriter.NewWriter(prog.log.Options.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd
 
-	fmt.Fprintln(w, "STATUS\tVERIFIED\tDURATION\tFAILURES\tCACHED\tPATH")
+	fmt.Fprintln(w, "STATUS\tVERIFIED\tDURATION\tFAILURES\tEDITED\tCACHED\tPATH")
 	for _, m := range metas {
-		corrupt, verified, dur, cached := "-", "-", "-", "N"
+		verified, dur, corrupt, edited, cached := "-", "-", "-", "-", "N"
 
 		if m.Saved {
 			cached = "Y"
@@ -128,10 +128,15 @@ func (prog *Service) printTable(metas []*verify.JobMeta) error {
 			corrupt = strconv.Itoa(m.CountCorrupted)
 			verified = m.VerifyTime.Local().Format("2006-01-02T15:04:05") //nolint:gosmopolitan
 			dur = m.VerifyDuration.Round(time.Second).String()
+
+			edited = "N"
+			if m.MaybeEdited {
+				edited = "Y"
+			}
 		}
 
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			statusOf(m), verified, dur, corrupt, cached, m.Par2Path)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			statusOf(m), verified, dur, corrupt, edited, cached, m.Par2Path)
 	}
 
 	if err := w.Flush(); err != nil {

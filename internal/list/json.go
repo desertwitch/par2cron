@@ -68,7 +68,7 @@ type Verification struct {
 	// Duration is how long the last verification took.
 	Duration time.Duration `json:"duration_ns"`
 
-	// CountCorrupted is the number of corrupted blocks found.
+	// CountCorrupted is how many consecutive verifications found corruption.
 	CountCorrupted int `json:"count_corrupted"`
 
 	// RepairNeeded is true if corruption was found.
@@ -77,7 +77,7 @@ type Verification struct {
 	// RepairPossible is true if the corruption can be repaired.
 	RepairPossible bool `json:"repair_possible"`
 
-	// MaybeEdited is true if the files may have been modified since creation.
+	// MaybeEdited is true if protected files may have been modified since creation.
 	MaybeEdited bool `json:"maybe_edited"`
 }
 

@@ -19,6 +19,15 @@ Columns are separated by whitespace with the path always last,
 so the output can be filtered with standard tools (grep, awk).
 For scripting, do prefer --json for a machine-readable format.
 
+The column "FAILURES" shows how many times a set that has been
+marked as corrupted has consecutively been tested as corrupted.
+It visualizes the barrier for the --min-tested repair argument.
+
+The column "EDITED" visualizes if a set that has been marked as
+corrupted may have had the protected files intentionally edited
+by the user, as newer modification times (mtimes) were detected.
+It visualizes the barrier for the --skip-maybe-edited argument.
+
 If a --cache is provided, data from the cache is shown for any
 elements that are found in the cache. If none is provided, all
 data is loaded from disk instead (as shown by cache indicator).
