@@ -60,7 +60,7 @@ var (
 )
 
 // Parse reads PAR2 data and returns a slice of [Set] in the order they appeared.
-// In compliance with the specification, unparseable packets are silently skipped.
+// In compliance with the specification, unparsable packets are silently skipped.
 // Unless there is a fatal error, no parseable packets will return an empty slice.
 // It parses: [MainPacket], [FilePacket] and [UnicodePacket], skipping all others.
 func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
