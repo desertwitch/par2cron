@@ -156,7 +156,10 @@ Analyze a 14-day cycle with 4-hour weekly runs:
   par2cron info -a 14d -d 4h -i 1w /mnt/storage
 
 Output results as JSON (stdout/standard output):
-  par2cron info --json /mnt/storage`
+  par2cron info --json /mnt/storage
+
+Output results as Prometheus metrics (stdout/standard output):
+  par2cron info --prometheus -a 7d -d 2h /mnt/storage`
 
 const listUsage = "list [flags] <dir> [dir...]"
 

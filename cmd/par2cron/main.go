@@ -734,6 +734,7 @@ func newInfoCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 		},
 	}
 	infoCmd.Flags().BoolVar(&infoOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
+	infoCmd.Flags().BoolVar(&infoOptions.Prometheus, "prometheus", false, "output as Prometheus metrics (e.g. node_exporter textfile, Pushgateway)")
 	infoCmd.Flags().BoolVarP(&infoOptions.IncludeExternal, "include-external", "e", false, "include external PAR2 sets without a par2cron manifest")
 	infoCmd.Flags().StringVarP(&configPath, "config", "c", "", "path to a par2cron YAML configuration file")
 	infoCmd.Flags().StringVar(&infoOptions.CacheDir, "cache", "", "directory for optional manifest cache (use same for all commands)")

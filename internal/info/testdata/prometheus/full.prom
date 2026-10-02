@@ -1,0 +1,57 @@
+# HELP par2cron_build_info A metric with a constant '1' value labeled by version and goversion from which par2cron was built.
+# TYPE par2cron_build_info gauge
+par2cron_build_info{goversion="go1.26.0",version="1.2.3"} 1
+# HELP par2cron_scan_duration_seconds Time taken to scan the given directories for PAR2 sets and load their manifests.
+# TYPE par2cron_scan_duration_seconds gauge
+par2cron_scan_duration_seconds 1.5
+# HELP par2cron_scan_incomplete_roots Number of given root directories in which not all par2cron manifests could be read; if non-zero, the other metric values may be incomplete.
+# TYPE par2cron_scan_incomplete_roots gauge
+par2cron_scan_incomplete_roots 1
+# HELP par2cron_sets Number of PAR2 sets by status of their last verification, where unverified means never verified; the statuses sum to the total number of sets.
+# TYPE par2cron_sets gauge
+par2cron_sets{status="healthy"} 6
+par2cron_sets{status="repairable"} 1
+par2cron_sets{status="unrepairable"} 1
+par2cron_sets{status="unverified"} 2
+# HELP par2cron_sets_duration_unknown Number of PAR2 sets without a recorded verification duration (typically never verified); these are excluded from all duration-based values.
+# TYPE par2cron_sets_duration_unknown gauge
+par2cron_sets_duration_unknown 2
+# HELP par2cron_verify_duration_known_seconds Sum of the last recorded verification durations of all PAR2 sets with a known duration, i.e. an estimate of the time one full verification pass takes, excluding sets with unknown duration.
+# TYPE par2cron_verify_duration_known_seconds gauge
+par2cron_verify_duration_known_seconds 72000
+# HELP par2cron_verify_duration_largest_seconds Longest last recorded verification duration of a single PAR2 set; a set longer than --duration overshoots the soft limit whenever it is verified.
+# TYPE par2cron_verify_duration_largest_seconds gauge
+par2cron_verify_duration_largest_seconds 10800
+# HELP par2cron_verify_oldest_timestamp_seconds Unix time of the least recent last verification across all verified PAR2 sets; every verified set was verified at or after this time. Absent if no set has been verified.
+# TYPE par2cron_verify_oldest_timestamp_seconds gauge
+par2cron_verify_oldest_timestamp_seconds 1.7671824e+09
+# HELP par2cron_verify_newest_timestamp_seconds Unix time of the most recent last verification across all verified PAR2 sets; every verified set was verified before or at this time. Absent if no set has been verified.
+# TYPE par2cron_verify_newest_timestamp_seconds gauge
+par2cron_verify_newest_timestamp_seconds 1.7684748e+09
+# HELP par2cron_config_run_interval_seconds How often par2cron verify is assumed to run, as given to info with --calc-run-interval (default 24h).
+# TYPE par2cron_config_run_interval_seconds gauge
+par2cron_config_run_interval_seconds 86400
+# HELP par2cron_config_age_seconds Target time between re-verifications of a PAR2 set, as given to info with --age; only meaningful if it matches the --age used by par2cron verify.
+# TYPE par2cron_config_age_seconds gauge
+par2cron_config_age_seconds 604800
+# HELP par2cron_config_duration_seconds Time budget per verify run, as given to info with --duration; only meaningful if it matches the --duration used by par2cron verify.
+# TYPE par2cron_config_duration_seconds gauge
+par2cron_config_duration_seconds 7200
+# HELP par2cron_sets_verified_within_age Number of PAR2 sets last verified within the past --age, i.e. within the current rolling cycle window.
+# TYPE par2cron_sets_verified_within_age gauge
+par2cron_sets_verified_within_age 5
+# HELP par2cron_verify_duration_within_age_seconds Sum of the last recorded verification durations of PAR2 sets verified within the past --age; divide by par2cron_verify_duration_known_seconds for duration-weighted cycle progress.
+# TYPE par2cron_verify_duration_within_age_seconds gauge
+par2cron_verify_duration_within_age_seconds 43200
+# HELP par2cron_sets_overdue Number of verified PAR2 sets whose re-verification (last verification plus --age) has been due for longer than one run interval; includes the sets counted in par2cron_sets_overdue_cycle.
+# TYPE par2cron_sets_overdue gauge
+par2cron_sets_overdue 3
+# HELP par2cron_sets_overdue_cycle Number of verified PAR2 sets whose re-verification has been due for longer than one full --age cycle; non-zero suggests a growing backlog, repeated failures or par2cron verify not running.
+# TYPE par2cron_sets_overdue_cycle gauge
+par2cron_sets_overdue_cycle 1
+# HELP par2cron_sets_most_overdue_seconds Longest time a set counted in par2cron_sets_overdue has been due for re-verification; 0 if none.
+# TYPE par2cron_sets_most_overdue_seconds gauge
+par2cron_sets_most_overdue_seconds 691200
+# HELP par2cron_backlog_margin_seconds Verification capacity per --age cycle (runs per cycle, i.e. --age divided by the run interval rounded down and at least 1, times --duration) minus par2cron_verify_duration_known_seconds; negative means the backlog grows indefinitely. Sets with unknown duration are not included.
+# TYPE par2cron_backlog_margin_seconds gauge
+par2cron_backlog_margin_seconds -21600

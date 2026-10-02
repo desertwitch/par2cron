@@ -64,6 +64,7 @@
   - [Control groups](#control-groups)
 - [Integrations](#integrations)
 - [Logging](#logging)
+- [Prometheus](#prometheus)
 - [Limitations](#limitations)
 - [License](#license)
 
@@ -373,6 +374,9 @@ Analyze a 14-day cycle with 4-hour weekly runs:
 Output results as JSON (stdout/standard output):
   par2cron info --json /mnt/storage
 
+Output results as Prometheus metrics (stdout/standard output):
+  par2cron info --prometheus -a 7d -d 2h /mnt/storage
+
 Flags:
   -a, --age duration                 target cycle length (time between re-verifications)
       --cache string                 directory for optional manifest cache (use same for all commands)
@@ -381,6 +385,7 @@ Flags:
   -d, --duration duration            target time budget for each verify run (soft limit)
   -h, --help                         help for info
   -e, --include-external             include external PAR2 sets without a par2cron manifest
+      --prometheus                   output as Prometheus metrics (e.g. node_exporter textfile, Pushgateway)
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
@@ -492,11 +497,12 @@ output is clearly and cleanly separated. All par2cron logs, using structured
 logging (either text-/JSON-based), are written to standard error (`stderr`).
 Unstructured `par2` program output is written to standard output (`stdout`).
 
-The only anomaly to the above is the `info` command, which does not use the
-`par2` program. In non-JSON mode, again structured *logging* is written to
-standard error (`stderr`), and unstructured information to standard output
-(`stdout`). In JSON mode, all structured *logging* is written to standard
-error (`stderr`), and the JSON-encoded result to standard output (`stdout`).
+The only anomalies to the above are the `info` and `list` commands, which do
+not use the `par2` program. In their default mode, again structured *logging*
+is written to standard error (`stderr`), and unstructured information to
+standard output (`stdout`). In JSON mode (and Prometheus mode for `info`), all
+structured *logging* is written to standard error (`stderr`), and the results
+to standard output (`stdout`).
 
 As a general rule of thumb this can be condensed into:
 - Structured *logging* goes to standard error (`stderr`)
@@ -1071,6 +1077,76 @@ Per-command Seq targets can also be set through the configuration file.
 
 If authentication is enabled on your Seq instance, add `--seq-key` with your
 API key.
+
+## Prometheus
+
+The `info` command can output its results as Prometheus metrics using the
+`--prometheus` flag (or the respective setting in the configuration file). This
+allows integrating par2cron into an existing Prometheus and Grafana stack, for
+dashboards and alerting on corruption or growing verification backlogs.
+
+The metrics are written to standard output in the Prometheus text exposition
+format, while all logging (including warnings) goes to standard error. As
+par2cron is not a long-running daemon, the metrics are a snapshot of the
+directory tree at the time of the run, which is meant to be picked up by:
+
+- a [node_exporter](https://github.com/prometheus/node_exporter) textfile
+  collector (recommended)
+- a [Pushgateway](https://github.com/prometheus/pushgateway) (for machines
+  without a node_exporter)
+
+For the textfile collector, write the output to a temporary file first and
+then rename it into place, so that node_exporter never reads a partially
+written file. For the Pushgateway, push with a `PUT` request (replacing the
+entire group, so no stale metrics are left behind), only push after par2cron
+has exited successfully (an empty push deletes all metrics of the group),
+include the machine as `instance` in the grouping key and set
+`honor_labels: true` in the Prometheus scrape configuration of the Pushgateway.
+
+When failing, par2cron writes nothing to standard output and exits with a
+non-zero exit code. Corruption and other findings are reported through the
+metrics, not through the exit code. As several metrics are calculated from
+`--age`, `--duration` and `--calc-run-interval`, these should match the
+arguments used for `verify` (using a common configuration file is easiest).
+
+The `info` command should run after `create`, `verify` and `repair` have
+finished, as the last step of the scheduled par2cron runs, so that the metrics
+reflect the results of the latest verification and repair. As par2cron does
+not export a timestamp of its own for when the metrics were generated, use
+`node_textfile_mtime_seconds` (textfile collector) or `push_time_seconds`
+(Pushgateway) to detect when the metrics were last updated. If either is
+older than expected (e.g. more than two days for daily runs), par2cron
+`info` has either failed or not run at all, and all other par2cron metrics
+are to be considered stale.
+
+All metrics are gauges. Per-set details (such as names of corrupted sets) are
+deliberately not exported, to keep the number of time series independent of
+the size of your collection; `par2cron list --json` or `par2cron info --json`
+can provide these details instead. The detailed meaning of each metric is also
+included as `HELP` text within the generated `--prometheus` output itself.
+
+| Metric                                           | Present                     | Description                                                       |
+| :----------------------------------------------- | :-------------------------- | :---------------------------------------------------------------- |
+| `par2cron_build_info`                            | always                      | Constant `1`, labeled with `version` and `goversion`              |
+| `par2cron_scan_duration_seconds`                 | always                      | Time taken to scan the directories and load the manifests         |
+| `par2cron_scan_incomplete_roots`                 | always                      | Root directories where not all manifests could be read            |
+| `par2cron_sets`                                  | always                      | PAR2 sets by `status` (healthy, repairable, unrepairable, unverified) |
+| `par2cron_sets_duration_unknown`                 | always                      | PAR2 sets without a known verification duration                   |
+| `par2cron_verify_duration_known_seconds`         | always                      | Sum of known verification durations (estimated full pass)         |
+| `par2cron_verify_duration_largest_seconds`       | always                      | Longest verification duration of a single PAR2 set                |
+| `par2cron_verify_oldest_timestamp_seconds`       | sets were verified          | Least recent last verification across all sets (Unix time)        |
+| `par2cron_verify_newest_timestamp_seconds`       | sets were verified          | Most recent last verification across all sets (Unix time)         |
+| `par2cron_config_run_interval_seconds`           | always                      | The given `--calc-run-interval`                                   |
+| `par2cron_config_age_seconds`                    | `--age`                     | The given `--age`                                                 |
+| `par2cron_config_duration_seconds`               | `--duration`                | The given `--duration`                                            |
+| `par2cron_sets_verified_within_age`              | `--age` (*)                 | PAR2 sets verified within the past `--age`                        |
+| `par2cron_verify_duration_within_age_seconds`    | `--age` (*)                 | Known duration of PAR2 sets verified within the past `--age`      |
+| `par2cron_sets_overdue`                          | `--age` (*)                 | PAR2 sets due for longer than one run interval (incl. cycle)      |
+| `par2cron_sets_overdue_cycle`                    | `--age` (*)                 | PAR2 sets due for longer than one full `--age` cycle              |
+| `par2cron_sets_most_overdue_seconds`             | `--age` (*)                 | How long the most overdue PAR2 set has been due                   |
+| `par2cron_backlog_margin_seconds`                | `--age` and `--duration` (*) | Capacity per cycle minus known duration (negative is unhealthy)  |
+
+(*) Only once known verification durations exist.
 
 ## Limitations
 

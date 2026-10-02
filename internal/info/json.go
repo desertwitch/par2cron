@@ -46,6 +46,10 @@ type Result struct {
 
 	// Warning indicates issues encountered during enumeration.
 	Warning string `json:"warning,omitempty"`
+
+	// Prometheus-only values (not part of the JSON output).
+	incompleteRoots int
+	largestDuration time.Duration
 }
 
 // Summary contains aggregate statistics for all discovered jobs.
@@ -253,6 +257,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 	if err := errors.Join(errs...); err != nil {
 		result.Warning = fmt.Sprintf("Not all manifests could be read: %v", err)
 	}
+	result.incompleteRoots = len(errs) // for Prometheus
 
 	js := vs.Stats(metas)
 	result.Summary = &Summary{
@@ -266,6 +271,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		TotalDuration: js.TotalDuration,
 		AvgDuration:   js.AvgDuration,
 	}
+	result.largestDuration = js.LargestDuration // for Prometheus
 
 	if !js.FirstVerification.IsZero() {
 		result.Summary.FirstVerification = &js.FirstVerification

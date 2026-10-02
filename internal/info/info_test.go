@@ -220,6 +220,62 @@ func Test_Service_Info_MultiRoot_Success(t *testing.T) {
 	require.Contains(t, stdoutBuf.String(), "Scanning filesystem '/data2' for jobs")
 }
 
+// Expectation: Info should dispatch to the Prometheus exporter and write only metrics to standard output.
+func Test_Service_Info_Prometheus_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Prometheus: true}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
+
+	out := string(stdoutBuf.Bytes())
+	checkExposition(t, out)
+
+	require.NotContains(t, out, "Scanning filesystem")
+}
+
+// Expectation: Info should dispatch to Prometheus before JSON, so the combination is rejected.
+func Test_Service_Info_PrometheusWithJSON_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout:   &logBuf,
+		Stdout:   &stdoutBuf,
+		Stderr:   io.Discard,
+		WantJSON: true,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Prometheus: true}
+	_ = args.RunInterval.Set("24h")
+	err := prog.Info(t.Context(), []string{"/data"}, args)
+
+	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.ErrorIs(t, err, errPrometheusWithJSON)
+	require.Empty(t, stdoutBuf.Bytes())
+}
+
 // Expectation: The JSON output should be valid and decode back to the Result struct.
 func Test_Service_Info_JSON_Success(t *testing.T) {
 	t.Parallel()

@@ -25,6 +25,8 @@ type Options struct {
 	IncludeExternal bool           `json:"include_external"`
 	SkipNotCreated  bool           `json:"skip_not_created"`
 	CacheDir        string         `json:"cache_dir"`
+
+	Prometheus bool `json:"-"`
 }
 
 type Service struct {
@@ -72,6 +74,10 @@ func (prog *Service) openCache(rootDir string, opts Options) schema.Cache {
 }
 
 func (prog *Service) Info(ctx context.Context, rootDirs []string, opts Options) error {
+	if opts.Prometheus {
+		return prog.exportPrometheus(ctx, rootDirs, opts)
+	}
+
 	if prog.log.Options.WantJSON {
 		return prog.PrintJSON(ctx, rootDirs, opts)
 	}

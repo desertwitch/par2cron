@@ -954,6 +954,19 @@ func Test_NewInfoCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	require.Equal(t, "false", flag.Value.String())
 }
 
+// Expectation: The "info" command should have a "prometheus" flag.
+func Test_NewInfoCmd_HasPrometheusFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
+
+	flag := cmd.Flags().Lookup("prometheus")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.Value.String())
+}
+
 // Expectation: The "info" command should have a "skip-not-created" flag.
 func Test_NewInfoCmd_HasSkipNotCreatedFlag_Success(t *testing.T) {
 	t.Parallel()

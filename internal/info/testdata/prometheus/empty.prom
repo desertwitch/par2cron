@@ -1,0 +1,27 @@
+# HELP par2cron_build_info A metric with a constant '1' value labeled by version and goversion from which par2cron was built.
+# TYPE par2cron_build_info gauge
+par2cron_build_info{goversion="go1.26.0",version="1.2.3"} 1
+# HELP par2cron_scan_duration_seconds Time taken to scan the given directories for PAR2 sets and load their manifests.
+# TYPE par2cron_scan_duration_seconds gauge
+par2cron_scan_duration_seconds 1.5
+# HELP par2cron_scan_incomplete_roots Number of given root directories in which not all par2cron manifests could be read; if non-zero, the other metric values may be incomplete.
+# TYPE par2cron_scan_incomplete_roots gauge
+par2cron_scan_incomplete_roots 0
+# HELP par2cron_sets Number of PAR2 sets by status of their last verification, where unverified means never verified; the statuses sum to the total number of sets.
+# TYPE par2cron_sets gauge
+par2cron_sets{status="healthy"} 0
+par2cron_sets{status="repairable"} 0
+par2cron_sets{status="unrepairable"} 0
+par2cron_sets{status="unverified"} 0
+# HELP par2cron_sets_duration_unknown Number of PAR2 sets without a recorded verification duration (typically never verified); these are excluded from all duration-based values.
+# TYPE par2cron_sets_duration_unknown gauge
+par2cron_sets_duration_unknown 0
+# HELP par2cron_verify_duration_known_seconds Sum of the last recorded verification durations of all PAR2 sets with a known duration, i.e. an estimate of the time one full verification pass takes, excluding sets with unknown duration.
+# TYPE par2cron_verify_duration_known_seconds gauge
+par2cron_verify_duration_known_seconds 0
+# HELP par2cron_verify_duration_largest_seconds Longest last recorded verification duration of a single PAR2 set; a set longer than --duration overshoots the soft limit whenever it is verified.
+# TYPE par2cron_verify_duration_largest_seconds gauge
+par2cron_verify_duration_largest_seconds 0
+# HELP par2cron_config_run_interval_seconds How often par2cron verify is assumed to run, as given to info with --calc-run-interval (default 24h).
+# TYPE par2cron_config_run_interval_seconds gauge
+par2cron_config_run_interval_seconds 86400

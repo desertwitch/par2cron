@@ -140,6 +140,8 @@ Shows verification cycle statistics and configuration analysis.
   Target time budget per verify run.
 *-e, --include-external*::
   Include external PAR2 sets.
+*--prometheus*::
+  Write to standard output as Prometheus metrics.
 *--skip-not-created*::
   Skip sets without a creation record.
 
