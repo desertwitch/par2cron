@@ -552,6 +552,12 @@ other, but leaving some time between the scheduled commands is recommended. Jobs
 locked by another instance will just be skipped over and picked up again at the
 next possible time. This is achieved with kernel-enforced file locking syscalls.
 
+If you monitor par2cron with [Prometheus](#prometheus) or by JSON scripting,
+schedule `par2cron info` as the last step, after `repair` has finished, and give
+it the same `--age`, `--duration` and `--cache` arguments as `verify`. The
+results then reflect the latest verification and repair, and the calculated
+values (such as backlog and overdue sets) match your actual schedule.
+
 ## State Management
 
 The program aims to off-load all state directly next to the protected files.
@@ -1046,9 +1052,10 @@ Applications" (Apps tab) ecosystem.
 ## Logging
 
 par2cron uses structured logging via [slog](https://pkg.go.dev/log/slog) and
-writes all output to the console (as human readable text or `--json`). Optionally, logs can also be shipped to a [Seq](https://datalust.co/seq) server over its
-[CLEF](https://clef-json.org/) ingestion endpoint for searchable, filterable
-structured logs with built-in alerting.
+writes all output to the console (as human readable text or `--json`).
+Optionally, logs can also be shipped to a [Seq](https://datalust.co/seq) server
+over its [CLEF](https://clef-json.org/) ingestion endpoint for searchable,
+filterable structured logs with built-in alerting.
 
 If the initial connection to Seq fails, a warning is logged at Error level.
 par2cron will continue to attempt delivery in the background - any intermediate
