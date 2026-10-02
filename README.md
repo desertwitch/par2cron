@@ -1131,6 +1131,15 @@ older than expected (e.g. more than two days for daily runs), par2cron
 `info` has either failed or not run at all, and all other par2cron metrics
 are to be considered stale.
 
+If you run separate par2cron schedules for different directory trees on the
+same machine (for example with different `--age` settings), each `info` run
+produces metrics with identical names. With the Pushgateway, use a separate
+grouping key per tree (for example an additional `tree` label). With the
+textfile collector, metrics from multiple files must not be identical, so use
+a single `info` run covering all trees instead; this requires the trees to
+share the same `--age`, `--duration` and `--calc-run-interval` settings, as
+otherwise the calculated values reflect only the settings given to `info`.
+
 All metrics are gauges. Per-set details (such as names of corrupted sets) are
 deliberately not exported, to keep the number of time series independent of
 the size of your collection; `par2cron list --json` or `par2cron info --json`
