@@ -100,6 +100,99 @@ func Test_GobCache_Len_ReturnsCount_Success(t *testing.T) {
 	require.Equal(t, 2, c.Len())
 }
 
+// Expectation: SavedLen should return zero for an empty cache.
+func Test_GobCache_SavedLen_EmptyCache_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	c := NewGobCache(fsys, "/cache", "test")
+
+	require.Equal(t, 0, c.SavedLen())
+}
+
+// Expectation: SavedLen should count only entries with the saved state set to true.
+func Test_GobCache_SavedLen_MixedEntries_CountsOnlySaved_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+	c := NewGobCache(fsys, "/cache", "test")
+
+	c.items["/a.par2"] = &schema.JobMeta{Par2Path: "/a.par2", Saved: true}
+	c.items["/b.par2"] = &schema.JobMeta{Par2Path: "/b.par2", Saved: false}
+	c.items["/c.par2"] = &schema.JobMeta{Par2Path: "/c.par2", Saved: true}
+
+	require.Equal(t, 2, c.SavedLen())
+	require.Equal(t, 3, c.Len())
+}
+
+// Expectation: SavedLen should count all entries after a save, both in memory and after a load.
+func Test_GobCache_SavedLen_AfterSaveAndLoad_CountsAll_Success(t *testing.T) {
+	t.Parallel()
+
+	dir := "/"
+	fsys := afero.NewMemMapFs()
+
+	c := NewGobCache(fsys, dir, "test")
+	c.Set("/a.par2", &schema.JobMeta{Par2Path: "/a.par2"})
+	c.Set("/b.par2", &schema.JobMeta{Par2Path: "/b.par2"})
+	require.Equal(t, 0, c.SavedLen())
+
+	require.NoError(t, c.Save())
+	require.Equal(t, 2, c.SavedLen())
+
+	c2 := NewGobCache(fsys, dir, "test")
+	require.NoError(t, c2.Load())
+	require.Equal(t, 2, c2.SavedLen())
+}
+
+// Expectation: SavedLen should no longer count an entry once it has been updated with Set.
+func Test_GobCache_SavedLen_SetAfterLoad_ExcludesUpdated_Success(t *testing.T) {
+	t.Parallel()
+
+	dir := "/"
+	fsys := afero.NewMemMapFs()
+
+	c := NewGobCache(fsys, dir, "test")
+	c.Set("/a.par2", &schema.JobMeta{Par2Path: "/a.par2"})
+	c.Set("/b.par2", &schema.JobMeta{Par2Path: "/b.par2"})
+	require.NoError(t, c.Save())
+
+	c2 := NewGobCache(fsys, dir, "test")
+	require.NoError(t, c2.Load())
+
+	c2.Set("/a.par2", &schema.JobMeta{Par2Path: "/a.par2", CountCorrupted: 1})
+	c2.Set("/new.par2", &schema.JobMeta{Par2Path: "/new.par2"})
+
+	require.Equal(t, 1, c2.SavedLen())
+	require.Equal(t, 3, c2.Len())
+}
+
+// Expectation: SavedLen after a walk cycle should count only saved entries that were walked and not updated.
+func Test_GobCache_SavedLen_WalkCycle_CountsWalkedSavedOnly_Success(t *testing.T) {
+	t.Parallel()
+
+	dir := "/"
+	fsys := afero.NewMemMapFs()
+
+	c := NewGobCache(fsys, dir, "test")
+	c.Set("/a.par2", &schema.JobMeta{Par2Path: "/a.par2"})
+	c.Set("/b.par2", &schema.JobMeta{Par2Path: "/b.par2"})
+	c.Set("/c.par2", &schema.JobMeta{Par2Path: "/c.par2"})
+	require.NoError(t, c.Save())
+
+	c2 := NewGobCache(fsys, dir, "test")
+	require.NoError(t, c2.Load())
+
+	// Walk: /a served from cache, /b updated, /c gone, /new discovered.
+	c2.Get("/a.par2")
+	c2.Set("/b.par2", &schema.JobMeta{Par2Path: "/b.par2", CountCorrupted: 1})
+	c2.Set("/new.par2", &schema.JobMeta{Par2Path: "/new.par2"})
+	c2.PruneUnwalked()
+
+	require.Equal(t, 1, c2.SavedLen())
+	require.Equal(t, 3, c2.Len())
+}
+
 // Expectation: Get should return the item and true when the key exists.
 func Test_GobCache_Get_ExistingKey_Success(t *testing.T) {
 	t.Parallel()

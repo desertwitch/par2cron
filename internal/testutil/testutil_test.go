@@ -1334,6 +1334,28 @@ func Test_MockCache_Len_NoFunc_Success(t *testing.T) {
 	require.Equal(t, 0, c.Len())
 }
 
+// Expectation: The mock cache should call the provided SavedLen function.
+func Test_MockCache_SavedLen_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{
+		SavedLenFunc: func() int {
+			return 42
+		},
+	}
+
+	require.Equal(t, 42, c.SavedLen())
+}
+
+// Expectation: The mock cache should return zero when no SavedLen function is provided.
+func Test_MockCache_SavedLen_NoFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	c := &MockCache{}
+
+	require.Equal(t, 0, c.SavedLen())
+}
+
 // Expectation: The mock cache should call the provided Load function.
 func Test_MockCache_Load_WithFunc_Success(t *testing.T) {
 	t.Parallel()
