@@ -173,10 +173,13 @@ func goldenCases() map[string]*Result {
 		},
 
 		// Everything present: corruption, unknown durations, incomplete scan,
-		// overdue sets (nested counts) and a negative backlog margin.
+		// cache in use, overdue sets (nested counts) and a negative backlog margin.
 		// 7 runs per cycle * 2h = 14h capacity - 20h known = -6h margin.
 		"full": {
-			Options: &Options{MinAge: dur(7 * day), MaxDuration: dur(2 * time.Hour), RunInterval: dur(day)},
+			Options: &Options{
+				MinAge: dur(7 * day), MaxDuration: dur(2 * time.Hour), RunInterval: dur(day),
+				CacheDir: "/cache",
+			},
 			Summary: &Summary{
 				JobCount: 10, KnownCount: 8, UnknownCount: 2,
 				Healthies: 6, Repairables: 1, Unrepairables: 1, Unverifieds: 2,
@@ -191,6 +194,7 @@ func goldenCases() map[string]*Result {
 			OverdueInfo:     &OverdueInfo{OverdueRunCount: 3, OverdueCycleCount: 1, MostOverdueBy: 8 * day},
 			incompleteRoots: 1,
 			largestDuration: 3 * time.Hour,
+			cachedSets:      8,
 		},
 	}
 }

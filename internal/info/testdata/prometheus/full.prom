@@ -16,6 +16,9 @@ par2cron_sets{status="unverified"} 2
 # HELP par2cron_sets_duration_unknown Number of PAR2 sets without a recorded verification duration (typically never verified); these are excluded from all duration-based values.
 # TYPE par2cron_sets_duration_unknown gauge
 par2cron_sets_duration_unknown 2
+# HELP par2cron_sets_cached Number of PAR2 sets found in this scan whose manifest was served from the persisted manifest cache (present and up to date); divide by the total of par2cron_sets for cache coverage. Absent if no cache directory is configured.
+# TYPE par2cron_sets_cached gauge
+par2cron_sets_cached 8
 # HELP par2cron_verify_duration_known_seconds Sum of the last recorded verification durations of all PAR2 sets with a known duration, i.e. an estimate of the time one full verification pass takes, excluding sets with unknown duration.
 # TYPE par2cron_verify_duration_known_seconds gauge
 par2cron_verify_duration_known_seconds 72000

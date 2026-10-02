@@ -48,6 +48,7 @@ type Result struct {
 	Warning string `json:"warning,omitempty"`
 
 	// Prometheus-only values (not part of the JSON output).
+	cachedSets      int
 	incompleteRoots int
 	largestDuration time.Duration
 }
@@ -247,6 +248,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		}
 
 		cache.PruneUnwalked()
+		result.cachedSets += cache.SavedLen() // for Prometheus
 		// We don't save the cache so there cannot be races with verification.
 		// An info could finish after an overlapping verification and discard
 		// the verification progress in a race, so we only let verification

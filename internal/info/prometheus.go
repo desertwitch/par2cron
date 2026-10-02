@@ -171,6 +171,9 @@ func buildVersions() (string, string) {
 //     --> verify_duration_largest_seconds
 //     --> config_run_interval_seconds
 //
+//   - sets_cached:
+//     --> Argument --cache given
+//
 //   - verify_*_timestamp_seconds:
 //     --> at least one set has been verified.
 //
@@ -250,6 +253,17 @@ func renderPrometheus(r *Result, scanDuration time.Duration, version, goVersion 
 			"these are excluded from all duration-based values.",
 		float64(s.UnknownCount),
 	)
+
+	// par2cron_sets_cached
+	if r.Options.CacheDir != "" {
+		w.gauge(
+			"par2cron_sets_cached",
+			"Number of PAR2 sets found in this scan whose manifest was served from the persisted manifest cache "+
+				"(present and up to date); divide by the total of par2cron_sets for cache coverage. "+
+				"Absent if no cache directory is configured.",
+			float64(r.cachedSets),
+		)
+	}
 
 	// par2cron_verify_duration_known_seconds
 	w.gauge(

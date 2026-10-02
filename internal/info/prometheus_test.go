@@ -260,6 +260,7 @@ func Test_Service_exportPrometheus_WithJobs_Success(t *testing.T) {
 
 	require.True(t, hasPromFamily(out, "par2cron_verify_oldest_timestamp_seconds"))
 	require.True(t, hasPromFamily(out, "par2cron_verify_newest_timestamp_seconds"))
+	require.False(t, hasPromFamily(out, "par2cron_sets_cached"))
 }
 
 // Expectation: exportPrometheus should omit the duration-based metrics and log a warning when no duration data exists.
@@ -382,6 +383,48 @@ func Test_Service_exportPrometheus_OverdueCycle_Success(t *testing.T) {
 	require.NotContains(t, out, "par2cron_sets_most_overdue_seconds 0\n")
 
 	require.Contains(t, string(logBuf.Bytes()), "due for longer than one full cycle")
+}
+
+// Expectation: exportPrometheus should sum the saved cache entries of all roots when a cache directory is set.
+func Test_Service_exportPrometheus_SetsCached_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data1", 0o755))
+	require.NoError(t, fs.MkdirAll("/data2", 0o755))
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	cacher := &testutil.MockCacheHandler{
+		NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+			return &testutil.MockCache{
+				PruneUnwalkedFunc: func() int {
+					return 0
+				},
+				SavedLenFunc: func() int {
+					return 3
+				},
+			}
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+
+	args := Options{Prometheus: true, CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.exportPrometheus(t.Context(), []string{"/data1", "/data2"}, args))
+
+	out := string(stdoutBuf.Bytes())
+	checkExposition(t, out)
+
+	require.Contains(t, out, "par2cron_sets_cached 6\n")
 }
 
 // Expectation: logResultWarnings should log every non-empty warning of the result,
@@ -528,6 +571,7 @@ func Test_renderPrometheus_Minimal_Success(t *testing.T) {
 	}
 
 	for _, name := range []string{
+		"par2cron_sets_cached",
 		"par2cron_verify_oldest_timestamp_seconds",
 		"par2cron_verify_newest_timestamp_seconds",
 		"par2cron_config_age_seconds",
@@ -571,4 +615,29 @@ func Test_renderPrometheus_Timestamps_Success(t *testing.T) {
 
 	require.Contains(t, out, "par2cron_verify_oldest_timestamp_seconds 1.7684784e+09\n")
 	require.Contains(t, out, "par2cron_verify_newest_timestamp_seconds 1.768482e+09\n")
+}
+
+// Expectation: renderPrometheus should emit the cached sets (including zero) when a cache directory is configured.
+func Test_renderPrometheus_SetsCached_Success(t *testing.T) {
+	t.Parallel()
+
+	args := Options{CacheDir: "/cache"}
+	_ = args.RunInterval.Set("24h")
+
+	result := &Result{
+		Options: &args,
+		Summary: &Summary{JobCount: 3, Healthies: 3},
+	}
+
+	out := renderPrometheus(result, time.Second, "1.2.3", "go1.26.0")
+	checkExposition(t, out)
+
+	require.Contains(t, out, "par2cron_sets_cached 0\n")
+
+	result.cachedSets = 2
+
+	out = renderPrometheus(result, time.Second, "1.2.3", "go1.26.0")
+	checkExposition(t, out)
+
+	require.Contains(t, out, "par2cron_sets_cached 2\n")
 }

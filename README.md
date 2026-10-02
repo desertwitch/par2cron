@@ -998,6 +998,11 @@ stored in a compressed cache file, allowing repeated manifest loading and
 decoding from disk to be skipped. This can significantly speed up the filesystem
 scanning phase by reducing expensive random I/O access.
 
+When using `par2cron info --prometheus` with `--cache`, the metric
+`par2cron_sets_cached` reports how many PAR2 sets were served from the cache,
+which can be compared with the total of `par2cron_sets` to monitor cache
+coverage (for example after a reboot clearing a memory-backed cache).
+
 Filesystem traversal itself will still occur to prevent stale cache entries, but
 this phase is typically helped considerably by aggressive kernel caching of
 directory metadata.
@@ -1132,6 +1137,7 @@ included as `HELP` text within the generated `--prometheus` output itself.
 | `par2cron_scan_incomplete_roots`                 | always                      | Root directories where not all manifests could be read            |
 | `par2cron_sets`                                  | always                      | PAR2 sets by `status` (healthy, repairable, unrepairable, unverified) |
 | `par2cron_sets_duration_unknown`                 | always                      | PAR2 sets without a known verification duration                   |
+| `par2cron_sets_cached`                           | `--cache`                   | PAR2 sets served from the manifest cache (compare with `par2cron_sets`) |
 | `par2cron_verify_duration_known_seconds`         | always                      | Sum of known verification durations (estimated full pass)         |
 | `par2cron_verify_duration_largest_seconds`       | always                      | Longest verification duration of a single PAR2 set                |
 | `par2cron_verify_oldest_timestamp_seconds`       | sets were verified          | Least recent last verification across all sets (Unix time)        |
