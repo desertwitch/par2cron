@@ -36,6 +36,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
 	"slices"
@@ -55,6 +56,7 @@ import (
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 	"github.com/spf13/cobra/doc"
+	"golang.org/x/term"
 )
 
 var (
@@ -80,6 +82,20 @@ func checkForPar2(ctx context.Context, runner schema.CommandRunner, errout io.Wr
 	return nil
 }
 
+func considerNoColors(cmd *cobra.Command, globalOptions *globalOptions) {
+	if !cmd.Flags().Changed("log-plain") {
+		isTerminal := false
+		// Non-*os.File writers (buffers, wrappers) are treated as non-terminals.
+		if f, ok := globalOptions.logOptions.Logout.(*os.File); ok {
+			isTerminal = term.IsTerminal(int(f.Fd()))
+		}
+		// NO_COLOR (https://no-color.org/) or non-terminals get uncolored logs.
+		if os.Getenv("NO_COLOR") != "" || !isTerminal {
+			globalOptions.logOptions.NoColor = true
+		}
+	}
+}
+
 func stopProfile() {
 	if profFile != nil {
 		pprof.StopCPUProfile()
@@ -90,6 +106,7 @@ func stopProfile() {
 
 func stopProfileMem() {
 	if profFileMem != nil {
+		runtime.GC()
 		_ = pprof.Lookup("allocs").WriteTo(profFileMem, 0)
 		_ = profFileMem.Close()
 		profFileMem = nil
@@ -149,13 +166,13 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			pp, _ := cmd.Flags().GetString("pprof")
 			if pp != "" {
-				pf, err := os.Create(pp)
+				ppf, err := os.Create(pp)
 				if err != nil {
 					return fmt.Errorf("%w: failed to create --pprof: %w",
 						schema.ErrExitBadInvocation, err)
 				}
-				profFile = pf
-				if err := pprof.StartCPUProfile(pf); err != nil {
+				profFile = ppf
+				if err := pprof.StartCPUProfile(ppf); err != nil {
 					return fmt.Errorf("%w: failed to start --pprof: %w",
 						schema.ErrExitBadInvocation, err)
 				}
@@ -163,12 +180,12 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 
 			pm, _ := cmd.Flags().GetString("mprof")
 			if pm != "" {
-				pm, err := os.Create(pm)
+				pmf, err := os.Create(pm)
 				if err != nil {
 					return fmt.Errorf("%w: failed to create --mprof: %w",
 						schema.ErrExitBadInvocation, err)
 				}
-				profFileMem = pm
+				profFileMem = pmf
 			}
 
 			return nil
@@ -177,6 +194,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	rootCmd.PersistentFlags().String("pprof", "", "write CPU performance profile to file")
 	rootCmd.PersistentFlags().String("mprof", "", "write RAM allocation profile to file")
 	rootCmd.PersistentFlags().StringVar(&globalOptions.cgroupPath, "cgroup", "", "cgroup v2 directory to constrain par2 processes")
+	rootCmd.PersistentFlags().BoolVar(&globalOptions.logOptions.NoColor, "log-plain", false, "emit uncolored plain-text logs with full timestamps")
 	rootCmd.PersistentFlags().VarP(&globalOptions.logOptions.LogLevel, "log-level", "l", "minimum level of emitted logs (debug|info|warn|error)")
 	rootCmd.PersistentFlags().StringVar(&globalOptions.logOptions.SeqURL, "seq-url", "", "CLEF ingestion URL for a (remote) Seq logging server")
 	rootCmd.PersistentFlags().StringVar(&globalOptions.logOptions.SeqKey, "seq-key", "", "API key for a (remote) Seq logging server")
@@ -240,10 +258,11 @@ func newToolMD5Cmd(ctx context.Context, globalOptions *globalOptions) *cobra.Com
 		Short:   toolMD5HelpShort,
 		Example: toolMD5HelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
-		PreRun: func(_ *cobra.Command, _ []string) {
+		PreRun: func(cmd *cobra.Command, _ []string) {
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 		},
 		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			runner, rerr := newRunner(globalOptions)
@@ -298,10 +317,11 @@ func newBundlePackCmd(ctx context.Context, globalOptions *globalOptions) *cobra.
 		Short: bundlePackHelpShort,
 		Long:  bundlePackHelpLong,
 		Args:  wrapArgsError(cobra.MinimumNArgs(1)),
-		PreRunE: func(_ *cobra.Command, args []string) error {
+		PreRunE: func(cmd *cobra.Command, args []string) error {
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 
 			resolved, err := resolvePathArgs(fsys, args)
 			if err != nil {
@@ -351,10 +371,11 @@ func newBundleUnpackCmd(ctx context.Context, globalOptions *globalOptions) *cobr
 		Short: bundleUnpackHelpShort,
 		Long:  bundleUnpackHelpLong,
 		Args:  wrapArgsError(cobra.MinimumNArgs(1)),
-		PreRunE: func(_ *cobra.Command, args []string) error {
+		PreRunE: func(cmd *cobra.Command, args []string) error {
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 
 			resolved, err := resolvePathArgs(fsys, args)
 			if err != nil {
@@ -401,10 +422,11 @@ func newBundleDebugCmd(ctx context.Context, globalOptions *globalOptions) *cobra
 		Long:    bundleDebugHelpLong,
 		Example: bundleDebugHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
-		PreRun: func(_ *cobra.Command, _ []string) {
+		PreRun: func(cmd *cobra.Command, _ []string) {
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 		},
 		RunE: func(_ *cobra.Command, args []string) (ret error) { //nolint:nonamedreturns
 			runner, rerr := newRunner(globalOptions)
@@ -473,6 +495,7 @@ func newCreateCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 
 			if err := checkForPar2(ctx, &util.CtxRunner{}, globalOptions.logOptions.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -547,6 +570,7 @@ func newVerifyCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 
 			if err := checkForPar2(ctx, &util.CtxRunner{}, globalOptions.logOptions.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -619,6 +643,7 @@ func newRepairCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 
 			if err := checkForPar2(ctx, &util.CtxRunner{}, globalOptions.logOptions.Stderr); err != nil {
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
@@ -695,6 +720,7 @@ func newInfoCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 
 			result, err := runPrelude(&preludeInput[*info.Options, *configFileInfo]{
 				FSys:           fsys,
@@ -757,10 +783,11 @@ func newListCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 		Long:    listHelpLong,
 		Example: listHelpExample,
 		Args:    wrapArgsError(cobra.MinimumNArgs(1)),
-		PreRunE: func(_ *cobra.Command, args []string) error {
+		PreRunE: func(cmd *cobra.Command, args []string) error {
 			globalOptions.logOptions.Logout = os.Stderr
 			globalOptions.logOptions.Stdout = os.Stdout
 			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
 
 			resolved, err := resolvePathArgs(fsys, args)
 			if err != nil {

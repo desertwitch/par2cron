@@ -47,6 +47,8 @@ kernel-enforced file locking to prevent interference between instances.
   Output results/logs in JSON format (where applicable).
 *-l, --log-level* _level_::
   Log level: debug, info, warn, error (default info).
+*--log-plain*::
+  Emit uncolored plain-text logs with full timestamps.
 *--mprof* _string_::
   Write RAM allocation profile to file.
 *--pprof* _string_::

@@ -65,6 +65,7 @@ Run for around 1 hour (as soft limit), hide created files:
       --cgroup string     cgroup v2 directory to constrain par2 processes
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --log-plain         emit uncolored plain-text logs with full timestamps
       --mprof string      write RAM allocation profile to file
       --pprof string      write CPU performance profile to file
       --seq-key string    API key for a (remote) Seq logging server

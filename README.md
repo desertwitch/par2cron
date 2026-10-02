@@ -252,6 +252,7 @@ Detailed documentation for each command is available in the [docs/](docs/) direc
       --cgroup string     cgroup v2 directory to constrain par2 processes
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --log-plain         emit uncolored plain-text logs with full timestamps
       --mprof string      write RAM allocation profile to file
       --pprof string      write CPU performance profile to file
       --seq-key string    API key for a (remote) Seq logging server
@@ -1053,6 +1054,16 @@ Applications" (Apps tab) ecosystem.
 
 par2cron uses structured logging via [slog](https://pkg.go.dev/log/slog) and
 writes all output to the console (as human readable text or `--json`).
+
+When writing to a terminal, logs are colored and use a short time format for
+readability. When output is not a terminal (e.g. under cron, in a pipe, or
+redirected to a file), par2cron automatically switches to uncolored plain-text
+logs with full timestamps. Color is also disabled when the `NO_COLOR`
+environment variable is set to a non-empty value (see
+[no-color.org](https://no-color.org/)). Use `--log-plain` to always emit plain
+logs, or `--log-plain=false` to always emit colored logs, regardless of the
+environment. The `--log-plain` flag has no effect on `--json` output.
+
 Optionally, logs can also be shipped to a [Seq](https://datalust.co/seq) server
 over its [CLEF](https://clef-json.org/) ingestion endpoint for searchable,
 filterable structured logs with built-in alerting.
