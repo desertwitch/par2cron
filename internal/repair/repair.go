@@ -145,7 +145,7 @@ func (prog *Service) Repair(ctx context.Context, rootDirs []string, opts Options
 		cache := prog.openCache(ctx, rootDir, opts)
 
 		logger.Info("Scanning filesystem for jobs...",
-			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.Len())
+			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.SavedLen())
 
 		ms, err := prog.Enumerate(ctx, rootDir, opts, cache)
 		if err != nil {

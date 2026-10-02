@@ -84,7 +84,7 @@ func (prog *Service) List(ctx context.Context, rootDirs []string, opts Options) 
 		cache := prog.openCache(ctx, rootDir, opts)
 
 		logger.Debug("Scanning filesystem for jobs...",
-			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.Len())
+			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.SavedLen())
 
 		meta, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
