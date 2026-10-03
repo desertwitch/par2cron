@@ -1,0 +1,197 @@
+# Unit tests for alerts.yml, run with:
+#   promtool test rules contrib/prometheus/alerts_test.yml
+#
+# Each alert is tested both for firing (with the expected labels and
+# rendered annotations) and for staying quiet when it does not apply.
+#
+# Input series use a 1m interval like a real scrape: with sparser samples,
+# series would vanish between samples and reset the "for:" durations.
+
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # A healthy host over three days: no alert fires at any time.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="nas"}'
+        values: '1+0x4400'
+      - series: 'node_textfile_mtime_seconds{job="node",instance="nas",file="/var/lib/node_exporter/textfile_collector/par2cron.prom"}'
+        values: '0+60x4400'
+      - series: 'par2cron_sets{job="node",instance="nas",status="healthy"}'
+        values: '25450+0x4400'
+      - series: 'par2cron_sets{job="node",instance="nas",status="repairable"}'
+        values: '0+0x4400'
+      - series: 'par2cron_sets{job="node",instance="nas",status="unrepairable"}'
+        values: '0+0x4400'
+      - series: 'par2cron_sets{job="node",instance="nas",status="unverified"}'
+        values: '0+0x4400'
+      - series: 'par2cron_sets_overdue_cycle{job="node",instance="nas"}'
+        values: '0+0x4400'
+      - series: 'par2cron_backlog_margin_seconds{job="node",instance="nas"}'
+        values: '82840+0x4400'
+      - series: 'par2cron_scan_incomplete_roots{job="node",instance="nas"}'
+        values: '0+0x4400'
+    alert_rule_test:
+      - eval_time: 72h
+        alertname: NodeExporterDown
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronUnrepairable
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronRepairable
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronSetsNeverVerified
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronOverdueCycle
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronBacklogGrowing
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronScanIncomplete
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronMetricsStale
+        exp_alerts: []
+      - eval_time: 72h
+        alertname: Par2cronMetricsMissing
+        exp_alerts: []
+
+  # A host with problems everywhere, and a metrics file that is never updated.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="nas"}'
+        values: '1+0x3000'
+      - series: 'node_textfile_mtime_seconds{job="node",instance="nas",file="/var/lib/node_exporter/textfile_collector/par2cron.prom"}'
+        values: '0+0x3000'
+      - series: 'par2cron_sets{job="node",instance="nas",status="healthy"}'
+        values: '100+0x3000'
+      - series: 'par2cron_sets{job="node",instance="nas",status="repairable"}'
+        values: '3+0x3000'
+      - series: 'par2cron_sets{job="node",instance="nas",status="unrepairable"}'
+        values: '2+0x3000'
+      - series: 'par2cron_sets{job="node",instance="nas",status="unverified"}'
+        values: '4+0x3000'
+      - series: 'par2cron_sets_overdue_cycle{job="node",instance="nas"}'
+        values: '1+0x3000'
+      - series: 'par2cron_backlog_margin_seconds{job="node",instance="nas"}'
+        values: '-3600+0x3000'
+      - series: 'par2cron_scan_incomplete_roots{job="node",instance="nas"}'
+        values: '1+0x3000'
+    alert_rule_test:
+      # Alerts without "for:" fire immediately.
+      - eval_time: 1h
+        alertname: Par2cronUnrepairable
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, instance: nas, status: unrepairable}
+            exp_annotations:
+              summary: "2 PAR2 sets on nas are unrepairable"
+              description: "Run par2cron list to find them; the parity data is insufficient for a repair."
+      - eval_time: 1h
+        alertname: Par2cronRepairable
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: nas, status: repairable}
+            exp_annotations:
+              summary: "3 PAR2 sets on nas need repair"
+              description: "Run par2cron list to find them; par2cron may fix them on its next repair run."
+      - eval_time: 1h
+        alertname: Par2cronOverdueCycle
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: nas}
+            exp_annotations:
+              summary: "1 PAR2 sets on nas are overdue by a full cycle"
+              description: "Check for backlog warnings, repeated failures, and whether par2cron verify runs."
+      - eval_time: 1h
+        alertname: Par2cronBacklogGrowing
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: nas}
+            exp_annotations:
+              summary: "Verification backlog on nas grows with the current --age and --duration"
+              description: "This warning indicates that with the current configuration the verification cannot keep up."
+      - eval_time: 1h
+        alertname: Par2cronScanIncomplete
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: nas}
+            exp_annotations:
+              summary: "Not all par2cron manifests could be read on nas"
+              description: "Check the par2cron logs for filesystem or permission issues that need resolving."
+
+      # Unverified sets: still pending before two days, firing after.
+      - eval_time: 47h
+        alertname: Par2cronSetsNeverVerified
+        exp_alerts: []
+      - eval_time: 49h
+        alertname: Par2cronSetsNeverVerified
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: nas, status: unverified}
+            exp_annotations:
+              summary: "4 unverified PAR2 sets on nas for more than 2 days"
+              description: "This warning indicates that par2cron verify is perhaps not running as scheduled."
+
+      # Metrics file written at time 0 and never again: stale after two days.
+      - eval_time: 47h
+        alertname: Par2cronMetricsStale
+        exp_alerts: []
+      - eval_time: 49h
+        alertname: Par2cronMetricsStale
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: nas, file: /var/lib/node_exporter/textfile_collector/par2cron.prom}
+            exp_annotations:
+              summary: "par2cron metrics on nas were not updated for 2 days"
+              description: "This warning indicates that par2cron info is perhaps not running as scheduled."
+
+      # The file exists (although stale), so it is not reported as missing.
+      - eval_time: 49h
+        alertname: Par2cronMetricsMissing
+        exp_alerts: []
+
+  # Node exporter unreachable: only NodeExporterDown fires, after 5 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="nas"}'
+        values: '0+0x180'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: NodeExporterDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: NodeExporterDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: node, instance: nas}
+            exp_annotations:
+              summary: "Node exporter on nas is unreachable"
+      - eval_time: 3h
+        alertname: Par2cronMetricsMissing
+        exp_alerts: []
+      - eval_time: 3h
+        alertname: Par2cronMetricsStale
+        exp_alerts: []
+
+  # Node exporter up, but no par2cron metrics file: missing after one hour.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="nas"}'
+        values: '1+0x180'
+      # Another textfile metric must not be mistaken for the par2cron file.
+      - series: 'node_textfile_mtime_seconds{job="node",instance="nas",file="/var/lib/node_exporter/textfile_collector/other.prom"}'
+        values: '0+60x180'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: Par2cronMetricsMissing
+        exp_alerts: []
+      - eval_time: 2h
+        alertname: Par2cronMetricsMissing
+        exp_alerts:
+          - exp_labels: {severity: warning, job: node, instance: nas}
+            exp_annotations:
+              summary: "No par2cron metrics file found on nas"
+              description: "Check if par2cron info has run and if the textfile collector is enabled."
+      - eval_time: 2h
+        alertname: NodeExporterDown
+        exp_alerts: []
