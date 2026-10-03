@@ -1,5 +1,5 @@
 kind: Added
-body: '`bundle` gains `spec` subcommand'
+body: '`bundle` gains `spec` subcommand to print the bundle specification'
 time: 2026-10-03T23:32:58.409678567+02:00
 custom:
     Issue: ""

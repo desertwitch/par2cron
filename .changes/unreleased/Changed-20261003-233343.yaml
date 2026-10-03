@@ -1,5 +1,5 @@
 kind: Changed
-body: example configuration moved to docs/configs folder
+body: example configuration has been moved to `docs/configs` folder
 time: 2026-10-03T23:33:43.775616085+02:00
 custom:
     Issue: ""
