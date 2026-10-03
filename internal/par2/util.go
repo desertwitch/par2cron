@@ -38,7 +38,7 @@ func (cr *contextReader) Read(p []byte) (int, error) {
 	}
 }
 
-// Copy creates a deep copy of the MainPacket (returning nil on nil reciver).
+// Copy creates a deep copy of the MainPacket (returning nil on nil receiver).
 func (m *MainPacket) Copy() *MainPacket {
 	if m == nil {
 		return nil

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
 	"github.com/desertwitch/par2cron/internal/util"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,6 +81,115 @@ func Test_checkForPar2_RunFails_Error(t *testing.T) {
 	require.ErrorContains(t, err, "exec:")
 	require.ErrorContains(t, err, "runner boom")
 	require.Contains(t, errOut.String(), "requires a \"par2\"")
+}
+
+// newColorTestCmd returns a minimal command with the "log-plain" flag bound to the options.
+func newColorTestCmd(globalOptions *globalOptions) *cobra.Command {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().BoolVar(&globalOptions.logOptions.NoColor, "log-plain", false, "")
+
+	return cmd
+}
+
+// Expectation: A non-file writer (buffer) should be treated as a non-terminal and disable colors.
+func Test_considerNoColors_NonFileWriter_Success(t *testing.T) {
+	t.Parallel()
+
+	opts := newGlobalOptions()
+	opts.logOptions.Logout = &testutil.SafeBuffer{}
+
+	cmd := newColorTestCmd(opts)
+	require.NoError(t, cmd.ParseFlags([]string{}))
+
+	considerNoColors(cmd, opts)
+	require.True(t, opts.logOptions.NoColor)
+}
+
+// Expectation: A nil writer should be treated as a non-terminal and disable colors.
+func Test_considerNoColors_NilWriter_Success(t *testing.T) {
+	t.Parallel()
+
+	opts := newGlobalOptions()
+
+	cmd := newColorTestCmd(opts)
+	require.NoError(t, cmd.ParseFlags([]string{}))
+
+	considerNoColors(cmd, opts)
+	require.True(t, opts.logOptions.NoColor)
+}
+
+// Expectation: A regular file (not a terminal) should disable colors.
+func Test_considerNoColors_RegularFile_Success(t *testing.T) {
+	t.Parallel()
+
+	f, err := os.CreateTemp(t.TempDir(), "logout")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+
+	opts := newGlobalOptions()
+	opts.logOptions.Logout = f
+
+	cmd := newColorTestCmd(opts)
+	require.NoError(t, cmd.ParseFlags([]string{}))
+
+	considerNoColors(cmd, opts)
+	require.True(t, opts.logOptions.NoColor)
+}
+
+// Expectation: An explicit --log-plain=false should force colors even for a non-terminal.
+func Test_considerNoColors_ExplicitFalse_Success(t *testing.T) {
+	t.Parallel()
+
+	opts := newGlobalOptions()
+	opts.logOptions.Logout = &testutil.SafeBuffer{}
+
+	cmd := newColorTestCmd(opts)
+	require.NoError(t, cmd.ParseFlags([]string{"--log-plain=false"}))
+
+	considerNoColors(cmd, opts)
+	require.False(t, opts.logOptions.NoColor)
+}
+
+// Expectation: An explicit --log-plain should keep colors disabled.
+func Test_considerNoColors_ExplicitTrue_Success(t *testing.T) {
+	t.Parallel()
+
+	opts := newGlobalOptions()
+	opts.logOptions.Logout = &testutil.SafeBuffer{}
+
+	cmd := newColorTestCmd(opts)
+	require.NoError(t, cmd.ParseFlags([]string{"--log-plain"}))
+
+	considerNoColors(cmd, opts)
+	require.True(t, opts.logOptions.NoColor)
+}
+
+// Expectation: An explicit --log-plain=false should override the NO_COLOR environment variable.
+func Test_considerNoColors_ExplicitFalseOverridesNoColorEnv_Success(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+
+	opts := newGlobalOptions()
+	opts.logOptions.Logout = &testutil.SafeBuffer{}
+
+	cmd := newColorTestCmd(opts)
+	require.NoError(t, cmd.ParseFlags([]string{"--log-plain=false"}))
+
+	considerNoColors(cmd, opts)
+	require.False(t, opts.logOptions.NoColor)
+}
+
+// Expectation: NO_COLOR set to a non-empty value should disable colors.
+func Test_considerNoColors_NoColorEnv_Success(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+
+	opts := newGlobalOptions()
+	opts.logOptions.Logout = &testutil.SafeBuffer{}
+
+	cmd := newColorTestCmd(opts)
+	require.NoError(t, cmd.ParseFlags([]string{}))
+
+	considerNoColors(cmd, opts)
+	require.True(t, opts.logOptions.NoColor)
 }
 
 // Expectation: A new program should be established.
@@ -269,6 +380,19 @@ func Test_NewRootCmd_HasListCommand_Success(t *testing.T) {
 	require.Equal(t, "list", listCmd.Name())
 }
 
+// Expectation: The root command should have a "example-config" subcommand.
+func Test_NewRootCmd_HasExampleConfigCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	exampleConfigCmd, _, err := cmd.Find([]string{"example-config"})
+
+	require.NoError(t, err)
+	require.NotNil(t, exampleConfigCmd)
+	require.Equal(t, "example-config", exampleConfigCmd.Name())
+}
+
 // Expectation: The root command should have a "check-config" subcommand.
 func Test_NewRootCmd_HasCheckConfigCommand_Success(t *testing.T) {
 	t.Parallel()
@@ -371,6 +495,19 @@ func Test_NewBundleCmd_HasDebugCommand_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, bundleCmd)
 	require.Equal(t, "debug", bundleCmd.Name())
+}
+
+// Expectation: The bundle command should have a "spec" subcommand.
+func Test_NewBundleCmd_HasSpecCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleCmd(t.Context(), newGlobalOptions())
+
+	specCmd, _, err := cmd.Find([]string{"spec"})
+
+	require.NoError(t, err)
+	require.NotNil(t, specCmd)
+	require.Equal(t, "spec", specCmd.Name())
 }
 
 // Expectation: The "bundle pack" command should have flags.
@@ -948,6 +1085,19 @@ func Test_NewInfoCmd_HasIncludeExternalFlag_Success(t *testing.T) {
 	cmd := newInfoCmd(t.Context(), newGlobalOptions())
 
 	flag := cmd.Flags().Lookup("include-external")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.Value.String())
+}
+
+// Expectation: The "info" command should have a "prometheus" flag.
+func Test_NewInfoCmd_HasPrometheusFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newInfoCmd(t.Context(), newGlobalOptions())
+
+	flag := cmd.Flags().Lookup("prometheus")
 
 	require.NotNil(t, flag)
 	require.Equal(t, "bool", flag.Value.Type())

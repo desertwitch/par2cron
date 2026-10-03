@@ -1,0 +1,137 @@
+# Example Prometheus recording rules for par2cron.
+#
+# These rules reproduce the values shown by "par2cron info" from the metrics
+# exported by "par2cron info --prometheus", for use in dashboards and alerts.
+#
+# The calculations mirror the Go implementation (internal/info), with values
+# in base units: seconds instead of human-readable durations, and ratios
+# (0 to 1) instead of percentages.
+#
+# The rules only record values that are not exported directly, i.e. those
+# derived from several metrics (such as averages, ratios or the calculated
+# runs and capacities). They are meant to be used in addition to the raw
+# par2cron metrics, not instead of them: values that are already exported
+# (such as par2cron_sets, par2cron_sets_overdue or par2cron_backlog_margin_seconds)
+# have no recording rule here and should be queried directly.
+#
+# Rule names follow the Prometheus "level:metric:operations" convention. The
+# level "instance" means all labels of the scraped (or pushed) metrics are
+# kept, apart from the aggregated "status" label of par2cron_sets.
+#
+# Like "par2cron info", values that depend on verification durations are only
+# recorded once known durations exist (instance:par2cron_sets_duration_known:sum
+# greater than zero). Values that would divide by zero are not recorded.
+#
+# This file is an example to copy and adapt; only the exported par2cron
+# metrics themselves are a stable interface.
+
+groups:
+  - name: par2cron
+    rules:
+      # ---------------------------------------------------------------------
+      # Summary ("Total jobs found", "Average job duration")
+      # ---------------------------------------------------------------------
+
+      # Total number of PAR2 sets (job_count).
+      - record: instance:par2cron_sets:sum
+        expr: sum without (status) (par2cron_sets)
+
+      # PAR2 sets with a known verification duration (known_count).
+      - record: instance:par2cron_sets_duration_known:sum
+        expr: instance:par2cron_sets:sum - par2cron_sets_duration_unknown
+
+      # Average verification duration of the sets with a known duration (avg_duration).
+      - record: instance:par2cron_verify_duration_seconds:avg
+        expr: >
+          par2cron_verify_duration_known_seconds
+          / (instance:par2cron_sets_duration_known:sum > 0)
+
+      # ---------------------------------------------------------------------
+      # With just --age (age_info)
+      # ---------------------------------------------------------------------
+
+      # Runs per verification cycle: max(floor(age / run interval), 1) (runs_per_cycle).
+      - record: instance:par2cron_config_runs_per_cycle:floor
+        expr: >
+          clamp_min(floor(par2cron_config_age_seconds / par2cron_config_run_interval_seconds), 1)
+          and (instance:par2cron_sets_duration_known:sum > 0)
+
+      # Suggested minimum --duration: max(known duration / runs per cycle, 1s) (min_duration).
+      - record: instance:par2cron_config_duration_min_seconds:clamp_min
+        expr: >
+          clamp_min(par2cron_verify_duration_known_seconds / instance:par2cron_config_runs_per_cycle:floor, 1)
+
+      # Warning: --age is less than --calc-run-interval (1 = warning, 0 = fine).
+      - record: instance:par2cron_config_age_below_interval:bool
+        expr: >
+          (par2cron_config_age_seconds < bool par2cron_config_run_interval_seconds)
+          and (instance:par2cron_sets_duration_known:sum > 0)
+
+      # ---------------------------------------------------------------------
+      # With just --duration (duration_info)
+      # ---------------------------------------------------------------------
+
+      # Runs needed for a full verification: max(ceil(known duration / budget), 1) (runs_needed).
+      - record: instance:par2cron_verify_full_pass_runs:ceil
+        expr: >
+          clamp_min(ceil(par2cron_verify_duration_known_seconds / par2cron_config_duration_seconds), 1)
+          and (instance:par2cron_sets_duration_known:sum > 0)
+
+      # A full verification is eventually achieved every: runs needed * run interval (full_cycle_every).
+      # Unlike "info", this is also recorded when a full verification fits into a single run.
+      - record: instance:par2cron_verify_full_pass_interval_seconds:mul
+        expr: >
+          instance:par2cron_verify_full_pass_runs:ceil * par2cron_config_run_interval_seconds
+
+      # A full verification is achieved in a single run (1 = yes, 0 = no) (complete_in_one_run).
+      - record: instance:par2cron_verify_full_pass_single_run:bool
+        expr: >
+          (par2cron_verify_duration_known_seconds <= bool par2cron_config_duration_seconds)
+          and (instance:par2cron_sets_duration_known:sum > 0)
+
+      # Warning: the largest set exceeds --duration and overshoots it (1 = warning, 0 = fine).
+      - record: instance:par2cron_verify_duration_largest_exceeds_budget:bool
+        expr: >
+          (par2cron_verify_duration_largest_seconds > bool par2cron_config_duration_seconds)
+          and (instance:par2cron_sets_duration_known:sum > 0)
+
+      # ---------------------------------------------------------------------
+      # With --age and --duration (backlog_info)
+      # ---------------------------------------------------------------------
+
+      # Processing capacity per cycle: runs per cycle * --duration (capacity).
+      # The minimum needed (min_required) is par2cron_verify_duration_known_seconds,
+      # and the margin (margin) is par2cron_backlog_margin_seconds itself.
+      - record: instance:par2cron_backlog_capacity_seconds:mul
+        expr: >
+          instance:par2cron_config_runs_per_cycle:floor * par2cron_config_duration_seconds
+
+      # Backlog is healthy: margin >= 0 (1 = healthy, 0 = growing) (healthy).
+      - record: instance:par2cron_backlog_healthy:bool
+        expr: par2cron_backlog_margin_seconds >= bool 0
+
+      # ---------------------------------------------------------------------
+      # Verification progress, rolling --age window (cycle_info)
+      # ---------------------------------------------------------------------
+
+      # Share of sets verified within --age (verified_pct / 100).
+      - record: instance:par2cron_sets_verified_within_age:ratio
+        expr: >
+          par2cron_sets_verified_within_age
+          / (instance:par2cron_sets:sum > 0)
+
+      # Share of known duration covered within --age (duration_covered_pct / 100).
+      - record: instance:par2cron_verify_duration_within_age:ratio
+        expr: >
+          par2cron_verify_duration_within_age_seconds
+          / (par2cron_verify_duration_known_seconds > 0)
+
+      # ---------------------------------------------------------------------
+      # Manifest cache (--cache)
+      # ---------------------------------------------------------------------
+
+      # Share of sets served from the manifest cache.
+      - record: instance:par2cron_sets_cached:ratio
+        expr: >
+          par2cron_sets_cached
+          / (instance:par2cron_sets:sum > 0)

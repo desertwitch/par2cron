@@ -21,6 +21,7 @@ type Options struct {
 	SeqURL string
 	SeqKey string
 
+	NoColor  bool
 	WantJSON bool
 }
 
@@ -35,11 +36,18 @@ func NewLogger(opts Options) *Logger {
 	var logger *slog.Logger
 
 	var consoleHandler slog.Handler
-	if opts.WantJSON {
+	switch {
+	case opts.WantJSON:
 		consoleHandler = slog.NewJSONHandler(opts.Logout, &slog.HandlerOptions{
 			Level: opts.LogLevel.Value,
 		})
-	} else {
+
+	case opts.NoColor:
+		consoleHandler = slog.NewTextHandler(opts.Logout, &slog.HandlerOptions{
+			Level: opts.LogLevel.Value,
+		})
+
+	default:
 		consoleHandler = tint.NewTextHandler(opts.Logout, &tint.Options{
 			Level:      opts.LogLevel.Value,
 			TimeFormat: time.TimeOnly,

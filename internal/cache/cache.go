@@ -65,6 +65,19 @@ func (c *GobCache) Len() int {
 	return len(c.items)
 }
 
+// SavedLen returns the number of saved entries in the cache.
+func (c *GobCache) SavedLen() int {
+	n := 0
+
+	for _, meta := range c.items {
+		if meta.Saved {
+			n++
+		}
+	}
+
+	return n
+}
+
 // Get returns the JobMeta for the given key, or nil and false if not found.
 // It also sets the walked state to true (if found), the element has been seen.
 func (c *GobCache) Get(key string) (*schema.JobMeta, bool) {

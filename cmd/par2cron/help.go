@@ -20,6 +20,22 @@ See 'par2cron <command> --help' for command-specific information.
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
+const exampleConfigUsage = "example-config [flags]"
+
+const exampleConfigHelpShort = "Prints a fully commented par2cron example configuration"
+
+const exampleConfigHelpLong = `Prints a fully commented par2cron example configuration
+Writes all options supported by this par2cron version to standard output
+
+Full documentation at: https://github.com/desertwitch/par2cron`
+
+const exampleConfigHelpExample = `
+Write the example configuration to a YAML file:
+  par2cron example-config > par2cron.yaml
+
+Validate the configuration file after editing it:
+  par2cron check-config par2cron.yaml`
+
 const checkConfigUsage = "check-config [flags] <file>"
 
 const checkConfigHelpShort = "Validates a par2cron YAML configuration file"
@@ -156,7 +172,10 @@ Analyze a 14-day cycle with 4-hour weekly runs:
   par2cron info -a 14d -d 4h -i 1w /mnt/storage
 
 Output results as JSON (stdout/standard output):
-  par2cron info --json /mnt/storage`
+  par2cron info --json /mnt/storage
+
+Output results as Prometheus metrics (stdout/standard output):
+  par2cron info --prometheus -a 7d -d 2h /mnt/storage`
 
 const listUsage = "list [flags] <dir> [dir...]"
 
@@ -298,6 +317,19 @@ Print debug information about multiple bundle files:
 
 Print debug information about bundle files in working directory:
   par2cron bundle debug *.p2c.par2`
+
+const bundleSpecUsage = "spec [flags]"
+
+const bundleSpecHelpShort = "Prints the par2cron bundle file specification"
+
+const bundleSpecHelpLong = `Prints the par2cron bundle file specification
+Writes the bundle format of this par2cron version to standard output
+
+Full documentation at: https://github.com/desertwitch/par2cron`
+
+const bundleSpecHelpExample = `
+Write the bundle file specification to a text file:
+  par2cron bundle spec > bundle_specification.txt`
 
 const toolUsage = "tool"
 

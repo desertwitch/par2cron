@@ -355,6 +355,7 @@ type MockCache struct {
 	AllFunc           func() []*schema.JobMeta
 	GetFunc           func(key string) (*schema.JobMeta, bool)
 	LenFunc           func() int
+	SavedLenFunc      func() int
 	LoadFunc          func() error
 	PruneUnwalkedFunc func() int
 	ResetWalkedFunc   func()
@@ -365,6 +366,14 @@ type MockCache struct {
 func (m *MockCache) Len() int {
 	if m.LenFunc != nil {
 		return m.LenFunc()
+	}
+
+	return 0
+}
+
+func (m *MockCache) SavedLen() int {
+	if m.SavedLenFunc != nil {
+		return m.SavedLenFunc()
 	}
 
 	return 0

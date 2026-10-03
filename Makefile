@@ -48,7 +48,7 @@ check: ## Runs all static analysis and tests on the application code
 	@$(MAKE) test
 
 check-config: ## Checks the default configuration file for syntax errors
-	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go run $(SRC_DIR) check-config par2cron.yaml
+	CGO_ENABLED=0 GOFLAGS="-mod=vendor" go run $(SRC_DIR) check-config docs/configs/par2cron.yaml
 
 check-slop: ## Checks relevant text files for punctuation used by AI
 	@grep -RInP \

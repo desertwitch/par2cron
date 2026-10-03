@@ -31,6 +31,9 @@ Analyze a 14-day cycle with 4-hour weekly runs:
 
 Output results as JSON (stdout/standard output):
   par2cron info --json /mnt/storage
+
+Output results as Prometheus metrics (stdout/standard output):
+  par2cron info --prometheus -a 7d -d 2h /mnt/storage
 ```
 
 ### Options
@@ -43,6 +46,7 @@ Output results as JSON (stdout/standard output):
   -d, --duration duration            target time budget for each verify run (soft limit)
   -h, --help                         help for info
   -e, --include-external             include external PAR2 sets without a par2cron manifest
+      --prometheus                   output as Prometheus metrics (e.g. node_exporter textfile, Pushgateway)
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
@@ -52,6 +56,7 @@ Output results as JSON (stdout/standard output):
       --cgroup string     cgroup v2 directory to constrain par2 processes
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --log-plain         emit uncolored plain-text logs with full timestamps
       --mprof string      write RAM allocation profile to file
       --pprof string      write CPU performance profile to file
       --seq-key string    API key for a (remote) Seq logging server

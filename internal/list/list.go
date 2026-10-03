@@ -84,7 +84,7 @@ func (prog *Service) List(ctx context.Context, rootDirs []string, opts Options) 
 		cache := prog.openCache(ctx, rootDir, opts)
 
 		logger.Debug("Scanning filesystem for jobs...",
-			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.Len())
+			"walker", prog.walker.Name(), "path", rootDir, "cached", cache.SavedLen())
 
 		meta, err := vs.Enumerate(ctx, rootDir, va, cache)
 		if err != nil {
@@ -111,19 +111,23 @@ func (prog *Service) List(ctx context.Context, rootDirs []string, opts Options) 
 		)
 	})
 
-	return prog.printTable(metas)
+	return prog.printTable(metas, opts)
 }
 
-func (prog *Service) printTable(metas []*verify.JobMeta) error {
+func (prog *Service) printTable(metas []*verify.JobMeta, opts Options) error {
 	w := tabwriter.NewWriter(prog.log.Options.Stdout, 0, 0, 2, ' ', 0) //nolint:mnd
 
 	fmt.Fprintln(w, "STATUS\tVERIFIED\tDURATION\tFAILURES\tEDITED\tCACHED\tPATH")
 	for _, m := range metas {
-		verified, dur, corrupt, edited, cached := "-", "-", "-", "-", "N"
+		verified, dur, corrupt, edited, cached := "-", "-", "-", "-", "-"
 
-		if m.Saved {
-			cached = "Y"
+		if opts.CacheDir != "" {
+			cached = "N"
+			if m.Saved {
+				cached = "Y"
+			}
 		}
+
 		if m.HasVerification {
 			corrupt = strconv.Itoa(m.CountCorrupted)
 			verified = m.VerifyTime.Local().Format("2006-01-02T15:04:05") //nolint:gosmopolitan

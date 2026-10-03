@@ -37,6 +37,7 @@ type Cache interface {
 	All() []*JobMeta
 	Get(key string) (*JobMeta, bool)
 	Len() int
+	SavedLen() int
 	Load() error
 	PruneUnwalked() int
 	ResetWalked()

@@ -37,6 +37,7 @@
   - [`par2cron list`](#par2cron-list)
   - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron tool`](#par2cron-tool)
+  - [`par2cron example-config`](#par2cron-example-config)
   - [`par2cron check-config`](#par2cron-check-config)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
@@ -62,8 +63,11 @@
 - [Performance](#performance)
   - [Manifest cache](#manifest-cache)
   - [Control groups](#control-groups)
-- [Integrations](#integrations)
 - [Logging](#logging)
+- [Prometheus](#prometheus)
+  - [Overview of metrics](#overview-of-metrics)
+  - [Configuration examples](#configuration-examples)
+- [Integrations](#integrations)
 - [Limitations](#limitations)
 - [License](#license)
 
@@ -242,6 +246,7 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron list`         | Lists all par2cron-managed PAR2 sets and their status   |
 | `par2cron bundle`       | Commands for interacting with par2cron's bundle format  |
 | `par2cron tool`         | Useful utility commands for interacting with PAR2 files |
+| `par2cron example-config` | Prints a fully commented par2cron example configuration |
 | `par2cron check-config` | Validates a par2cron YAML configuration file            |
 
 Detailed documentation for each command is available in the [docs/](docs/) directory.
@@ -251,6 +256,7 @@ Detailed documentation for each command is available in the [docs/](docs/) direc
       --cgroup string     cgroup v2 directory to constrain par2 processes
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --log-plain         emit uncolored plain-text logs with full timestamps
       --mprof string      write RAM allocation profile to file
       --pprof string      write CPU performance profile to file
       --seq-key string    API key for a (remote) Seq logging server
@@ -373,6 +379,9 @@ Analyze a 14-day cycle with 4-hour weekly runs:
 Output results as JSON (stdout/standard output):
   par2cron info --json /mnt/storage
 
+Output results as Prometheus metrics (stdout/standard output):
+  par2cron info --prometheus -a 7d -d 2h /mnt/storage
+
 Flags:
   -a, --age duration                 target cycle length (time between re-verifications)
       --cache string                 directory for optional manifest cache (use same for all commands)
@@ -381,6 +390,7 @@ Flags:
   -d, --duration duration            target time budget for each verify run (soft limit)
   -h, --help                         help for info
   -e, --include-external             include external PAR2 sets without a par2cron manifest
+      --prometheus                   output as Prometheus metrics (e.g. node_exporter textfile, Pushgateway)
       --skip-not-created             skip PAR2 sets without a par2cron manifest containing a creation record
 ```
 
@@ -418,6 +428,7 @@ Usage:
 Available Commands:
   debug       Prints bundle debug information to standard output
   pack        Packs all existing PAR2 sets of a folder into bundles
+  spec        Prints the par2cron bundle file specification
   unpack      Unpacks all existing bundles of a folder into PAR2 sets
 
 Flags:
@@ -436,6 +447,26 @@ Available Commands:
 
 Flags:
   -h, --help   help for tool
+```
+
+### `par2cron example-config`
+```
+Prints a fully commented par2cron example configuration
+Writes all options supported by this par2cron version to standard output
+
+Usage:
+  par2cron example-config [flags]
+
+Examples:
+
+Write the example configuration to a YAML file:
+  par2cron example-config > par2cron.yaml
+
+Validate the configuration file after editing it:
+  par2cron check-config par2cron.yaml
+
+Flags:
+  -h, --help   help for example-config
 ```
 
 ### `par2cron check-config`
@@ -492,11 +523,12 @@ output is clearly and cleanly separated. All par2cron logs, using structured
 logging (either text-/JSON-based), are written to standard error (`stderr`).
 Unstructured `par2` program output is written to standard output (`stdout`).
 
-The only anomaly to the above is the `info` command, which does not use the
-`par2` program. In non-JSON mode, again structured *logging* is written to
-standard error (`stderr`), and unstructured information to standard output
-(`stdout`). In JSON mode, all structured *logging* is written to standard
-error (`stderr`), and the JSON-encoded result to standard output (`stdout`).
+The only anomalies to the above are the `info` and `list` commands, which do
+not use the `par2` program. In their default mode, again structured *logging*
+is written to standard error (`stderr`), and unstructured information to
+standard output (`stdout`). In JSON mode (and Prometheus mode for `info`), all
+structured *logging* is written to standard error (`stderr`), and the results
+to standard output (`stdout`).
 
 As a general rule of thumb this can be condensed into:
 - Structured *logging* goes to standard error (`stderr`)
@@ -527,7 +559,7 @@ repair:
   cache: "/tmp/par2cron-cache"
 ```
 
-**For a full commented configuration, refer to the [par2cron.yaml](par2cron.yaml) file.**
+**For a full commented configuration, refer to the [par2cron.yaml](./docs/configs/par2cron.yaml) file.**
 
 You should verify the configuration using `par2cron check-config`, as malformed
 configuration will prevent the program from starting (bad invocation exit code).
@@ -545,6 +577,12 @@ cronjobs (e.g. `create` bleeding into `verify`) will not interfere with each
 other, but leaving some time between the scheduled commands is recommended. Jobs
 locked by another instance will just be skipped over and picked up again at the
 next possible time. This is achieved with kernel-enforced file locking syscalls.
+
+If you monitor par2cron with [Prometheus](#prometheus) or by JSON scripting,
+schedule `par2cron info` as the last step, after `repair` has finished, and give
+it the same `--age`, `--duration` and `--cache` arguments as `verify`. The
+results then reflect the latest verification and repair, and the calculated
+values (such as backlog and overdue sets) match your actual schedule.
 
 ## State Management
 
@@ -992,6 +1030,11 @@ stored in a compressed cache file, allowing repeated manifest loading and
 decoding from disk to be skipped. This can significantly speed up the filesystem
 scanning phase by reducing expensive random I/O access.
 
+When using `par2cron info --prometheus` with `--cache`, the metric
+`par2cron_sets_cached` reports how many PAR2 sets were served from the cache,
+which can be compared with the total of `par2cron_sets` to monitor cache
+coverage (for example after a reboot clearing a memory-backed cache).
+
 Filesystem traversal itself will still occur to prevent stale cache entries, but
 this phase is typically helped considerably by aggressive kernel caching of
 directory metadata.
@@ -1024,20 +1067,23 @@ par2cron create --cgroup /sys/fs/cgroup/par2cron /mnt/data
 
 > **Note:** `--cgroup` requires a Linux kernel 5.7+ and cgroups v2.
 
-## Integrations
-
-- [par2cron for UNRAID](https://github.com/desertwitch/par2cron-unRAID) is a
-batteries-included plugin solution for the Unraid operating system, shipping
-with a web interface and taking care of all par2cron service orchestration as
-well as notifications. It can be installed through Unraid's "Community
-Applications" (Apps tab) ecosystem.
-
 ## Logging
 
 par2cron uses structured logging via [slog](https://pkg.go.dev/log/slog) and
-writes all output to the console (as human readable text or `--json`). Optionally, logs can also be shipped to a [Seq](https://datalust.co/seq) server over its
-[CLEF](https://clef-json.org/) ingestion endpoint for searchable, filterable
-structured logs with built-in alerting.
+writes all output to the console (as human readable text or `--json`).
+
+When writing to a terminal, logs are colored and use a short time format for
+readability. When output is not a terminal (e.g. under cron, in a pipe, or
+redirected to a file), par2cron automatically switches to uncolored plain-text
+logs with full timestamps. Color is also disabled when the `NO_COLOR`
+environment variable is set to a non-empty value (see
+[no-color.org](https://no-color.org/)). Use `--log-plain` to always emit plain
+logs, or `--log-plain=false` to always emit colored logs, regardless of the
+environment. The `--log-plain` flag has no effect on `--json` output.
+
+Optionally, logs can also be shipped to a [Seq](https://datalust.co/seq) server
+over its [CLEF](https://clef-json.org/) ingestion endpoint for searchable,
+filterable structured logs with built-in alerting.
 
 If the initial connection to Seq fails, a warning is logged at Error level.
 par2cron will continue to attempt delivery in the background - any intermediate
@@ -1071,6 +1117,117 @@ Per-command Seq targets can also be set through the configuration file.
 
 If authentication is enabled on your Seq instance, add `--seq-key` with your
 API key.
+
+## Prometheus
+
+The `info` command can output its results as Prometheus metrics using the
+`--prometheus` flag (or the respective setting in the configuration file). This
+allows integrating par2cron into an existing Prometheus and Grafana stack, for
+dashboards and alerting on corruption or growing verification backlogs.
+
+The metrics are written to standard output in the Prometheus text exposition
+format, while all logging (including warnings) goes to standard error. As
+par2cron is not a long-running daemon, the metrics are a snapshot of the
+directory tree at the time of the run, which is meant to be picked up by:
+
+- a [node_exporter](https://github.com/prometheus/node_exporter) textfile
+  collector (recommended)
+- a [Pushgateway](https://github.com/prometheus/pushgateway) (for machines
+  without a node_exporter)
+
+For the textfile collector, write the output to a temporary file first and
+then rename it into place, so that node_exporter never reads a partially
+written file. For the Pushgateway, push with a `PUT` request (replacing the
+entire group, so no stale metrics are left behind), only push after par2cron
+has exited successfully (an empty push deletes all metrics of the group),
+include the machine as `instance` in the grouping key and set
+`honor_labels: true` in the Prometheus scrape configuration of the Pushgateway.
+
+When failing, par2cron writes nothing to standard output and exits with a
+non-zero exit code. Corruption and other findings are reported through the
+metrics, not through the exit code. As several metrics are calculated from
+`--age`, `--duration` and `--calc-run-interval`, these should match the
+arguments used for `verify` (using a common configuration file is easiest).
+
+The `info` command should run after `create`, `verify` and `repair` have
+finished, as the last step of the scheduled par2cron runs, so that the metrics
+reflect the results of the latest verification and repair. As par2cron does
+not export a timestamp of its own for when the metrics were generated, use
+`node_textfile_mtime_seconds` (textfile collector) or `push_time_seconds`
+(Pushgateway) to detect when the metrics were last updated. If either is
+older than expected (e.g. more than two days for daily runs), par2cron
+`info` has either failed or not run at all, and all other par2cron metrics
+are to be considered stale.
+
+If you run separate par2cron schedules for different directory trees on the
+same machine (for example with different `--age` settings), each `info` run
+produces metrics with identical names. With the Pushgateway, use a separate
+grouping key per tree (for example an additional `tree` label). With the
+textfile collector, metrics from multiple files must not be identical, so use
+a single `info` run covering all trees instead; this requires the trees to
+share the same `--age`, `--duration` and `--calc-run-interval` settings, as
+otherwise the calculated values reflect only the settings given to `info`.
+
+### Overview of metrics
+
+All metrics are gauges. Per-set details (such as names of corrupted sets) are
+deliberately not exported, to keep the number of time series independent of
+the size of your collection; `par2cron list --json` or `par2cron info --json`
+can provide these details instead. The detailed meaning of each metric is also
+included as `HELP` text within the generated `--prometheus` output itself.
+
+| Metric                                           | Present                     | Description                                                       |
+| :----------------------------------------------- | :-------------------------- | :---------------------------------------------------------------- |
+| `par2cron_build_info`                            | always                      | Constant `1`, labeled with `version` and `goversion`              |
+| `par2cron_scan_duration_seconds`                 | always                      | Time taken to scan the directories and load the manifests         |
+| `par2cron_scan_incomplete_roots`                 | always                      | Root directories where not all manifests could be read            |
+| `par2cron_sets`                                  | always                      | PAR2 sets by `status` (healthy, repairable, unrepairable, unverified) |
+| `par2cron_sets_duration_unknown`                 | always                      | PAR2 sets without a known verification duration                   |
+| `par2cron_sets_cached`                           | `--cache`                   | PAR2 sets served from the manifest cache (compare with `par2cron_sets`) |
+| `par2cron_verify_duration_known_seconds`         | always                      | Sum of known verification durations (estimated full pass)         |
+| `par2cron_verify_duration_largest_seconds`       | always                      | Longest verification duration of a single PAR2 set                |
+| `par2cron_verify_oldest_timestamp_seconds`       | sets were verified          | Least recent last verification across all sets (Unix time)        |
+| `par2cron_verify_newest_timestamp_seconds`       | sets were verified          | Most recent last verification across all sets (Unix time)         |
+| `par2cron_config_run_interval_seconds`           | always                      | The given `--calc-run-interval`                                   |
+| `par2cron_config_age_seconds`                    | `--age`                     | The given `--age`                                                 |
+| `par2cron_config_duration_seconds`               | `--duration`                | The given `--duration`                                            |
+| `par2cron_sets_verified_within_age`              | `--age` (*)                 | PAR2 sets verified within the past `--age`                        |
+| `par2cron_verify_duration_within_age_seconds`    | `--age` (*)                 | Known duration of PAR2 sets verified within the past `--age`      |
+| `par2cron_sets_overdue`                          | `--age` (*)                 | PAR2 sets due for longer than one run interval (incl. cycle)      |
+| `par2cron_sets_overdue_cycle`                    | `--age` (*)                 | PAR2 sets due for longer than one full `--age` cycle              |
+| `par2cron_sets_most_overdue_seconds`             | `--age` (*)                 | How long the most overdue PAR2 set has been due                   |
+| `par2cron_backlog_margin_seconds`                | `--age` and `--duration` (*) | Capacity per cycle minus known duration (negative is unhealthy)  |
+
+(*) Only once known verification durations exist.
+
+Metrics that do not apply (for example without `--age`) are absent rather than
+zero, so alerts on them never fire; add `absent()` alerts for any metrics your
+setup relies on, for example `absent(par2cron_sets_overdue)` when using `--age`.
+
+### Configuration examples
+
+Prometheus configuration examples can be found in the
+[contrib/prometheus](contrib/prometheus/) folder: `rules.yml` contains recording
+rules reproducing the values shown by `par2cron info` (such as runs per cycle,
+backlog capacity or cycle progress) from the exported metrics, for use in
+dashboards and alerts, while `alerts.yml` contains example alerts for a setup
+using the node_exporter textfile collector. Both are examples to copy and
+adapt to your setup, and come with unit tests (`rules_test.yml` and
+`alerts_test.yml`) that can be run using `promtool test rules`.
+
+Complete examples of the emitted metrics for different configurations (such as
+with or without `--age`, `--duration` and `--cache`) can be found in the
+[internal/info/testdata/prometheus](internal/info/testdata/prometheus/) folder.
+These files are generated by the test suite from the actual implementation, so
+they always reflect the current output format.
+
+## Integrations
+
+- [par2cron for UNRAID](https://github.com/desertwitch/par2cron-unRAID) is a
+batteries-included plugin solution for the Unraid operating system, shipping
+with a web interface and taking care of all par2cron service orchestration as
+well as notifications. It can be installed through Unraid's "Community
+Applications" (Apps tab) ecosystem.
 
 ## Limitations
 

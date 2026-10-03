@@ -1,0 +1,85 @@
+# Example par2cron alerts for metrics written to the node_exporter textfile
+# collector (as par2cron.prom). Thresholds assume daily par2cron runs and
+# "node" as job name - also adapt thresholds and severities to your setup.
+
+groups:
+  - name: par2cron-alerts
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job="node"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node exporter on {{ $labels.instance }} is unreachable"
+
+      - alert: Par2cronUnrepairable
+        expr: par2cron_sets{status="unrepairable"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} PAR2 sets on {{ $labels.instance }} are unrepairable"
+          description: "Run par2cron list to find them; the parity data is insufficient for a repair."
+
+      - alert: Par2cronRepairable
+        expr: par2cron_sets{status="repairable"} > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} PAR2 sets on {{ $labels.instance }} need repair"
+          description: "Run par2cron list to find them; par2cron may fix them on its next repair run."
+
+      - alert: Par2cronSetsNeverVerified
+        expr: par2cron_sets{status="unverified"} > 0
+        for: 2d
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} unverified PAR2 sets on {{ $labels.instance }} for more than 2 days"
+          description: "This warning indicates that par2cron verify is perhaps not running as scheduled."
+
+      - alert: Par2cronOverdueCycle
+        expr: par2cron_sets_overdue_cycle > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} PAR2 sets on {{ $labels.instance }} are overdue by a full cycle"
+          description: "Check for backlog warnings, repeated failures, and whether par2cron verify runs."
+
+      - alert: Par2cronBacklogGrowing
+        expr: par2cron_backlog_margin_seconds < 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Verification backlog on {{ $labels.instance }} grows with the current --age and --duration"
+          description: "This warning indicates that with the current configuration the verification cannot keep up."
+
+      - alert: Par2cronScanIncomplete
+        expr: par2cron_scan_incomplete_roots > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Not all par2cron manifests could be read on {{ $labels.instance }}"
+          description: "Check the par2cron logs for filesystem or permission issues that need resolving."
+
+      # The metrics file was not updated: par2cron info failed or did not run.
+      - alert: Par2cronMetricsStale
+        expr: time() - node_textfile_mtime_seconds{file=~".*par2cron\\.prom"} > 2 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "par2cron metrics on {{ $labels.instance }} were not updated for 2 days"
+          description: "This warning indicates that par2cron info is perhaps not running as scheduled."
+
+      # The node exporter is up, but has no par2cron metrics file at all
+      # (par2cron info never ran, or the textfile collector is not enabled).
+      - alert: Par2cronMetricsMissing
+        expr: >
+          up{job="node"} == 1
+          unless on (instance) node_textfile_mtime_seconds{file=~".*par2cron\\.prom"}
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No par2cron metrics file found on {{ $labels.instance }}"
+          description: "Check if par2cron info has run and if the textfile collector is enabled."
