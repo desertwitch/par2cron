@@ -65,6 +65,7 @@
 - [Integrations](#integrations)
 - [Logging](#logging)
 - [Prometheus](#prometheus)
+  - [Overview of metrics](#overview-of-metrics)
   - [Configuration examples](#configuration-examples)
 - [Limitations](#limitations)
 - [License](#license)
@@ -1152,6 +1153,8 @@ a single `info` run covering all trees instead; this requires the trees to
 share the same `--age`, `--duration` and `--calc-run-interval` settings, as
 otherwise the calculated values reflect only the settings given to `info`.
 
+### Overview of metrics
+
 All metrics are gauges. Per-set details (such as names of corrupted sets) are
 deliberately not exported, to keep the number of time series independent of
 the size of your collection; `par2cron list --json` or `par2cron info --json`
@@ -1189,7 +1192,7 @@ setup relies on, for example `absent(par2cron_sets_overdue)` when using `--age`.
 ### Configuration examples
 
 Prometheus configuration examples can be found in the
-[**contrib/prometheus**](contrib/prometheus/) folder: `rules.yml` contains recording
+[contrib/prometheus](contrib/prometheus/) folder: `rules.yml` contains recording
 rules reproducing the values shown by `par2cron info` (such as runs per cycle,
 backlog capacity or cycle progress) from the exported metrics, for use in
 dashboards and alerts, while `alerts.yml` contains example alerts for a setup
