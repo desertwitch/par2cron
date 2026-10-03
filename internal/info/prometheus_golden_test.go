@@ -1,9 +1,9 @@
+//go:generate go test -update
 package info
-
-//go:generate go test -run Test_renderPrometheus_Golden -update .
 
 import (
 	"flag"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -27,8 +27,9 @@ const (
 )
 
 var (
+	update = flag.Bool("update", false, "regenerate testdata/prometheus metrics")
+
 	goldenNow      = time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-	updateGolden   = flag.Bool("update", false, "update golden files in testdata/prometheus")
 	promMetricName = regexp.MustCompile(`^par2cron_[a-z0-9_]+$`)
 )
 
@@ -216,13 +217,15 @@ func Test_renderPrometheus_Golden(t *testing.T) {
 
 			path := filepath.Join("testdata", "prometheus", name+".prom")
 
-			if *updateGolden {
+			if *update {
 				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { //nolint:gosec
 					t.Fatal(err)
 				}
 				if err := os.WriteFile(path, []byte(got), 0o644); err != nil { //nolint:gosec
 					t.Fatal(err)
 				}
+
+				log.Printf("updated %s", path)
 
 				return
 			}
