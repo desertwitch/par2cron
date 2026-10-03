@@ -43,7 +43,7 @@ jobs:
           tar -xzf "${name}.tar.gz" "${name}/promtool"
           echo "${RUNNER_TEMP}/${name}" >> "$GITHUB_PATH"
 
-      - name: Check golden metric files with promtool
+      - name: Check reference metric files with promtool
         run: |
           set -uo pipefail
           shopt -s nullglob
@@ -52,7 +52,7 @@ jobs:
 
           files=(internal/info/testdata/prometheus/*.prom)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "ERROR: no golden metric files found"
+            echo "ERROR: no reference metric files found"
             exit 1
           fi
 
@@ -87,10 +87,14 @@ jobs:
           echo "${RUNNER_TEMP}/${name}" >> "$GITHUB_PATH"
 
       - name: Check contrib rule files with promtool
-        run: promtool check rules contrib/prometheus/rules.yml
+        run: |
+          promtool --version
+          promtool check rules contrib/prometheus/rules.yml
 
       - name: Test contrib rule files with promtool
-        run: promtool test rules contrib/prometheus/rules_test.yml
+        run: |
+          promtool --version
+          promtool test rules contrib/prometheus/rules_test.yml
 
   promtool-check-alerts:
     needs: generate-check
@@ -112,7 +116,11 @@ jobs:
           echo "${RUNNER_TEMP}/${name}" >> "$GITHUB_PATH"
 
       - name: Check contrib alert files with promtool
-        run: promtool check rules contrib/prometheus/alerts.yml
+        run: |
+          promtool --version
+          promtool check rules contrib/prometheus/alerts.yml
 
       - name: Test contrib alert files with promtool
-        run: promtool test rules contrib/prometheus/alerts_test.yml
+        run: |
+          promtool --version
+          promtool test rules contrib/prometheus/alerts_test.yml
