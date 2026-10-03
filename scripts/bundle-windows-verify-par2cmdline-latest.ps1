@@ -31,87 +31,55 @@ if (-not $par2exe) {
 Write-Output "Found par2.exe at: $($par2exe.FullName)"
 
 # --- Bundle definitions ---
-$tmpSubdir = "_verify"
-
-$bundles = @(
-    @{
-        Name    = "multipar"
-        GenArgs = @("-dir", "testdata", "-out", "$tmpSubdir/multipar.p2c.par2", "-parse", "multipar/files.par2",
-                    "multipar/files.par2", "multipar/files.vol00+7.par2", "multipar/files.vol07+6.par2",
-                    "multipar/files.vol13+6.par2")
-    },
-    @{
-        Name    = "par2cmdline"
-        GenArgs = @("-dir", "testdata", "-out", "$tmpSubdir/par2cmdline.p2c.par2", "-parse", "par2cmdline/files.par2",
-                    "par2cmdline/files.par2", "par2cmdline/files.vol0+1.par2", "par2cmdline/files.vol1+1.par2",
-                    "par2cmdline/files.vol2+1.par2")
-    },
-    @{
-        Name    = "par2cmdline-turbo"
-        GenArgs = @("-dir", "testdata", "-out", "$tmpSubdir/par2cmdline-turbo.p2c.par2", "-parse", "par2cmdline-turbo/files.par2",
-                    "par2cmdline-turbo/files.par2", "par2cmdline-turbo/files.vol0+1.par2",
-                    "par2cmdline-turbo/files.vol1+1.par2", "par2cmdline-turbo/files.vol2+1.par2")
-    },
-    @{
-        Name    = "parpar"
-        GenArgs = @("-dir", "testdata", "-out", "$tmpSubdir/parpar.p2c.par2", "-parse", "parpar/files.par2",
-                    "parpar/files.par2", "parpar/files.vol00+05.par2", "parpar/files.vol05+05.par2",
-                    "parpar/files.vol10+03.par2")
-    },
-    @{
-        Name    = "quickpar"
-        GenArgs = @("-dir", "testdata", "-out", "$tmpSubdir/quickpar.p2c.par2", "-parse", "quickpar/files.par2",
-                    "quickpar/files.par2", "quickpar/files.vol0+1.PAR2", "quickpar/files.vol1+1.PAR2",
-                    "quickpar/files.vol2+2.PAR2")
-    }
-)
+# The bundles are copied from testdata/generated rather than regenerated:
+# CI runs `make generate` and `make is-clean` first, so the committed files
+# are guaranteed byte-identical to what the packer currently produces.
+$bundleNames = @("multipar", "par2cmdline", "par2cmdline-turbo", "parpar", "quickpar")
 
 # --- Resolve paths ---
 $repoRoot = git rev-parse --show-toplevel
-$bundleDir = Join-Path $repoRoot "internal/bundle"
-$testdataDir = Join-Path $bundleDir "testdata"
+$testdataDir = Join-Path $repoRoot "internal/bundle/testdata"
 $sourcesDir = Join-Path $testdataDir "sources"
-$verifyDir = Join-Path $testdataDir $tmpSubdir
+$generatedDir = Join-Path $testdataDir "generated"
+$verifyDir = Join-Path $workDir "verify"
 
-if (-not (Test-Path $sourcesDir)) {
-    Write-Error "Sources directory not found: $sourcesDir"
-    exit 1
+foreach ($d in @($sourcesDir, $generatedDir)) {
+    if (-not (Test-Path $d)) {
+        Write-Error "Directory not found: $d"
+        exit 1
+    }
 }
 
-# --- Generate and verify each bundle ---
+# --- Verify each committed bundle ---
 $failed = $false
 
 try {
-    foreach ($bundle in $bundles) {
+    foreach ($name in $bundleNames) {
+        $par2FileName = "$name.p2c.par2"
+
         Write-Output "============================================"
-        Write-Output "Processing: $($bundle.Name)"
+        Write-Output "Processing: $name"
         Write-Output "============================================"
 
-        # Clean the verify dir so only this bundle is present
+        # Fresh verify dir so only this bundle is present
         if (Test-Path $verifyDir) {
             Remove-Item -Path $verifyDir -Recurse -Force
         }
         New-Item -ItemType Directory -Path $verifyDir -Force | Out-Null
 
-        # Generate the bundle (output goes into testdata/_verify/)
-        Write-Output "Running: go run ../../tool/generate-bundle $($bundle.GenArgs -join ' ')"
-        Push-Location $bundleDir
-        & go run ../../tool/generate-bundle @($bundle.GenArgs)
-        $exitCode = $LASTEXITCODE
-        Pop-Location
-
-        if ($exitCode -ne 0) {
-            Write-Output "::error::generate-bundle failed for $($bundle.Name)"
+        $committedBundle = Join-Path $generatedDir $par2FileName
+        if (-not (Test-Path $committedBundle)) {
+            Write-Output "::error::Committed bundle not found: $committedBundle"
             $failed = $true
             continue
         }
 
-        # Copy source files into the verify dir so par2.exe can find them
+        # Copy the committed bundle and the source files into the verify dir
+        Copy-Item -Path $committedBundle -Destination $verifyDir
         Copy-Item -Path "$sourcesDir\*" -Destination $verifyDir -Recurse -Force
-        Write-Output "Copied source files into $verifyDir"
+        Write-Output "Copied $par2FileName and source files into $verifyDir"
 
         # Verify with par2.exe (run from the verify dir, check exit code)
-        $par2FileName = "$($bundle.Name).p2c.par2"
         Write-Output "Verifying: $par2FileName"
         Push-Location $verifyDir
         & $par2exe.FullName v -q ".\$par2FileName" 2>&1 | Write-Output
@@ -119,24 +87,18 @@ try {
         Pop-Location
 
         if ($exitCode -ne 0) {
-            Write-Output "::error::Verification of $($bundle.Name) failed with exit code $exitCode!"
+            Write-Output "::error::Verification of $name failed with exit code $exitCode!"
             $failed = $true
         } else {
-            Write-Output "OK: $($bundle.Name) verified successfully (exit code 0)."
+            Write-Output "OK: $name verified successfully (exit code 0)."
         }
 
         Write-Output ""
     }
 } finally {
-    # Always clean up the temp subdirectory under testdata
-    if (Test-Path $verifyDir) {
-        Remove-Item -Path $verifyDir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Output "Cleaned up $verifyDir"
-    }
+    # The verify dir lives under the work dir, so this cleans up everything.
+    Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-
-# --- Clean up par2cmdline download ---
-Remove-Item -Path $workDir -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failed) {
     Write-Error "One or more bundles failed verification."

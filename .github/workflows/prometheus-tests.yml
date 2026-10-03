@@ -16,6 +16,7 @@ jobs:
     name: generate-is-clean
     runs-on: ubuntu-latest
     steps:
+      - run: sudo apt-get update && sudo apt-get install -y par2
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
