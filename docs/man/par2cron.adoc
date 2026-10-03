@@ -229,7 +229,8 @@ corrupted or incomplete files, meaning the above applies to *SIGPIPE* equally.
 par2cron logs are written to standard error (*stderr*) using structured logging
 (text or JSON). Output from the *par2*(1) program is written to standard output
 (*stdout*). The *info* and *list* commands write their result to *stdout* and
-structured logs to *stderr*.
+structured logs to *stderr*. The rule of thumb is that structured logs go to
+*stderr* and the expected output (result) goes to *stdout*.
 
 == FILES
 
@@ -261,8 +262,9 @@ structured logs to *stderr*.
 par2cron accepts an optional global YAML configuration file via *-c, --config*.
 The configuration is structured into sections matching the command names:
 *create*, *verify*, *repair*, and *info*. CLI flags take precedence over
-configuration file values. Validate configuration files before deployment using
-*par2cron check-config*.
+configuration file values. A fully commented configuration file containing all
+options can be generated with *par2cron example-config*. Always validate
+configuration files before deployment using *par2cron check-config*.
 
 *create.args* _list_::
   Arguments passed to *par2*(1) during creation (default: []).
@@ -304,6 +306,8 @@ configuration file values. Validate configuration files before deployment using
   Require N corrupted verifications before repair (default: 0).
 *repair.skip-not-created* _bool_::
   Skip sets without a creation record (default: false).
+*repair.skip-maybe-edited* _bool_::
+  Skip sets where protected files have newer mtimes (default: false).
 *repair.attempt-unrepairables* _bool_::
   Attempt repair on sets marked unrepairable (default: false).
 *repair.purge-backups* _bool_::
@@ -325,9 +329,13 @@ configuration file values. Validate configuration files before deployment using
   Verify run interval (default: "24h").
 *info.cache* _string_::
   Manifest cache directory (default: disabled).
+*info.prometheus* _bool_::
+  Output results as Prometheus metrics (default: false).
+  Must not be combined with *json*.
 
-All sections also accept *log-level* (debug, info, warn, error) and *json*
-(bool) for log output control.
+All sections also accept *log-level* (debug, info, warn, error), *json* (bool),
+*cgroup* (string), *seq-url* (string) and *seq-key* (string), matching the
+respective global flags.
 
 Where applicable, use same configuration values for *info* as used for *verify*;
 this ensures that configuration analysis is done on actual verification
