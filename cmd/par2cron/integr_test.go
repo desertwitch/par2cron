@@ -1,10 +1,13 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/desertwitch/par2cron/docs/configs"
+	"github.com/desertwitch/par2cron/docs/specs"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/stretchr/testify/require"
@@ -19,6 +22,33 @@ func setupTestDir(t *testing.T) string {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "testfile.txt"), []byte("hello world\n"), 0o600))
 
 	return dir
+}
+
+// captureStdout runs fn with os.Stdout redirected and returns everything written to it.
+// The commands resolve os.Stdout in their PreRun, so swapping it before Execute is enough.
+func captureStdout(t *testing.T, fn func() error) (string, error) {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	orig := os.Stdout
+	os.Stdout = w
+
+	done := make(chan []byte, 1)
+	go func() {
+		data, _ := io.ReadAll(r)
+		done <- data
+	}()
+
+	fnErr := fn()
+
+	os.Stdout = orig
+	require.NoError(t, w.Close())
+	out := <-done
+	require.NoError(t, r.Close())
+
+	return string(out), fnErr
 }
 
 // Expectation: A command should write a CPU profile when --pprof is set.
@@ -464,4 +494,106 @@ func Test_Integration_GenMarkdownCmd_NonexistentDir_Error(t *testing.T) {
 	cmd := newRootCmd(t.Context())
 	cmd.SetArgs([]string{"gen-markdown", dir})
 	require.ErrorIs(t, cmd.Execute(), schema.ErrExitBadInvocation)
+}
+
+// Expectation: The "example-config" command should print the embedded configuration unchanged.
+//
+//nolint:paralleltest
+func Test_Integration_ExampleConfigCmd_Success(t *testing.T) {
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"example-config"})
+
+	out, err := captureStdout(t, cmd.Execute)
+	require.NoError(t, err)
+	require.Equal(t, configs.ExampleConfiguration, out)
+}
+
+// Expectation: The configuration printed by "example-config" should pass "check-config".
+//
+//nolint:paralleltest
+func Test_Integration_ExampleConfigCmd_PassesCheckConfig_Success(t *testing.T) {
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"example-config"})
+
+	out, err := captureStdout(t, cmd.Execute)
+	require.NoError(t, err)
+
+	cfgFile := filepath.Join(t.TempDir(), "par2cron.yaml")
+	require.NoError(t, os.WriteFile(cfgFile, []byte(out), 0o600))
+
+	checkCmd := newRootCmd(t.Context())
+	checkCmd.SetArgs([]string{"check-config", cfgFile})
+
+	_, err = captureStdout(t, checkCmd.Execute)
+	require.NoError(t, err)
+}
+
+// Expectation: The "example-config" command should reject positional arguments.
+//
+//nolint:paralleltest
+func Test_Integration_ExampleConfigCmd_Args_Error(t *testing.T) {
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"example-config", "extra"})
+
+	_, err := captureStdout(t, cmd.Execute)
+	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+}
+
+// Expectation: The "bundle spec" command should print the embedded specification unchanged.
+//
+//nolint:paralleltest
+func Test_Integration_BundleSpecCmd_Success(t *testing.T) {
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"bundle", "spec"})
+
+	out, err := captureStdout(t, cmd.Execute)
+	require.NoError(t, err)
+	require.Equal(t, specs.BundleSpecification, out)
+}
+
+// Expectation: The "bundle spec" command should reject positional arguments.
+//
+//nolint:paralleltest
+func Test_Integration_BundleSpecCmd_Args_Error(t *testing.T) {
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"bundle", "spec", "extra"})
+
+	_, err := captureStdout(t, cmd.Execute)
+	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+}
+
+// Expectation: The "info --prometheus" command should print metrics for a created PAR2 set.
+//
+//nolint:paralleltest
+func Test_Integration_InfoCmd_Prometheus_Success(t *testing.T) {
+	dir := setupTestDir(t)
+
+	createCmd := newRootCmd(t.Context())
+	createCmd.SetArgs([]string{"create", dir})
+	_, err := captureStdout(t, createCmd.Execute)
+	require.NoError(t, err)
+
+	infoCmd := newRootCmd(t.Context())
+	infoCmd.SetArgs([]string{"info", "--prometheus", dir})
+
+	out, err := captureStdout(t, infoCmd.Execute)
+	require.NoError(t, err)
+
+	require.Contains(t, out, "# TYPE par2cron_build_info gauge\n")
+	require.Contains(t, out, "par2cron_sets{status=\"unverified\"} 1\n")
+	require.NotContains(t, out, "Scanning filesystem")
+}
+
+// Expectation: The "info --prometheus" command should reject being combined with --json.
+//
+//nolint:paralleltest
+func Test_Integration_InfoCmd_PrometheusWithJSON_Error(t *testing.T) {
+	dir := setupTestDir(t)
+
+	cmd := newRootCmd(t.Context())
+	cmd.SetArgs([]string{"--json", "info", "--prometheus", dir})
+
+	out, err := captureStdout(t, cmd.Execute)
+	require.ErrorIs(t, err, schema.ErrExitBadInvocation)
+	require.Empty(t, out)
 }

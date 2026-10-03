@@ -1,0 +1,6 @@
+kind: Added
+body: '`bundle` gains `spec` subcommand'
+time: 2026-10-03T23:32:58.409678567+02:00
+custom:
+    Issue: ""
+    PR: "92"

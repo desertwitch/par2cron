@@ -50,5 +50,6 @@ Full documentation at: https://github.com/desertwitch/par2cron
 * [par2cron](par2cron.md)	 - PAR2 Integrity & Self-Repair Engine
 * [par2cron bundle debug](par2cron_bundle_debug.md)	 - Prints bundle debug information to standard output
 * [par2cron bundle pack](par2cron_bundle_pack.md)	 - Packs all existing PAR2 sets of a folder into bundles
+* [par2cron bundle spec](par2cron_bundle_spec.md)	 - Prints the par2cron bundle file specification
 * [par2cron bundle unpack](par2cron_bundle_unpack.md)	 - Unpacks all existing bundles of a folder into PAR2 sets
 

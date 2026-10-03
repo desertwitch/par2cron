@@ -43,6 +43,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/desertwitch/par2cron/docs/configs"
+	"github.com/desertwitch/par2cron/docs/specs"
 	"github.com/desertwitch/par2cron/internal/bundler"
 	"github.com/desertwitch/par2cron/internal/create"
 	"github.com/desertwitch/par2cron/internal/info"
@@ -207,15 +209,16 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	createCmd := newCreateCmd(ctx, globalOptions)
 	verifyCmd := newVerifyCmd(ctx, globalOptions)
 	repairCmd := newRepairCmd(ctx, globalOptions)
-
 	infoCmd := newInfoCmd(ctx, globalOptions)
 	listCmd := newListCmd(ctx, globalOptions)
 	toolCmd := newToolCmd(ctx, globalOptions)
 	bundleCmd := newBundleCmd(ctx, globalOptions)
-	checkConfigCmd := newCheckConfigCmd(ctx)
+	exampleConfigCmd := newExampleConfigCmd(ctx, globalOptions)
+	checkConfigCmd := newCheckConfigCmd(ctx, globalOptions)
+
 	genMarkdownCmd := newGenMarkdownCmd(rootCmd)
 
-	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, listCmd, toolCmd, bundleCmd, checkConfigCmd, genMarkdownCmd)
+	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, listCmd, toolCmd, bundleCmd, exampleConfigCmd, checkConfigCmd, genMarkdownCmd)
 
 	return rootCmd
 }
@@ -300,8 +303,9 @@ func newBundleCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 	bundlePackCmd := newBundlePackCmd(ctx, globalOptions)
 	bundleUnpackCmd := newBundleUnpackCmd(ctx, globalOptions)
 	bundleDebugCmd := newBundleDebugCmd(ctx, globalOptions)
+	bundleSpecCmd := newBundleSpecCmd(ctx, globalOptions)
 
-	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd, bundleDebugCmd)
+	bundleCmd.AddCommand(bundlePackCmd, bundleUnpackCmd, bundleDebugCmd, bundleSpecCmd)
 
 	return bundleCmd
 }
@@ -453,20 +457,78 @@ func newBundleDebugCmd(ctx context.Context, globalOptions *globalOptions) *cobra
 	return bundleDebugCmd
 }
 
-func newCheckConfigCmd(_ context.Context) *cobra.Command {
+func newBundleSpecCmd(_ context.Context, globalOptions *globalOptions) *cobra.Command {
+	bundleSpecCmd := &cobra.Command{
+		Use:     bundleSpecUsage,
+		Short:   bundleSpecHelpShort,
+		Long:    bundleSpecHelpLong,
+		Example: bundleSpecHelpExample,
+		Args:    wrapArgsError(cobra.NoArgs),
+		PreRun: func(cmd *cobra.Command, _ []string) {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
+		},
+		RunE: func(_ *cobra.Command, _ []string) error {
+			_, err := fmt.Fprint(globalOptions.logOptions.Stdout, specs.BundleSpecification)
+			if err != nil {
+				return fmt.Errorf("failed to print: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	return bundleSpecCmd
+}
+
+func newExampleConfigCmd(_ context.Context, globalOptions *globalOptions) *cobra.Command {
+	exampleConfigCmd := &cobra.Command{
+		Use:     exampleConfigUsage,
+		Short:   exampleConfigHelpShort,
+		Long:    exampleConfigHelpLong,
+		Example: exampleConfigHelpExample,
+		Args:    wrapArgsError(cobra.NoArgs),
+		PreRun: func(cmd *cobra.Command, _ []string) {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
+		},
+		RunE: func(_ *cobra.Command, _ []string) error {
+			_, err := fmt.Fprint(globalOptions.logOptions.Stdout, configs.ExampleConfiguration)
+			if err != nil {
+				return fmt.Errorf("failed to print: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	return exampleConfigCmd
+}
+
+func newCheckConfigCmd(_ context.Context, globalOptions *globalOptions) *cobra.Command {
 	checkConfigCmd := &cobra.Command{
 		Use:     checkConfigUsage,
 		Short:   checkConfigHelpShort,
 		Long:    checkConfigHelpLong,
 		Example: checkConfigHelpExample,
 		Args:    wrapArgsError(cobra.ExactArgs(1)),
+		PreRun: func(cmd *cobra.Command, _ []string) {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
+		},
 		RunE: func(_ *cobra.Command, args []string) error {
 			if _, err := parseConfigFile(afero.NewOsFs(), args[0]); err != nil {
-				fmt.Fprintln(os.Stdout, "Provided configuration file is invalid.")
+				fmt.Fprintln(globalOptions.logOptions.Stdout, "Provided configuration file is invalid.")
 
 				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
 			}
-			fmt.Fprintln(os.Stdout, "Provided configuration file is valid.")
+			fmt.Fprintln(globalOptions.logOptions.Stdout, "Provided configuration file is valid.")
 
 			return nil
 		},

@@ -380,6 +380,19 @@ func Test_NewRootCmd_HasListCommand_Success(t *testing.T) {
 	require.Equal(t, "list", listCmd.Name())
 }
 
+// Expectation: The root command should have a "example-config" subcommand.
+func Test_NewRootCmd_HasExampleConfigCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRootCmd(t.Context())
+
+	exampleConfigCmd, _, err := cmd.Find([]string{"example-config"})
+
+	require.NoError(t, err)
+	require.NotNil(t, exampleConfigCmd)
+	require.Equal(t, "example-config", exampleConfigCmd.Name())
+}
+
 // Expectation: The root command should have a "check-config" subcommand.
 func Test_NewRootCmd_HasCheckConfigCommand_Success(t *testing.T) {
 	t.Parallel()
@@ -482,6 +495,19 @@ func Test_NewBundleCmd_HasDebugCommand_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, bundleCmd)
 	require.Equal(t, "debug", bundleCmd.Name())
+}
+
+// Expectation: The bundle command should have a "spec" subcommand.
+func Test_NewBundleCmd_HasSpecCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newBundleCmd(t.Context(), newGlobalOptions())
+
+	specCmd, _, err := cmd.Find([]string{"spec"})
+
+	require.NoError(t, err)
+	require.NotNil(t, specCmd)
+	require.Equal(t, "spec", specCmd.Name())
 }
 
 // Expectation: The "bundle pack" command should have flags.

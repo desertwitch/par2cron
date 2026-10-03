@@ -22,9 +22,13 @@ par2cron - PAR2 integrity and self-repair engine
 
 *par2cron bundle debug* [_flags_] _file_ [_file_...]
 
+*par2cron bundle spec* [_flags_]
+
 *par2cron tool md5* [_flags_] _par2file_ [_par2file_...]
 
-*par2cron check-config* _file_
+*par2cron example-config* [_flags_]
+
+*par2cron check-config* [_flags_] _file_
 
 == DESCRIPTION
 
@@ -177,12 +181,20 @@ Unpacks all existing bundles of a folder into PAR2 sets.
 
 Prints bundle debug information to standard output.
 
+=== par2cron bundle spec
+
+Prints the par2cron bundle file specification to standard output.
+
 === par2cron tool md5
 
 Extracts and displays MD5 checksums from PAR2 files.
 
 *--all*::
   Parse all provided files (not just PAR2 indexes).
+
+=== par2cron example-config
+
+Prints a par2cron example configuration to standard output.
 
 === par2cron check-config
 

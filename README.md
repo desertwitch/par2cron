@@ -245,6 +245,7 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron list`         | Lists all par2cron-managed PAR2 sets and their status   |
 | `par2cron bundle`       | Commands for interacting with par2cron's bundle format  |
 | `par2cron tool`         | Useful utility commands for interacting with PAR2 files |
+| `par2cron example-config` | Prints a fully commented par2cron example configuration |
 | `par2cron check-config` | Validates a par2cron YAML configuration file            |
 
 Detailed documentation for each command is available in the [docs/](docs/) directory.
@@ -426,6 +427,7 @@ Usage:
 Available Commands:
   debug       Prints bundle debug information to standard output
   pack        Packs all existing PAR2 sets of a folder into bundles
+  spec        Prints the par2cron bundle file specification
   unpack      Unpacks all existing bundles of a folder into PAR2 sets
 
 Flags:
@@ -536,7 +538,7 @@ repair:
   cache: "/tmp/par2cron-cache"
 ```
 
-**For a full commented configuration, refer to the [par2cron.yaml](par2cron.yaml) file.**
+**For a full commented configuration, refer to the [par2cron.yaml](./docs/configs/par2cron.yaml) file.**
 
 You should verify the configuration using `par2cron check-config`, as malformed
 configuration will prevent the program from starting (bad invocation exit code).
