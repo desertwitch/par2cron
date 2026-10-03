@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/flags"
+	"github.com/stretchr/testify/require"
 )
 
 // Fixed inputs, so that the rendered output is fully deterministic.
@@ -236,5 +237,27 @@ func Test_renderPrometheus_Golden(t *testing.T) {
 					path, got, want)
 			}
 		})
+	}
+}
+
+// Expectation: every par2cron metric referenced by the example recording rules must exist in the rendered output.
+func Test_contribRules_ReferenceExistingMetrics_Success(t *testing.T) {
+	t.Parallel()
+
+	out := renderPrometheus(goldenCases()["full"], goldenScan, goldenVersion, goldenGoVersion)
+
+	// Raw metric names only; recorded names like instance:par2cron_sets:sum are excluded by the colon.
+	re := regexp.MustCompile(`(^|[^:\w])(par2cron_[a-z0-9_]+)`)
+
+	for _, name := range []string{"rules.yml", "rules_test.yml"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "contrib", "prometheus", name))
+		require.NoError(t, err)
+
+		matches := re.FindAllStringSubmatch(string(data), -1)
+		require.NotEmpty(t, matches, "no metric references found in %s", name)
+
+		for _, m := range matches {
+			require.True(t, hasPromFamily(out, m[2]), "%s references unknown metric %s", name, m[2])
+		}
 	}
 }

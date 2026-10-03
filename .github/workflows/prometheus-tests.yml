@@ -24,7 +24,7 @@ jobs:
       - run: make generate
       - run: make is-clean
 
-  promtool-generate-check:
+  promtool-check-metrics:
     needs: generate-check
     runs-on: ubuntu-latest
     steps:
@@ -66,3 +66,28 @@ jobs:
           done
 
           exit "${rc}"
+
+  promtool-check-rules:
+    needs: generate-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install promtool
+        run: |
+          set -euo pipefail
+          name="prometheus-${PROMETHEUS_VERSION}.linux-amd64"
+          base="https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}"
+
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "${base}/${name}.tar.gz"
+          curl -fsSLO "${base}/sha256sums.txt"
+          grep "  ${name}.tar.gz\$" sha256sums.txt | sha256sum -c -
+
+          tar -xzf "${name}.tar.gz" "${name}/promtool"
+          echo "${RUNNER_TEMP}/${name}" >> "$GITHUB_PATH"
+
+      - name: Check contrib rule files with promtool
+        run: promtool check rules contrib/prometheus/rules.yml
+
+      - name: Test contrib rule files with promtool
+        run: promtool test rules contrib/prometheus/rules_test.yml

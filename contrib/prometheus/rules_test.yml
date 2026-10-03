@@ -1,0 +1,251 @@
+# Unit tests for rules.yml, run with:
+#   promtool test rules contrib/prometheus/rules_test.yml
+#
+# The first test uses real metrics of a par2cron server and checks that the
+# recorded values match what "par2cron info" printed for the same state:
+#
+#   Total jobs found: 25450 (25450 with known duration, 0 with unknown duration)
+#   Average job duration: 3 seconds
+#   Runs per verification cycle: 14
+#   If using --duration, minimum should be: 1 hour 21 minutes 23 seconds
+#   Runs needed to achieve a full verification: 7
+#   A full verification is eventually achieved every: 1 week
+#   Processing capacity: 1 day 18 hours
+#   Backlog: HEALTHY (margin: 23 hours 41 seconds)
+#   Jobs verified: 18674/25450 (73.4%)
+#   Known duration covered: (85.3%)
+
+rule_files:
+  - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Real server state with --age 14d, --duration 3h and --cache.
+  - interval: 1m
+    input_series:
+      - series: 'par2cron_sets{job="node",instance="nas",status="healthy"}'
+        values: '25450+0x10'
+      - series: 'par2cron_sets{job="node",instance="nas",status="repairable"}'
+        values: '0+0x10'
+      - series: 'par2cron_sets{job="node",instance="nas",status="unrepairable"}'
+        values: '0+0x10'
+      - series: 'par2cron_sets{job="node",instance="nas",status="unverified"}'
+        values: '0+0x10'
+      - series: 'par2cron_sets_duration_unknown{job="node",instance="nas"}'
+        values: '0+0x10'
+      - series: 'par2cron_sets_cached{job="node",instance="nas"}'
+        values: '25450+0x10'
+      - series: 'par2cron_verify_duration_known_seconds{job="node",instance="nas"}'
+        values: '68359.489944627+0x10'
+      - series: 'par2cron_verify_duration_largest_seconds{job="node",instance="nas"}'
+        values: '3542.339314341+0x10'
+      - series: 'par2cron_config_run_interval_seconds{job="node",instance="nas"}'
+        values: '86400+0x10'
+      - series: 'par2cron_config_age_seconds{job="node",instance="nas"}'
+        values: '1209600+0x10'
+      - series: 'par2cron_config_duration_seconds{job="node",instance="nas"}'
+        values: '10800+0x10'
+      - series: 'par2cron_sets_verified_within_age{job="node",instance="nas"}'
+        values: '18674+0x10'
+      - series: 'par2cron_verify_duration_within_age_seconds{job="node",instance="nas"}'
+        values: '58327.535071292+0x10'
+      - series: 'par2cron_backlog_margin_seconds{job="node",instance="nas"}'
+        values: '82840.510055373+0x10'
+    promql_expr_test:
+      - expr: instance:par2cron_sets:sum
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_sets:sum{job="node",instance="nas"}'
+            value: 25450
+      - expr: instance:par2cron_sets_duration_known:sum
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_sets_duration_known:sum{job="node",instance="nas"}'
+            value: 25450
+      - expr: instance:par2cron_verify_duration_seconds:avg
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_duration_seconds:avg{job="node",instance="nas"}'
+            value: 2.686031039081611
+      - expr: instance:par2cron_config_runs_per_cycle:floor
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_config_runs_per_cycle:floor{job="node",instance="nas"}'
+            value: 14
+      - expr: instance:par2cron_config_duration_min_seconds:clamp_min
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_config_duration_min_seconds:clamp_min{job="node",instance="nas"}'
+            value: 4882.8207103305
+      - expr: instance:par2cron_config_age_below_interval:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_config_age_below_interval:bool{job="node",instance="nas"}'
+            value: 0
+      - expr: instance:par2cron_verify_full_pass_runs:ceil
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_full_pass_runs:ceil{job="node",instance="nas"}'
+            value: 7
+      - expr: instance:par2cron_verify_full_pass_interval_seconds:mul
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_full_pass_interval_seconds:mul{job="node",instance="nas"}'
+            value: 604800
+      - expr: instance:par2cron_verify_full_pass_single_run:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_full_pass_single_run:bool{job="node",instance="nas"}'
+            value: 0
+      - expr: instance:par2cron_verify_duration_largest_exceeds_budget:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_duration_largest_exceeds_budget:bool{job="node",instance="nas"}'
+            value: 0
+      - expr: instance:par2cron_backlog_capacity_seconds:mul
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_backlog_capacity_seconds:mul{job="node",instance="nas"}'
+            value: 151200
+      - expr: instance:par2cron_backlog_healthy:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_backlog_healthy:bool{job="node",instance="nas"}'
+            value: 1
+      - expr: instance:par2cron_sets_verified_within_age:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_sets_verified_within_age:ratio{job="node",instance="nas"}'
+            value: 0.7337524557956778
+      - expr: instance:par2cron_verify_duration_within_age:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_duration_within_age:ratio{job="node",instance="nas"}'
+            value: 0.8532470783286834
+      - expr: instance:par2cron_sets_cached:ratio
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_sets_cached:ratio{job="node",instance="nas"}'
+            value: 1
+
+  # No known durations yet (like the "No duration data available" warning):
+  # only the counts are recorded, nothing that depends on durations.
+  - interval: 1m
+    input_series:
+      - series: 'par2cron_sets{job="node",instance="nas",status="healthy"}'
+        values: '0+0x10'
+      - series: 'par2cron_sets{job="node",instance="nas",status="unverified"}'
+        values: '3+0x10'
+      - series: 'par2cron_sets_duration_unknown{job="node",instance="nas"}'
+        values: '3+0x10'
+      - series: 'par2cron_verify_duration_known_seconds{job="node",instance="nas"}'
+        values: '0+0x10'
+      - series: 'par2cron_verify_duration_largest_seconds{job="node",instance="nas"}'
+        values: '0+0x10'
+      - series: 'par2cron_config_run_interval_seconds{job="node",instance="nas"}'
+        values: '86400+0x10'
+      - series: 'par2cron_config_age_seconds{job="node",instance="nas"}'
+        values: '604800+0x10'
+      - series: 'par2cron_config_duration_seconds{job="node",instance="nas"}'
+        values: '7200+0x10'
+    promql_expr_test:
+      - expr: instance:par2cron_sets:sum
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_sets:sum{job="node",instance="nas"}'
+            value: 3
+      - expr: instance:par2cron_sets_duration_known:sum
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_sets_duration_known:sum{job="node",instance="nas"}'
+            value: 0
+      - expr: instance:par2cron_verify_duration_seconds:avg
+        eval_time: 5m
+        exp_samples: []
+      - expr: instance:par2cron_config_runs_per_cycle:floor
+        eval_time: 5m
+        exp_samples: []
+      - expr: instance:par2cron_config_duration_min_seconds:clamp_min
+        eval_time: 5m
+        exp_samples: []
+      - expr: instance:par2cron_verify_full_pass_runs:ceil
+        eval_time: 5m
+        exp_samples: []
+      - expr: instance:par2cron_verify_full_pass_single_run:bool
+        eval_time: 5m
+        exp_samples: []
+      - expr: instance:par2cron_backlog_capacity_seconds:mul
+        eval_time: 5m
+        exp_samples: []
+
+  # Edge cases of the Go calculations: --age shorter than the run interval
+  # (runs per cycle clamped to 1, warning set), a tiny known duration (minimum
+  # --duration clamped to 1s), runs needed rounded up and the largest set
+  # exceeding --duration.
+  - interval: 1m
+    input_series:
+      - series: 'par2cron_sets{job="node",instance="nas",status="healthy"}'
+        values: '1+0x10'
+      - series: 'par2cron_sets_duration_unknown{job="node",instance="nas"}'
+        values: '0+0x10'
+      - series: 'par2cron_verify_duration_known_seconds{job="node",instance="nas"}'
+        values: '0.5+0x10'
+      - series: 'par2cron_verify_duration_largest_seconds{job="node",instance="nas"}'
+        values: '0.5+0x10'
+      - series: 'par2cron_config_run_interval_seconds{job="node",instance="nas"}'
+        values: '86400+0x10'
+      - series: 'par2cron_config_age_seconds{job="node",instance="nas"}'
+        values: '43200+0x10'
+      - series: 'par2cron_config_duration_seconds{job="node",instance="nas"}'
+        values: '0.25+0x10'
+    promql_expr_test:
+      - expr: instance:par2cron_config_runs_per_cycle:floor
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_config_runs_per_cycle:floor{job="node",instance="nas"}'
+            value: 1
+      - expr: instance:par2cron_config_age_below_interval:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_config_age_below_interval:bool{job="node",instance="nas"}'
+            value: 1
+      - expr: instance:par2cron_config_duration_min_seconds:clamp_min
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_config_duration_min_seconds:clamp_min{job="node",instance="nas"}'
+            value: 1
+      - expr: instance:par2cron_verify_full_pass_runs:ceil
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_full_pass_runs:ceil{job="node",instance="nas"}'
+            value: 2
+      - expr: instance:par2cron_verify_full_pass_single_run:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_full_pass_single_run:bool{job="node",instance="nas"}'
+            value: 0
+      - expr: instance:par2cron_verify_duration_largest_exceeds_budget:bool
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_verify_duration_largest_exceeds_budget:bool{job="node",instance="nas"}'
+            value: 1
+
+  # No sets at all: counts are zero, ratios are not recorded (no division by zero).
+  - interval: 1m
+    input_series:
+      - series: 'par2cron_sets{job="node",instance="nas",status="healthy"}'
+        values: '0+0x10'
+      - series: 'par2cron_sets_duration_unknown{job="node",instance="nas"}'
+        values: '0+0x10'
+      - series: 'par2cron_sets_cached{job="node",instance="nas"}'
+        values: '0+0x10'
+    promql_expr_test:
+      - expr: instance:par2cron_sets:sum
+        eval_time: 5m
+        exp_samples:
+          - labels: 'instance:par2cron_sets:sum{job="node",instance="nas"}'
+            value: 0
+      - expr: instance:par2cron_sets_cached:ratio
+        eval_time: 5m
+        exp_samples: []

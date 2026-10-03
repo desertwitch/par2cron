@@ -1181,6 +1181,10 @@ included as `HELP` text within the generated `--prometheus` output itself.
 
 (*) Only once known verification durations exist.
 
+Metrics that do not apply (for example without `--age`) are absent rather than
+zero, so alerts on them never fire; add `absent()` alerts for any metrics your
+setup relies on, for example `absent(par2cron_sets_overdue)` when using `--age`.
+
 ## Limitations
 
 par2cron, and PAR2 in general, is mostly designed to operate on non-changing
