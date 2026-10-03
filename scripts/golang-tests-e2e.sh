@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BIN="${PAR2CRON_BIN:-$(pwd)/par2cron}"
-CONFIG="${PAR2CRON_CONFIG:-$(pwd)/par2cron.yaml}"
+CONFIG="${PAR2CRON_CONFIG:-$(pwd)/docs/configs/par2cron.yaml}"
 
 PASS=0
 FAIL=0

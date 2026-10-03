@@ -37,6 +37,7 @@
   - [`par2cron list`](#par2cron-list)
   - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron tool`](#par2cron-tool)
+  - [`par2cron example-config`](#par2cron-example-config)
   - [`par2cron check-config`](#par2cron-check-config)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
@@ -446,6 +447,26 @@ Available Commands:
 
 Flags:
   -h, --help   help for tool
+```
+
+### `par2cron example-config`
+```
+Prints a fully commented par2cron example configuration
+Writes all options supported by this par2cron version to standard output
+
+Usage:
+  par2cron example-config [flags]
+
+Examples:
+
+Write the example configuration to a YAML file:
+  par2cron example-config > par2cron.yaml
+
+Validate the configuration file after editing it:
+  par2cron check-config par2cron.yaml
+
+Flags:
+  -h, --help   help for example-config
 ```
 
 ### `par2cron check-config`
