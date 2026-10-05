@@ -8,21 +8,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Expectation: A non-JSON handler should be returned.
+// Expectation: A colored (tint) handler should be returned by default.
 func Test_NewLogger_WantTint_Success(t *testing.T) {
 	t.Parallel()
 
+	buf := &testutil.SafeBuffer{}
 	ls := Options{
-		Logout:   &testutil.SafeBuffer{},
+		Logout:   buf,
 		WantJSON: false,
 	}
 	_ = ls.LogLevel.Set("info")
 
 	logger := NewLogger(ls)
-	_, ok := logger.Handler().(*slog.JSONHandler)
-
-	require.False(t, ok)
 	require.NotNil(t, logger)
+
+	_, isJSON := logger.Handler().(*slog.JSONHandler)
+	require.False(t, isJSON)
+
+	_, isText := logger.Handler().(*slog.TextHandler)
+	require.False(t, isText)
+
+	logger.Info("hello world")
+	require.Contains(t, buf.String(), "\x1b[")
 }
 
 // Expectation: A JSON handler should be returned.
@@ -40,6 +47,47 @@ func Test_NewLogger_WantJSON_Success(t *testing.T) {
 
 	require.True(t, ok)
 	require.NotNil(t, logger)
+}
+
+// Expectation: A plain slog.TextHandler should be returned when color is disabled.
+func Test_NewLogger_NoColor_Success(t *testing.T) {
+	t.Parallel()
+
+	ls := Options{
+		Logout:   &testutil.SafeBuffer{},
+		WantJSON: false,
+		NoColor:  true,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	logger := NewLogger(ls)
+	require.NotNil(t, logger)
+
+	_, ok := logger.Handler().(*slog.TextHandler)
+	require.True(t, ok)
+}
+
+// Expectation: The no-color handler should write plain logfmt with an RFC 3339 timestamp and no ANSI colors.
+func Test_NewLogger_NoColor_OutputFormat(t *testing.T) {
+	t.Parallel()
+
+	buf := &testutil.SafeBuffer{}
+	ls := Options{
+		Logout:   buf,
+		WantJSON: false,
+		NoColor:  true,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	logger := NewLogger(ls)
+	logger.Info("hello world", "key", "value")
+
+	output := buf.String()
+	require.Regexp(t, `time=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(Z|[+-]\d{2}:\d{2})`, output)
+	require.Contains(t, output, "level=INFO")
+	require.Contains(t, output, `msg="hello world"`)
+	require.Contains(t, output, "key=value")
+	require.NotContains(t, output, "\x1b[")
 }
 
 // Expectation: All known log levels should return a log handler.

@@ -1,9 +1,3 @@
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/multipar.p2c.par2 -parse multipar/files.par2 multipar/files.par2 multipar/files.vol00+7.par2 multipar/files.vol07+6.par2 multipar/files.vol13+6.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/par2cmdline.p2c.par2 -parse par2cmdline/files.par2 par2cmdline/files.par2 par2cmdline/files.vol0+1.par2 par2cmdline/files.vol1+1.par2 par2cmdline/files.vol2+1.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/par2cmdline-turbo.p2c.par2 -parse par2cmdline-turbo/files.par2 par2cmdline-turbo/files.par2 par2cmdline-turbo/files.vol0+1.par2 par2cmdline-turbo/files.vol1+1.par2 par2cmdline-turbo/files.vol2+1.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/parpar.p2c.par2 -parse parpar/files.par2 parpar/files.par2 parpar/files.vol00+05.par2 parpar/files.vol05+05.par2 parpar/files.vol10+03.par2
-//go:generate go run ../../tool/generate-bundle -dir testdata -out generated/quickpar.p2c.par2 -parse quickpar/files.par2 quickpar/files.par2 quickpar/files.vol0+1.PAR2 quickpar/files.vol1+1.PAR2 quickpar/files.vol2+2.PAR2
-//nolint:dupword
 package bundle
 
 import (

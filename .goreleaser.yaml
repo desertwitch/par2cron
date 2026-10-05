@@ -42,7 +42,8 @@ archives:
       - README.md
       - QUICKGUIDE
       - LICENSE
-      - par2cron.yaml
+      - src: docs/configs/par2cron.yaml
+        dst: par2cron.yaml
       - src: docs/man/par2cron.1
         dst: man/par2cron.1
       - src: docs/man/par2cron.pdf

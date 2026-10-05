@@ -13,6 +13,7 @@ jobs:
     name: generate-is-clean
     runs-on: ubuntu-latest
     steps:
+      - run: sudo apt-get update && sudo apt-get install -y par2
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
@@ -39,10 +40,6 @@ jobs:
           - { os: linux,   runner: ubuntu-latest,  tool: par2cmdline-master,  action: repair, script: ./scripts/bundle-linux-repair-par2cmdline-master.sh }
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: 'go.mod'
-          cache: false
       - name: Run ${{ matrix.action }} with ${{ matrix.tool }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

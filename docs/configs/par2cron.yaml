@@ -356,9 +356,17 @@ info:
   log-level: "info"
 
   # json: Output in JSON format (result to stdout, logs to stderr)
+  # Must not be used together with "prometheus: true"
   #
   # Default: false
   json: false
+
+  # prometheus: Output in Prometheus format (result to stdout, logs to stderr)
+  # To be used with Prometheus node_exporter textfile collector or Pushgateway
+  # Must not be used together with "json: true"
+  #
+  # Default: false
+  prometheus: false
 
   # seq-url: CLEF ingestion endpoint of a remote Seq logging server
   # When set, all logs are sent both to console and to Seq over HTTP(S)

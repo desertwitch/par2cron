@@ -20,6 +20,10 @@ See 'par2cron <command> --help' for command-specific information.
 
 Full documentation at: https://github.com/desertwitch/par2cron
 
+```
+par2cron [flags]
+```
+
 ### Options
 
 ```
@@ -27,6 +31,7 @@ Full documentation at: https://github.com/desertwitch/par2cron
   -h, --help              help for par2cron
       --json              output results/logs in JSON format (where applicable)
   -l, --log-level level   minimum level of emitted logs (debug|info|warn|error) (default info)
+      --log-plain         emit uncolored plain-text logs with full timestamps
       --mprof string      write RAM allocation profile to file
       --pprof string      write CPU performance profile to file
       --seq-key string    API key for a (remote) Seq logging server
@@ -36,8 +41,8 @@ Full documentation at: https://github.com/desertwitch/par2cron
 ### SEE ALSO
 
 * [par2cron bundle](par2cron_bundle.md)	 - Commands for interacting with par2cron's bundle format
-* [par2cron check-config](par2cron_check-config.md)	 - Validates a par2cron YAML configuration file
 * [par2cron completion](par2cron_completion.md)	 - Generate the autocompletion script for the specified shell
+* [par2cron config](par2cron_config.md)	 - Commands for interacting with par2cron configuration files
 * [par2cron create](par2cron_create.md)	 - Creates PAR2 sets for directories with marker files
 * [par2cron info](par2cron_info.md)	 - Shows verification cycle and configuration statistics
 * [par2cron list](par2cron_list.md)	 - Lists all par2cron-managed PAR2 sets and their status

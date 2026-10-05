@@ -630,7 +630,7 @@ func Test_ParseFileSet_NoParseableFiles_Error(t *testing.T) {
 	require.ErrorIs(t, err, errFileCorrupted)
 }
 
-// Expectation: ParseFileSet should return empty unparseable files.
+// Expectation: ParseFileSet should return empty unparsable files.
 func Test_ParseFileSet_SomeUnparseableFiles_Success(t *testing.T) {
 	t.Parallel()
 

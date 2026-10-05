@@ -28,17 +28,21 @@ chmod +x "$PAR2"
 echo "Found par2 at: $PAR2"
 
 # --- Bundle definitions ---
-TMP_SUBDIR="_verify"
+# The bundles are copied from testdata/generated rather than regenerated:
+# CI runs `make generate` and `make is-clean` first, so the committed files
+# are guaranteed byte-identical to what the packer currently produces.
 REPO_ROOT=$(git rev-parse --show-toplevel)
-BUNDLE_DIR="$REPO_ROOT/internal/bundle"
-TESTDATA_DIR="$BUNDLE_DIR/testdata"
+TESTDATA_DIR="$REPO_ROOT/internal/bundle/testdata"
 SOURCES_DIR="$TESTDATA_DIR/sources"
-VERIFY_DIR="$TESTDATA_DIR/$TMP_SUBDIR"
+GENERATED_DIR="$TESTDATA_DIR/generated"
+VERIFY_DIR="$WORK_DIR/verify"
 
-if [ ! -d "$SOURCES_DIR" ]; then
-    echo "::error::Sources directory not found: $SOURCES_DIR"
-    exit 1
-fi
+for d in "$SOURCES_DIR" "$GENERATED_DIR"; do
+    if [ ! -d "$d" ]; then
+        echo "::error::Directory not found: $d"
+        exit 1
+    fi
+done
 
 declare -a BUNDLE_NAMES=(
     "multipar"
@@ -48,51 +52,32 @@ declare -a BUNDLE_NAMES=(
     "quickpar"
 )
 
-declare -a BUNDLE_ARGS=(
-    "-dir testdata -out $TMP_SUBDIR/multipar.p2c.par2 -parse multipar/files.par2 multipar/files.par2 multipar/files.vol00+7.par2 multipar/files.vol07+6.par2 multipar/files.vol13+6.par2"
-    "-dir testdata -out $TMP_SUBDIR/par2cmdline.p2c.par2 -parse par2cmdline/files.par2 par2cmdline/files.par2 par2cmdline/files.vol0+1.par2 par2cmdline/files.vol1+1.par2 par2cmdline/files.vol2+1.par2"
-    "-dir testdata -out $TMP_SUBDIR/par2cmdline-turbo.p2c.par2 -parse par2cmdline-turbo/files.par2 par2cmdline-turbo/files.par2 par2cmdline-turbo/files.vol0+1.par2 par2cmdline-turbo/files.vol1+1.par2 par2cmdline-turbo/files.vol2+1.par2"
-    "-dir testdata -out $TMP_SUBDIR/parpar.p2c.par2 -parse parpar/files.par2 parpar/files.par2 parpar/files.vol00+05.par2 parpar/files.vol05+05.par2 parpar/files.vol10+03.par2"
-    "-dir testdata -out $TMP_SUBDIR/quickpar.p2c.par2 -parse quickpar/files.par2 quickpar/files.par2 quickpar/files.vol0+1.PAR2 quickpar/files.vol1+1.PAR2 quickpar/files.vol2+2.PAR2"
-)
-
-# --- Generate, verify, damage, repair each bundle ---
+# --- Verify, damage, repair each committed bundle ---
 FAILED=0
 
-cleanup_verify() {
-    rm -rf "$VERIFY_DIR"
-}
-
-for i in "${!BUNDLE_NAMES[@]}"; do
-    NAME="${BUNDLE_NAMES[$i]}"
-    ARGS="${BUNDLE_ARGS[$i]}"
+for NAME in "${BUNDLE_NAMES[@]}"; do
+    PAR2_FILE="$NAME.p2c.par2"
 
     echo "============================================"
     echo "Processing: $NAME"
     echo "============================================"
 
-    # Clean the verify dir so only this bundle is present
-    cleanup_verify
+    # Fresh verify dir so only this bundle is present
+    rm -rf "$VERIFY_DIR"
     mkdir -p "$VERIFY_DIR"
 
-    # Generate the bundle
-    echo "Running: go run ../../tool/generate-bundle $ARGS"
-    pushd "$BUNDLE_DIR" > /dev/null
-    # shellcheck disable=SC2086
-    if ! go run ../../tool/generate-bundle $ARGS; then
-        echo "::error::generate-bundle failed for $NAME"
+    if [ ! -f "$GENERATED_DIR/$PAR2_FILE" ]; then
+        echo "::error::Committed bundle not found: $GENERATED_DIR/$PAR2_FILE"
         FAILED=1
-        popd > /dev/null
         continue
     fi
-    popd > /dev/null
 
-    # Copy source files into the verify dir
+    # Copy the committed bundle and the source files into the verify dir
+    cp "$GENERATED_DIR/$PAR2_FILE" "$VERIFY_DIR/"
     cp -r "$SOURCES_DIR"/* "$VERIFY_DIR/"
-    echo "Copied source files into $VERIFY_DIR"
+    echo "Copied $PAR2_FILE and source files into $VERIFY_DIR"
 
     # Verify with par2
-    PAR2_FILE="$NAME.p2c.par2"
     echo "Verifying: $PAR2_FILE"
     pushd "$VERIFY_DIR" > /dev/null
     if ! "$PAR2" v -q "./$PAR2_FILE"; then
@@ -147,8 +132,6 @@ for i in "${!BUNDLE_NAMES[@]}"; do
 
     echo ""
 done
-
-cleanup_verify
 
 if [ "$FAILED" -ne 0 ]; then
     echo "::error::One or more bundles failed verification/repair."

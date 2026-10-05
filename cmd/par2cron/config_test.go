@@ -165,6 +165,7 @@ info:
   include-external: true
   skip-not-created: false
   json: true
+  prometheus: true
   log-level: "error"
   cache: "/tmp/cache"
   seq-url: "http://127.0.0.1/seq"
@@ -901,6 +902,7 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 		LogLevel:        &LogLevel,
 		IncludeExternal: new(true),
 		SkipNotCreated:  new(true),
+		Prometheus:      new(true),
 		WantJSON:        new(true),
 		CacheDir:        new("/tmp/cache"),
 		SeqURL:          new("url"),
@@ -927,6 +929,7 @@ func Test_configFileInfo_Merge_AllFields_Success(t *testing.T) {
 	require.Equal(t, slog.LevelError, logs.LogLevel.Value)
 	require.True(t, cfg.IncludeExternal)
 	require.True(t, cfg.SkipNotCreated)
+	require.True(t, cfg.Prometheus)
 	require.True(t, logs.WantJSON)
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 	require.Equal(t, "url", logs.SeqURL)
@@ -952,6 +955,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		IncludeExternal: new(true),
 		SkipNotCreated:  new(true),
 		WantJSON:        new(true),
+		Prometheus:      new(true),
 		CacheDir:        new("/tmp/cache"),
 		SeqURL:          new("url"),
 		SeqKey:          new("key"),
@@ -975,6 +979,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"log-level":        true,
 		"include-external": true,
 		"skip-not-created": true,
+		"prometheus":       true,
 		"json":             true,
 		"cache":            true,
 		"seq-key":          true,
@@ -990,6 +995,7 @@ func Test_configFileInfo_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.Equal(t, slog.LevelWarn, logs.LogLevel.Value)
 	require.False(t, cfg.IncludeExternal)
 	require.False(t, cfg.SkipNotCreated)
+	require.False(t, cfg.Prometheus)
 	require.False(t, logs.WantJSON)
 	require.Empty(t, cfg.CacheDir)
 	require.Empty(t, logs.SeqURL)

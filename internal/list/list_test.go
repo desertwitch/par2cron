@@ -610,7 +610,7 @@ func Test_Service_printTable_AllStatuses_Success(t *testing.T) {
 	healthy.VerifyTime = verifiedAt
 	healthy.VerifyDuration = 5 * time.Minute
 
-	require.NoError(t, prog.printTable([]*verify.JobMeta{unrepairable, repairable, unverified, healthy}))
+	require.NoError(t, prog.printTable([]*verify.JobMeta{unrepairable, repairable, unverified, healthy}, Options{CacheDir: "/tmp"}))
 
 	lines := strings.Split(strings.TrimSpace(stdoutBuf.String()), "\n")
 	require.Len(t, lines, 5)
@@ -661,11 +661,11 @@ func Test_Service_printTable_Unverified_Dashes_Success(t *testing.T) {
 	unverified := newTestMeta("/data/unverified.par2")
 	unverified.HasManifest = true
 
-	require.NoError(t, prog.printTable([]*verify.JobMeta{unverified}))
+	require.NoError(t, prog.printTable([]*verify.JobMeta{unverified}, Options{}))
 
 	lines := strings.Split(strings.TrimSpace(stdoutBuf.String()), "\n")
 	require.Len(t, lines, 2)
-	require.Equal(t, []string{"unverified", "-", "-", "-", "-", "N", "/data/unverified.par2"}, strings.Fields(lines[1]))
+	require.Equal(t, []string{"unverified", "-", "-", "-", "-", "-", "/data/unverified.par2"}, strings.Fields(lines[1]))
 }
 
 // Expectation: printTable should align the path column across all rows.
@@ -696,7 +696,7 @@ func Test_Service_printTable_Aligned_Success(t *testing.T) {
 	unrepairable.CountCorrupted = 12345
 	unrepairable.RepairNeeded = true
 
-	require.NoError(t, prog.printTable([]*verify.JobMeta{unrepairable, unverified}))
+	require.NoError(t, prog.printTable([]*verify.JobMeta{unrepairable, unverified}, Options{}))
 
 	lines := strings.Split(strings.TrimSpace(stdoutBuf.String()), "\n")
 	require.Len(t, lines, 3)
@@ -704,4 +704,36 @@ func Test_Service_printTable_Aligned_Success(t *testing.T) {
 	headerCol := strings.Index(lines[0], "PATH")
 	require.Equal(t, headerCol, strings.Index(lines[1], "/data/"))
 	require.Equal(t, headerCol, strings.Index(lines[2], "/data/"))
+}
+
+// Expectation: printTable should show Y or N in the cached column when a cache directory is configured.
+func Test_Service_printTable_CachedColumn_WithCacheDir_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+
+	cached := newTestMeta("/data/cached.par2")
+	cached.HasManifest = true
+	cached.Saved = true
+
+	uncached := newTestMeta("/data/uncached.par2")
+	uncached.HasManifest = true
+
+	require.NoError(t, prog.printTable([]*verify.JobMeta{cached, uncached}, Options{CacheDir: "/tmp"}))
+
+	lines := strings.Split(strings.TrimSpace(stdoutBuf.String()), "\n")
+	require.Len(t, lines, 3)
+	require.Equal(t, "Y", strings.Fields(lines[1])[5])
+	require.Equal(t, "N", strings.Fields(lines[2])[5])
 }

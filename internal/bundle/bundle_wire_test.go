@@ -1,8 +1,13 @@
+//go:generate go test -update
 //nolint:gosec
 package bundle
 
 import (
 	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -15,6 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var update = flag.Bool("update", false, "regenerate testdata/generated bundles")
+
 type goldenSet struct {
 	Name          string
 	Dir           string
@@ -24,9 +31,8 @@ type goldenSet struct {
 	RecoverySetID [16]byte
 }
 
-// The recipe below MUST match tool/generate-bundle/main.go exactly. If the
-// generator's inputs change, update both. The wire-format smoke test relies
-// on feeding identical inputs to Pack and getting byte-identical output back.
+// goldenManifest and the per-set inputs below are the single source of truth
+// for the generated bundles. Run `go generate` to regenerate them when needed.
 var (
 	goldenSets []goldenSet
 
@@ -40,7 +46,48 @@ var (
 	}
 )
 
+// regenerateBundles rewrites testdata/generated from the golden sets. It runs
+// before any test so parallel tests never observe a partially written bundle.
+func regenerateBundles(ctx context.Context, fsys afero.Fs) error {
+	if len(goldenSets) == 0 {
+		return errors.New("no golden sets discovered")
+	}
+
+	for _, gs := range goldenSets {
+		out := filepath.Join("testdata", gs.Bundle)
+
+		if err := fsys.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+			return fmt.Errorf("mkdir %s: %w", filepath.Dir(out), err)
+		}
+
+		if err := fsys.Remove(out); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove %s: %w", out, err)
+		}
+
+		if err := Pack(ctx, fsys, out, gs.RecoverySetID, goldenManifest, gs.Inputs()); err != nil {
+			return fmt.Errorf("pack %s: %w", out, err)
+		}
+
+		b, err := Open(ctx, fsys, out)
+		if err != nil {
+			return fmt.Errorf("open %s: %w", out, err)
+		}
+
+		err = b.Validate(ctx, true)
+		_ = b.Close()
+
+		if err != nil {
+			return fmt.Errorf("validate %s: %w", out, err)
+		}
+
+		log.Printf("updated %s", out)
+	}
+
+	return nil
+}
+
 func TestMain(m *testing.M) {
+	flag.Parse()
 	fs := afero.NewOsFs()
 
 	for _, base := range []struct{ name, dir, bundle string }{
@@ -70,6 +117,12 @@ func TestMain(m *testing.M) {
 			Par2Files:     par2Files,
 			RecoverySetID: pf.Sets[0].MainPacket.SetID,
 		})
+	}
+
+	if *update {
+		if err := regenerateBundles(context.Background(), fs); err != nil {
+			log.Fatalf("TestMain: update: %v", err)
+		}
 	}
 
 	os.Exit(m.Run())

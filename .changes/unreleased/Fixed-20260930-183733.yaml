@@ -1,5 +1,5 @@
 kind: Fixed
-body: duplicate or missing `op` key in logs
+body: resolved duplicate or missing `op` key in logs
 time: 2026-09-30T18:37:33.574868452+02:00
 custom:
     Issue: ""

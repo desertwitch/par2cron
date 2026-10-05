@@ -46,6 +46,11 @@ type Result struct {
 
 	// Warning indicates issues encountered during enumeration.
 	Warning string `json:"warning,omitempty"`
+
+	// Prometheus-only values (not part of the JSON output).
+	cachedSets      int
+	incompleteRoots int
+	largestDuration time.Duration
 }
 
 // Summary contains aggregate statistics for all discovered jobs.
@@ -243,6 +248,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		}
 
 		cache.PruneUnwalked()
+		result.cachedSets += cache.SavedLen() // for Prometheus
 		// We don't save the cache so there cannot be races with verification.
 		// An info could finish after an overlapping verification and discard
 		// the verification progress in a race, so we only let verification
@@ -253,6 +259,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 	if err := errors.Join(errs...); err != nil {
 		result.Warning = fmt.Sprintf("Not all manifests could be read: %v", err)
 	}
+	result.incompleteRoots = len(errs) // for Prometheus
 
 	js := vs.Stats(metas)
 	result.Summary = &Summary{
@@ -266,6 +273,7 @@ func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options
 		TotalDuration: js.TotalDuration,
 		AvgDuration:   js.AvgDuration,
 	}
+	result.largestDuration = js.LargestDuration // for Prometheus
 
 	if !js.FirstVerification.IsZero() {
 		result.Summary.FirstVerification = &js.FirstVerification

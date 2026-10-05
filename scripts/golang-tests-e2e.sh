@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BIN="${PAR2CRON_BIN:-$(pwd)/par2cron}"
-CONFIG="${PAR2CRON_CONFIG:-$(pwd)/par2cron.yaml}"
+CONFIG="${PAR2CRON_CONFIG:-$(pwd)/docs/configs/par2cron.yaml}"
 
 PASS=0
 FAIL=0
@@ -77,20 +77,20 @@ assert_exit_nonzero() {
 }
 
 # ---------------------------------------------------------------------------
-echo "==> Test: check-config (valid)"
-TESTNAME="check-config accepts valid config"
-assert_exit_zero "$BIN" check-config "$CONFIG"
+echo "==> Test: config check (valid)"
+TESTNAME="config check accepts valid config"
+assert_exit_zero "$BIN" config check "$CONFIG"
 
 # ---------------------------------------------------------------------------
-echo "==> Test: check-config (invalid)"
+echo "==> Test: config check (invalid)"
 TMPDIR_CFG=$(mktest)
 cat > "$TMPDIR_CFG/bad.yaml" <<'EOF'
 create:
   mode: "nested"
   glob: **/*.mp4"
 EOF
-TESTNAME="check-config rejects invalid config"
-assert_exit_nonzero "$BIN" check-config "$TMPDIR_CFG/bad.yaml"
+TESTNAME="config check rejects invalid config"
+assert_exit_nonzero "$BIN" config check "$TMPDIR_CFG/bad.yaml"
 
 # ---------------------------------------------------------------------------
 echo "==> Test: create"

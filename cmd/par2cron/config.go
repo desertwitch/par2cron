@@ -257,6 +257,7 @@ type configFileInfo struct {
 	RunInterval     *flags.Duration `yaml:"calc-run-interval"`
 	IncludeExternal *bool           `yaml:"include-external"`
 	SkipNotCreated  *bool           `yaml:"skip-not-created"`
+	Prometheus      *bool           `yaml:"prometheus"`
 
 	Cgroup   *string         `yaml:"cgroup"`
 	LogLevel *flags.LogLevel `yaml:"log-level"`
@@ -283,6 +284,9 @@ func (yamlCfg *configFileInfo) Merge(cfg *info.Options, global *globalOptions, _
 	}
 	if yamlCfg.SkipNotCreated != nil && !setFlags["skip-not-created"] {
 		cfg.SkipNotCreated = *yamlCfg.SkipNotCreated
+	}
+	if yamlCfg.Prometheus != nil && !setFlags["prometheus"] {
+		cfg.Prometheus = *yamlCfg.Prometheus
 	}
 	if yamlCfg.Cgroup != nil && !setFlags["cgroup"] {
 		global.cgroupPath = *yamlCfg.Cgroup

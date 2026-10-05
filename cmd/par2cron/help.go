@@ -20,11 +20,42 @@ See 'par2cron <command> --help' for command-specific information.
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
-const checkConfigUsage = "check-config [flags] <file>"
+const configUsage = "config"
 
-const checkConfigHelpShort = "Validates a par2cron YAML configuration file"
+const configHelpShort = "Commands for interacting with par2cron configuration files"
 
-const checkConfigHelpLong = `Validates the syntax of a par2cron YAML configuration
+const configHelpLong = `Commands for interacting with par2cron configuration files
+
+par2cron can be configured entirely through command-line arguments,
+but given the amount of customization available, some users may
+prefer a configuration file instead. A single configuration file
+can be shared across all par2cron commands. When CLI arguments and
+a configuration file are combined, CLI arguments take precedence
+over the same options set in the configuration file.
+
+Full documentation at: https://github.com/desertwitch/par2cron`
+
+const configExampleUsage = "example [flags]"
+
+const configExampleHelpShort = "Prints a commented par2cron example configuration"
+
+const configExampleHelpLong = `Prints a commented par2cron example configuration
+Writes all options supported by this par2cron version to standard output
+
+Full documentation at: https://github.com/desertwitch/par2cron`
+
+const configExampleHelpExample = `
+Write the example configuration to a YAML file:
+  par2cron config example > par2cron.yaml
+
+Validate the configuration file after editing it:
+  par2cron config check par2cron.yaml`
+
+const configCheckUsage = "check [flags] <file>"
+
+const configCheckHelpShort = "Validates a par2cron YAML configuration file"
+
+const configCheckHelpLong = `Validates the syntax of a par2cron YAML configuration
 Use the command to check configurations before deploying
 
 Invalid configurations will prevent par2cron from starting;
@@ -32,9 +63,9 @@ this command will exit with non-zero if the validation fails.
 
 Full documentation at: https://github.com/desertwitch/par2cron`
 
-const checkConfigHelpExample = `
+const configCheckHelpExample = `
 Validate a par2cron YAML configuration file:
-  par2cron check-config /tmp/par2cron.yaml`
+  par2cron config check /tmp/par2cron.yaml`
 
 const createUsage = "create [flags] <dir> [dir...] [-- par2-arg...]"
 
@@ -156,7 +187,10 @@ Analyze a 14-day cycle with 4-hour weekly runs:
   par2cron info -a 14d -d 4h -i 1w /mnt/storage
 
 Output results as JSON (stdout/standard output):
-  par2cron info --json /mnt/storage`
+  par2cron info --json /mnt/storage
+
+Output results as Prometheus metrics (stdout/standard output):
+  par2cron info --prometheus -a 7d -d 2h /mnt/storage`
 
 const listUsage = "list [flags] <dir> [dir...]"
 
@@ -298,6 +332,19 @@ Print debug information about multiple bundle files:
 
 Print debug information about bundle files in working directory:
   par2cron bundle debug *.p2c.par2`
+
+const bundleSpecUsage = "spec [flags]"
+
+const bundleSpecHelpShort = "Prints the par2cron bundle file specification"
+
+const bundleSpecHelpLong = `Prints the par2cron bundle file specification
+Writes the bundle format of this par2cron version to standard output
+
+Full documentation at: https://github.com/desertwitch/par2cron`
+
+const bundleSpecHelpExample = `
+Write the bundle file specification to a text file:
+  par2cron bundle spec > bundle_specification.txt`
 
 const toolUsage = "tool"
 
