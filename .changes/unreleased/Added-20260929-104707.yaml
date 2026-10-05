@@ -1,6 +1,0 @@
-kind: Added
-body: '`repair` gains `--skip-maybe-edited` to skip possibly edited PAR2 sets'
-time: 2026-09-29T10:47:07.431309111+02:00
-custom:
-    Issue: ""
-    PR: "91"

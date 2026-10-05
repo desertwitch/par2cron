@@ -1,6 +1,0 @@
-kind: Added
-body: par2cron gains global flag `--log-plain` to disable colored logs (also respects `NO_COLOR` environment variable)
-time: 2026-10-02T15:08:25.372951642+02:00
-custom:
-    Issue: ""
-    PR: "92"

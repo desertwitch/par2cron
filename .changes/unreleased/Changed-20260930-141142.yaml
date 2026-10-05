@@ -1,6 +1,0 @@
-kind: Changed
-body: '`bundle info` command was renamed to `bundle debug`'
-time: 2026-09-30T14:11:42.796190104+02:00
-custom:
-    Issue: ""
-    PR: "91"

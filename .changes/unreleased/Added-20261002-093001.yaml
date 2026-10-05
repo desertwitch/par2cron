@@ -1,6 +1,0 @@
-kind: Added
-body: '`info` gains `--prometheus` to export Prometheus metrics'
-time: 2026-10-02T09:30:01.822073711+02:00
-custom:
-    Issue: ""
-    PR: "92"
