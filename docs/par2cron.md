@@ -20,6 +20,10 @@ See 'par2cron <command> --help' for command-specific information.
 
 Full documentation at: https://github.com/desertwitch/par2cron
 
+```
+par2cron [flags]
+```
+
 ### Options
 
 ```
@@ -37,10 +41,9 @@ Full documentation at: https://github.com/desertwitch/par2cron
 ### SEE ALSO
 
 * [par2cron bundle](par2cron_bundle.md)	 - Commands for interacting with par2cron's bundle format
-* [par2cron check-config](par2cron_check-config.md)	 - Validates a par2cron YAML configuration file
 * [par2cron completion](par2cron_completion.md)	 - Generate the autocompletion script for the specified shell
+* [par2cron config](par2cron_config.md)	 - Commands for interacting with par2cron configuration files
 * [par2cron create](par2cron_create.md)	 - Creates PAR2 sets for directories with marker files
-* [par2cron example-config](par2cron_example-config.md)	 - Prints a fully commented par2cron example configuration
 * [par2cron info](par2cron_info.md)	 - Shows verification cycle and configuration statistics
 * [par2cron list](par2cron_list.md)	 - Lists all par2cron-managed PAR2 sets and their status
 * [par2cron repair](par2cron_repair.md)	 - Repairs any corrupted files using the PAR2 recovery data

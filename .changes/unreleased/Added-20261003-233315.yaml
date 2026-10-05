@@ -1,5 +1,5 @@
 kind: Added
-body: par2cron gains `example-config` command to print an example configuration
+body: '`config` gains `example` subcommand to print an example configuration'
 time: 2026-10-03T23:33:15.858567433+02:00
 custom:
     Issue: ""

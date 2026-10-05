@@ -37,8 +37,7 @@
   - [`par2cron list`](#par2cron-list)
   - [`par2cron bundle`](#par2cron-bundle)
   - [`par2cron tool`](#par2cron-tool)
-  - [`par2cron example-config`](#par2cron-example-config)
-  - [`par2cron check-config`](#par2cron-check-config)
+  - [`par2cron config`](#par2cron-config)
 - [Exit Codes](#exit-codes)
 - [Output Streams](#output-streams)
 - [Configuration](#configuration)
@@ -246,8 +245,7 @@ The program is divided into separate commands to achieve its tasks:
 | `par2cron list`         | Lists all par2cron-managed PAR2 sets and their status   |
 | `par2cron bundle`       | Commands for interacting with par2cron's bundle format  |
 | `par2cron tool`         | Useful utility commands for interacting with PAR2 files |
-| `par2cron example-config` | Prints a fully commented par2cron example configuration |
-| `par2cron check-config` | Validates a par2cron YAML configuration file            |
+| `par2cron config`       | Commands for interacting with par2cron configuration files |
 
 Detailed documentation for each command is available in the [docs/](docs/) directory.
 
@@ -449,41 +447,19 @@ Flags:
   -h, --help   help for tool
 ```
 
-### `par2cron example-config`
+### `par2cron config`
 ```
-Prints a fully commented par2cron example configuration
-Writes all options supported by this par2cron version to standard output
+Commands for interacting with par2cron configuration files
 
 Usage:
-  par2cron example-config [flags]
+  par2cron config [command]
 
-Examples:
-
-Write the example configuration to a YAML file:
-  par2cron example-config > par2cron.yaml
-
-Validate the configuration file after editing it:
-  par2cron check-config par2cron.yaml
+Available Commands:
+  check       Validates a par2cron YAML configuration file
+  example     Prints a commented par2cron example configuration
 
 Flags:
-  -h, --help   help for example-config
-```
-
-### `par2cron check-config`
-```
-Validates the syntax of a par2cron YAML configuration
-Use the command to check configurations before deploying
-
-Usage:
-  par2cron check-config [flags] <file>
-
-Examples:
-
-Validate a par2cron YAML configuration file:
-  par2cron check-config /tmp/par2cron.yaml
-
-Flags:
-  -h, --help   help for check-config
+  -h, --help   help for config
 ```
 
 ## Exit Codes
@@ -561,7 +537,7 @@ repair:
 
 **For a full commented configuration, refer to the [par2cron.yaml](./docs/configs/par2cron.yaml) file.**
 
-You should verify the configuration using `par2cron check-config`, as malformed
+You should verify the configuration using `par2cron config check`, as malformed
 configuration will prevent the program from starting (bad invocation exit code).
 
 ## Crontab Orchestration

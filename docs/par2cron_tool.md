@@ -2,6 +2,10 @@
 
 Useful utility commands for interacting with PAR2 files
 
+```
+par2cron tool [flags]
+```
+
 ### Options
 
 ```

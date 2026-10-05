@@ -165,6 +165,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 		Version:           schema.ProgramVersion,
 		SilenceUsage:      true,
 		DisableAutoGenTag: true,
+		Args:              wrapArgsError(cobra.NoArgs),
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			pp, _ := cmd.Flags().GetString("pprof")
 			if pp != "" {
@@ -192,6 +193,7 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 
 			return nil
 		},
+		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 	rootCmd.PersistentFlags().String("pprof", "", "write CPU performance profile to file")
 	rootCmd.PersistentFlags().String("mprof", "", "write RAM allocation profile to file")
@@ -213,14 +215,84 @@ func newRootCmd(ctx context.Context) *cobra.Command {
 	listCmd := newListCmd(ctx, globalOptions)
 	toolCmd := newToolCmd(ctx, globalOptions)
 	bundleCmd := newBundleCmd(ctx, globalOptions)
-	exampleConfigCmd := newExampleConfigCmd(ctx, globalOptions)
-	checkConfigCmd := newCheckConfigCmd(ctx, globalOptions)
+	configCmd := newConfigCmd(ctx, globalOptions)
 
 	genMarkdownCmd := newGenMarkdownCmd(rootCmd)
 
-	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, listCmd, toolCmd, bundleCmd, exampleConfigCmd, checkConfigCmd, genMarkdownCmd)
+	rootCmd.AddCommand(createCmd, verifyCmd, repairCmd, infoCmd, listCmd, toolCmd, bundleCmd, configCmd, genMarkdownCmd)
 
 	return rootCmd
+}
+
+func newConfigCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Command {
+	configCmd := &cobra.Command{
+		Use:   configUsage,
+		Short: configHelpShort,
+		Long:  configHelpLong,
+		Args:  wrapArgsError(cobra.NoArgs),
+		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
+	}
+
+	configExampleCmd := newConfigExampleCmd(ctx, globalOptions)
+	configCheckCmd := newConfigCheckCmd(ctx, globalOptions)
+
+	configCmd.AddCommand(configExampleCmd, configCheckCmd)
+
+	return configCmd
+}
+
+func newConfigExampleCmd(_ context.Context, globalOptions *globalOptions) *cobra.Command {
+	configExampleCmd := &cobra.Command{
+		Use:     configExampleUsage,
+		Short:   configExampleHelpShort,
+		Long:    configExampleHelpLong,
+		Example: configExampleHelpExample,
+		Args:    wrapArgsError(cobra.NoArgs),
+		PreRun: func(cmd *cobra.Command, _ []string) {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
+		},
+		RunE: func(_ *cobra.Command, _ []string) error {
+			_, err := fmt.Fprint(globalOptions.logOptions.Stdout, configs.ExampleConfiguration)
+			if err != nil {
+				return fmt.Errorf("failed to print: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	return configExampleCmd
+}
+
+func newConfigCheckCmd(_ context.Context, globalOptions *globalOptions) *cobra.Command {
+	configCheckCmd := &cobra.Command{
+		Use:     configCheckUsage,
+		Short:   configCheckHelpShort,
+		Long:    configCheckHelpLong,
+		Example: configCheckHelpExample,
+		Args:    wrapArgsError(cobra.ExactArgs(1)),
+		PreRun: func(cmd *cobra.Command, _ []string) {
+			globalOptions.logOptions.Logout = os.Stderr
+			globalOptions.logOptions.Stdout = os.Stdout
+			globalOptions.logOptions.Stderr = os.Stderr
+			considerNoColors(cmd, globalOptions)
+		},
+		RunE: func(_ *cobra.Command, args []string) error {
+			if _, err := parseConfigFile(afero.NewOsFs(), args[0]); err != nil {
+				fmt.Fprintln(globalOptions.logOptions.Stdout, "Provided configuration file is invalid.")
+
+				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
+			}
+			fmt.Fprintln(globalOptions.logOptions.Stdout, "Provided configuration file is valid.")
+
+			return nil
+		},
+	}
+
+	return configCheckCmd
 }
 
 func newGenMarkdownCmd(rootCmd *cobra.Command) *cobra.Command {
@@ -243,6 +315,8 @@ func newToolCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comman
 	toolCmd := &cobra.Command{
 		Use:   toolUsage,
 		Short: toolHelpShort,
+		Args:  wrapArgsError(cobra.NoArgs),
+		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 
 	toolMD5Cmd := newToolMD5Cmd(ctx, globalOptions)
@@ -298,6 +372,8 @@ func newBundleCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 		Use:   bundleUsage,
 		Short: bundleHelpShort,
 		Long:  bundleHelpLong,
+		Args:  wrapArgsError(cobra.NoArgs),
+		RunE:  func(cmd *cobra.Command, _ []string) error { return cmd.Help() },
 	}
 
 	bundlePackCmd := newBundlePackCmd(ctx, globalOptions)
@@ -481,60 +557,6 @@ func newBundleSpecCmd(_ context.Context, globalOptions *globalOptions) *cobra.Co
 	}
 
 	return bundleSpecCmd
-}
-
-func newExampleConfigCmd(_ context.Context, globalOptions *globalOptions) *cobra.Command {
-	exampleConfigCmd := &cobra.Command{
-		Use:     exampleConfigUsage,
-		Short:   exampleConfigHelpShort,
-		Long:    exampleConfigHelpLong,
-		Example: exampleConfigHelpExample,
-		Args:    wrapArgsError(cobra.NoArgs),
-		PreRun: func(cmd *cobra.Command, _ []string) {
-			globalOptions.logOptions.Logout = os.Stderr
-			globalOptions.logOptions.Stdout = os.Stdout
-			globalOptions.logOptions.Stderr = os.Stderr
-			considerNoColors(cmd, globalOptions)
-		},
-		RunE: func(_ *cobra.Command, _ []string) error {
-			_, err := fmt.Fprint(globalOptions.logOptions.Stdout, configs.ExampleConfiguration)
-			if err != nil {
-				return fmt.Errorf("failed to print: %w", err)
-			}
-
-			return nil
-		},
-	}
-
-	return exampleConfigCmd
-}
-
-func newCheckConfigCmd(_ context.Context, globalOptions *globalOptions) *cobra.Command {
-	checkConfigCmd := &cobra.Command{
-		Use:     checkConfigUsage,
-		Short:   checkConfigHelpShort,
-		Long:    checkConfigHelpLong,
-		Example: checkConfigHelpExample,
-		Args:    wrapArgsError(cobra.ExactArgs(1)),
-		PreRun: func(cmd *cobra.Command, _ []string) {
-			globalOptions.logOptions.Logout = os.Stderr
-			globalOptions.logOptions.Stdout = os.Stdout
-			globalOptions.logOptions.Stderr = os.Stderr
-			considerNoColors(cmd, globalOptions)
-		},
-		RunE: func(_ *cobra.Command, args []string) error {
-			if _, err := parseConfigFile(afero.NewOsFs(), args[0]); err != nil {
-				fmt.Fprintln(globalOptions.logOptions.Stdout, "Provided configuration file is invalid.")
-
-				return fmt.Errorf("%w: %w", schema.ErrExitBadInvocation, err)
-			}
-			fmt.Fprintln(globalOptions.logOptions.Stdout, "Provided configuration file is valid.")
-
-			return nil
-		},
-	}
-
-	return checkConfigCmd
 }
 
 // newCreateCmd returns the "create" [cobra.Command] pointer for the program.

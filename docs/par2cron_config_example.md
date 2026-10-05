@@ -1,16 +1,16 @@
-## par2cron example-config
+## par2cron config example
 
-Prints a fully commented par2cron example configuration
+Prints a commented par2cron example configuration
 
 ### Synopsis
 
-Prints a fully commented par2cron example configuration
+Prints a commented par2cron example configuration
 Writes all options supported by this par2cron version to standard output
 
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```
-par2cron example-config [flags]
+par2cron config example [flags]
 ```
 
 ### Examples
@@ -18,16 +18,16 @@ par2cron example-config [flags]
 ```
 
 Write the example configuration to a YAML file:
-  par2cron example-config > par2cron.yaml
+  par2cron config example > par2cron.yaml
 
 Validate the configuration file after editing it:
-  par2cron check-config par2cron.yaml
+  par2cron config check par2cron.yaml
 ```
 
 ### Options
 
 ```
-  -h, --help   help for example-config
+  -h, --help   help for example
 ```
 
 ### Options inherited from parent commands
@@ -45,5 +45,5 @@ Validate the configuration file after editing it:
 
 ### SEE ALSO
 
-* [par2cron](par2cron.md)	 - PAR2 Integrity & Self-Repair Engine
+* [par2cron config](par2cron_config.md)	 - Commands for interacting with par2cron configuration files
 

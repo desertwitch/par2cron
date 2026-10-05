@@ -26,6 +26,10 @@ existing par2cron bundles, which these commands offer to do.
 
 Full documentation at: https://github.com/desertwitch/par2cron
 
+```
+par2cron bundle [flags]
+```
+
 ### Options
 
 ```

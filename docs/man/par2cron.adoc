@@ -26,9 +26,9 @@ par2cron - PAR2 integrity and self-repair engine
 
 *par2cron tool md5* [_flags_] _par2file_ [_par2file_...]
 
-*par2cron example-config* [_flags_]
+*par2cron config example* [_flags_]
 
-*par2cron check-config* [_flags_] _file_
+*par2cron config check* [_flags_] _file_
 
 == DESCRIPTION
 
@@ -192,13 +192,13 @@ Extracts and displays MD5 checksums from PAR2 files.
 *--all*::
   Parse all provided files (not just PAR2 indexes).
 
-=== par2cron example-config
+=== par2cron config example
 
-Prints a par2cron example configuration to standard output.
+Prints a commented par2cron example configuration to standard output.
 
-=== par2cron check-config
+=== par2cron config check
 
-Validates a par2cron YAML configuration file.
+Validates a par2cron YAML configuration file, failing with non-zero.
 
 == EXIT CODES
 
@@ -262,9 +262,9 @@ structured logs to *stderr*. The rule of thumb is that structured logs go to
 par2cron accepts an optional global YAML configuration file via *-c, --config*.
 The configuration is structured into sections matching the command names:
 *create*, *verify*, *repair*, and *info*. CLI flags take precedence over
-configuration file values. A fully commented configuration file containing all
-options can be generated with *par2cron example-config*. Always validate
-configuration files before deployment using *par2cron check-config*.
+configuration file values. A commented configuration file containing all
+options can be generated with *par2cron config example*. Always validate
+configuration files before deployment using *par2cron config check*.
 
 *create.args* _list_::
   Arguments passed to *par2*(1) during creation (default: []).

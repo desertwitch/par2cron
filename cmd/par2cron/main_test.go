@@ -380,30 +380,55 @@ func Test_NewRootCmd_HasListCommand_Success(t *testing.T) {
 	require.Equal(t, "list", listCmd.Name())
 }
 
-// Expectation: The root command should have a "example-config" subcommand.
-func Test_NewRootCmd_HasExampleConfigCommand_Success(t *testing.T) {
+// Expectation: The root command should have a "config" subcommand.
+func Test_NewRootCmd_HasConfigCommand_Success(t *testing.T) {
 	t.Parallel()
 
 	cmd := newRootCmd(t.Context())
 
-	exampleConfigCmd, _, err := cmd.Find([]string{"example-config"})
+	configCmd, _, err := cmd.Find([]string{"config"})
 
 	require.NoError(t, err)
-	require.NotNil(t, exampleConfigCmd)
-	require.Equal(t, "example-config", exampleConfigCmd.Name())
+	require.NotNil(t, configCmd)
+	require.Equal(t, "config", configCmd.Name())
 }
 
-// Expectation: The root command should have a "check-config" subcommand.
-func Test_NewRootCmd_HasCheckConfigCommand_Success(t *testing.T) {
+// Expectation: The config command should have an "example" subcommand.
+func Test_NewConfigCmd_HasExampleCommand_Success(t *testing.T) {
 	t.Parallel()
 
-	cmd := newRootCmd(t.Context())
+	cmd := newConfigCmd(t.Context(), newGlobalOptions())
 
-	checkConfigCmd, _, err := cmd.Find([]string{"check-config"})
+	exampleCmd, _, err := cmd.Find([]string{"example"})
 
 	require.NoError(t, err)
-	require.NotNil(t, checkConfigCmd)
-	require.Equal(t, "check-config", checkConfigCmd.Name())
+	require.NotNil(t, exampleCmd)
+	require.Equal(t, "example", exampleCmd.Name())
+}
+
+// Expectation: The config command should have a "check" subcommand.
+func Test_NewConfigCmd_HasCheckCommand_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newConfigCmd(t.Context(), newGlobalOptions())
+
+	checkCmd, _, err := cmd.Find([]string{"check"})
+
+	require.NoError(t, err)
+	require.NotNil(t, checkCmd)
+	require.Equal(t, "check", checkCmd.Name())
+}
+
+// Expectation: The "config check" command cannot run without arguments.
+func Test_NewConfigCheckCmd_RequiresArgs_Error(t *testing.T) {
+	t.Parallel()
+
+	cmd := newConfigCheckCmd(t.Context(), newGlobalOptions())
+	cmd.SetArgs([]string{})
+
+	err := cmd.Execute()
+
+	require.Error(t, err)
 }
 
 // Expectation: The root command should have a "tool" subcommand.

@@ -1,4 +1,4 @@
-## par2cron check-config
+## par2cron config check
 
 Validates a par2cron YAML configuration file
 
@@ -13,7 +13,7 @@ this command will exit with non-zero if the validation fails.
 Full documentation at: https://github.com/desertwitch/par2cron
 
 ```
-par2cron check-config [flags] <file>
+par2cron config check [flags] <file>
 ```
 
 ### Examples
@@ -21,13 +21,13 @@ par2cron check-config [flags] <file>
 ```
 
 Validate a par2cron YAML configuration file:
-  par2cron check-config /tmp/par2cron.yaml
+  par2cron config check /tmp/par2cron.yaml
 ```
 
 ### Options
 
 ```
-  -h, --help   help for check-config
+  -h, --help   help for check
 ```
 
 ### Options inherited from parent commands
@@ -45,5 +45,5 @@ Validate a par2cron YAML configuration file:
 
 ### SEE ALSO
 
-* [par2cron](par2cron.md)	 - PAR2 Integrity & Self-Repair Engine
+* [par2cron config](par2cron_config.md)	 - Commands for interacting with par2cron configuration files
 
