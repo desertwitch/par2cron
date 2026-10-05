@@ -1,6 +1,0 @@
-kind: Added
-body: '`verify` now warns if corrupted PAR2 sets were possibly edited (newer mtimes)'
-time: 2026-09-29T10:48:43.357461919+02:00
-custom:
-    Issue: ""
-    PR: "91"

@@ -1,6 +1,0 @@
-kind: Changed
-body: logs are now uncolored with full timestamps when output is not a terminal (e.g. cron, pipes, files)
-time: 2026-10-02T15:22:03.928905345+02:00
-custom:
-    Issue: ""
-    PR: "92"

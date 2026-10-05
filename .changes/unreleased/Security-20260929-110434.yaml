@@ -1,6 +1,0 @@
-kind: Security
-body: bumped toolchain to `go1.27.1` and updated dependencies
-time: 2026-09-29T11:04:34.024729732+02:00
-custom:
-    Issue: ""
-    PR: "91"

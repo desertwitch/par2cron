@@ -1,6 +1,0 @@
-kind: Changed
-body: '`check-config` command renamed to `config check` (now a subcommand of `config`)'
-time: 2026-10-05T08:00:17.366513976+02:00
-custom:
-    Issue: ""
-    PR: "92"

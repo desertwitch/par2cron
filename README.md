@@ -1114,12 +1114,12 @@ directory tree at the time of the run, which is meant to be picked up by:
 For the textfile collector, write the output to a temporary file first and
 then rename it into place, so that node_exporter never reads a partially
 written file. For the Pushgateway, push with a `PUT` request (replacing the
-entire group, so no stale metrics are left behind), only push after par2cron
+entire group, so no stale metrics are left behind), only push after `info`
 has exited successfully (an empty push deletes all metrics of the group),
 include the machine as `instance` in the grouping key and set
 `honor_labels: true` in the Prometheus scrape configuration of the Pushgateway.
 
-When failing, par2cron writes nothing to standard output and exits with a
+When failing, `info` writes nothing to standard output and exits with a
 non-zero exit code. Corruption and other findings are reported through the
 metrics, not through the exit code. As several metrics are calculated from
 `--age`, `--duration` and `--calc-run-interval`, these should match the
@@ -1139,10 +1139,7 @@ If you run separate par2cron schedules for different directory trees on the
 same machine (for example with different `--age` settings), each `info` run
 produces metrics with identical names. With the Pushgateway, use a separate
 grouping key per tree (for example an additional `tree` label). With the
-textfile collector, metrics from multiple files must not be identical, so use
-a single `info` run covering all trees instead; this requires the trees to
-share the same `--age`, `--duration` and `--calc-run-interval` settings, as
-otherwise the calculated values reflect only the settings given to `info`.
+textfile collector, metrics from multiple text files must not be identical.
 
 ### Overview of metrics
 
