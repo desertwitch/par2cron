@@ -976,21 +976,30 @@ result in a non-zero exit code.
 par2cron does not require root privileges. It only needs read and write access
 to the directory trees it operates on (and the optional manifest cache), as it
 writes its state (manifests, lock files and bundles) next to the protected files
-and needs to replace damaged files during repair. It is therefore recommended to
-run par2cron as the user owning the protected data. Files created by par2cron,
+and needs to replace damaged files during repair. Files created by par2cron,
 as well as the PAR2 files created by `par2`, respect the umask of the running
 process; their permissions can be controlled by setting the umask accordingly
 (for example `UMask=` in a systemd service, or `umask` in a wrapper script).
+
+It is recommended to run par2cron as the user owning the protected data. All
+files produced by par2cron and `par2` (including repaired files) then belong to
+the same user as the files they protect, so no permission problems arise.
+Repaired files belonging to another group are restored to that group, as long
+as the running user is a member of it. Running as root is only needed when a
+tree mixes files of different owners, or of groups the running user is not a
+member of; such mixed trees are best avoided where possible.
 
 When repairing, `par2` renames a damaged file to a backup (`.1`, `.2`, ...) and
 writes the reconstructed file as a new file, which would otherwise end up with
 the default permissions (umask) and the current time. par2cron therefore
 attempts to restore the pre-repair attributes onto repaired files:
 
-- **Ownership** is only restored when running as root.
+- **Ownership** is restored as far as the running user is permitted to: as root,
+  any owner and group; otherwise, only the group, and only to a group the user
+  is a member of.
 - **Mode** is only restored when the repaired file has the same owner and group
   as the original file (either already, or after ownership was restored as
-  root). Otherwise it is left untouched, as the original permission bits were
+  above). Otherwise it is left untouched, as the original permission bits were
   meant for a different owner or group.
 - **Times** are always restored.
 

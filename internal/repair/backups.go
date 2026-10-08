@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -214,10 +213,7 @@ func (man *backupManager) Restore() {
 }
 
 // RestoreAttrs applies the pre-repair attributes to the repaired files.
-// Ownership is only restored when running as root; mode and times always.
 func (man *backupManager) RestoreAttrs() {
-	isRoot := os.Geteuid() == 0
-
 	for ss, pair := range man.backups {
 		st, ok := man.checkReplacement(pair, ss)
 		if !ok {
@@ -231,15 +227,11 @@ func (man *backupManager) RestoreAttrs() {
 
 		// Ownership first, as chown(2) clears setuid/setgid bits.
 		if !ownerMatches {
-			if isRoot {
-				if err := man.fsys.Chown(path, int(ss.Uid), int(ss.Gid)); err != nil {
-					man.log.Warn("Failed to restore ownership of repaired file", "path", path, "error", err)
-				} else {
-					ownerMatches = true
-				}
+			if err := man.fsys.Chown(path, int(ss.Uid), int(ss.Gid)); err != nil {
+				man.log.Warn("Failed to restore ownership of repaired file",
+					"path", path, "wantUid", ss.Uid, "wantGid", ss.Gid, "haveUid", st.Uid, "haveGid", st.Gid, "error", err)
 			} else {
-				man.log.Warn("Ownership of repaired file differs (cannot restore; not root)",
-					"path", path, "wantUid", ss.Uid, "wantGid", ss.Gid, "haveUid", st.Uid, "haveGid", st.Gid)
+				ownerMatches = true
 			}
 		}
 

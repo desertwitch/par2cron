@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"slices"
 	"syscall"
 	"testing"
 	"time"
@@ -59,6 +60,21 @@ func bmReplace(t *testing.T, fs afero.Fs, path, backupPath, content string) {
 	require.NoError(t, fs.Rename(path, backupPath))
 	require.NoError(t, afero.WriteFile(fs, path, []byte(content), 0o644))
 	require.NoError(t, fs.Chmod(path, 0o644))
+}
+
+// bmForeignGID returns a group ID the current user is not a member of.
+func bmForeignGID(t *testing.T) uint32 {
+	t.Helper()
+
+	groups, err := os.Getgroups()
+	require.NoError(t, err)
+	groups = append(groups, os.Getegid())
+
+	for gid := 60000; ; gid++ {
+		if !slices.Contains(groups, gid) {
+			return uint32(gid)
+		}
+	}
 }
 
 // Expectation: The constructor should record the protected files of the PAR2 recovery set.
@@ -873,7 +889,7 @@ func Test_backupManager_RestoreAttrs_OwnershipNonRoot_DifferentOwner_Success(t *
 	// Times do not depend on ownership and are still restored.
 	require.True(t, mtime.Equal(info.ModTime()), "want %v, got %v", mtime, info.ModTime())
 
-	require.Contains(t, logBuf.String(), "Ownership of repaired file differs")
+	require.Contains(t, logBuf.String(), "Failed to restore ownership of repaired file")
 	require.Contains(t, logBuf.String(), "Not restoring mode of repaired file (ownership differs)")
 }
 
@@ -895,13 +911,14 @@ func Test_backupManager_RestoreAttrs_OwnershipNonRoot_DifferentGroup_Success(t *
 	man.FindBackups()
 
 	// Pretend the original belonged to another group (same owner).
-	man.snapshot[dir+"/a.txt"].Gid++
+	man.snapshot[dir+"/a.txt"].Gid = bmForeignGID(t)
 
 	man.RestoreAttrs()
 
 	info, err := fs.Stat(dir + "/a.txt")
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+	require.Contains(t, logBuf.String(), "Failed to restore ownership of repaired file")
 	require.Contains(t, logBuf.String(), "Not restoring mode of repaired file (ownership differs)")
 }
 
@@ -932,7 +949,7 @@ func Test_backupManager_RestoreAttrs_OwnershipNonRoot_SameOwnerRestoresMode_Succ
 	require.NoError(t, err)
 	require.Equal(t, os.ModeSetuid|0o700, info.Mode()&(os.ModeSetuid|os.ModePerm))
 
-	require.NotContains(t, logBuf.String(), "needs root to restore")
+	require.NotContains(t, logBuf.String(), "Failed to restore ownership of repaired file")
 	require.NotContains(t, logBuf.String(), "Not restoring mode of repaired file")
 }
 

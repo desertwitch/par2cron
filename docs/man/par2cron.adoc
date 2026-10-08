@@ -434,19 +434,27 @@ total work exceeds the capacity of *--age* divided by *--calc-run-interval*.
 par2cron does not require root privileges. It needs read and write access to
 the directory trees it operates on (and the optional manifest cache), as it
 writes its state (manifests, lockfiles and bundles) next to the protected files
-and replaces damaged files during repair. Running par2cron as the user owning
-the protected data is recommended. Files created by par2cron and by *par2*(1)
-respect the umask of the running process.
+and replaces damaged files during repair. Files created by par2cron and by
+*par2*(1) respect the umask of the running process.
+
+Running par2cron as the user owning the protected data is recommended. All
+files produced by par2cron and *par2*(1) (including repaired files) then belong
+to the same user as the files they protect, so no permission problems arise.
+Repaired files belonging to another group are restored to that group, as long
+as the running user is a member of it. Running as root is only needed when a
+tree mixes files of different owners, or of groups the running user is not a
+member of; such mixed trees are best avoided where possible.
 
 During repair, *par2*(1) renames a damaged file to a backup (*.1*, *.2*, ...)
 and writes the reconstructed file as a new file. par2cron then attempts to
 restore the pre-repair attributes onto the repaired file:
 
 *Ownership*::
-  Only restored when running as root.
+  Restored as far as the running user is permitted to: as root, any owner and
+  group; otherwise, only the group, and only to a group the user is a member of.
 *Mode*::
   Only restored when the repaired file has the same owner and group as the
-  original file (either already, or after ownership was restored as root).
+  original file (either already, or after ownership was restored as above).
   Otherwise left untouched, as the original permission bits were meant for a
   different owner or group.
 *Times*::
