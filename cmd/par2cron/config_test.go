@@ -154,6 +154,7 @@ repair:
   json: true
   purge-backups: true
   restore-backups: true
+  no-restore-attributes: true
   cache: "/tmp/cache"
   seq-url: "http://127.0.0.1/seq"
   seq-key: "abcdef"
@@ -679,6 +680,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 		AttemptUnrepairables: new(true),
 		PurgeBackups:         new(true),
 		RestoreBackups:       new(true),
+		NoRestoreAttributes:  new(true),
 		Par2Verify:           new(true),
 		CacheDir:             new("/tmp/cache"),
 		SeqURL:               new("url"),
@@ -714,6 +716,7 @@ func Test_configFileRepair_Merge_AllFields_Success(t *testing.T) {
 	require.True(t, cfg.Par2Verify)
 	require.True(t, cfg.PurgeBackups)
 	require.True(t, cfg.RestoreBackups)
+	require.True(t, cfg.NoRestoreAttributes)
 	require.Equal(t, "/tmp/cache", cfg.CacheDir)
 	require.Equal(t, "url", logs.SeqURL)
 	require.Equal(t, "key", logs.SeqKey)
@@ -762,6 +765,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		AttemptUnrepairables: new(true),
 		PurgeBackups:         new(true),
 		RestoreBackups:       new(true),
+		NoRestoreAttributes:  new(true),
 		Par2Verify:           new(true),
 		CacheDir:             new("/tmp/cache"),
 		SeqURL:               new("url"),
@@ -793,6 +797,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 		"attempt-unrepairables": true,
 		"purge-backups":         true,
 		"restore-backups":       true,
+		"no-restore-attributes": true,
 		"cache":                 true,
 		"seq-url":               true,
 		"seq-key":               true,
@@ -812,6 +817,7 @@ func Test_configFileRepair_Merge_CLIFlagsPrecedence_Success(t *testing.T) {
 	require.False(t, cfg.Par2Verify)
 	require.False(t, cfg.PurgeBackups)
 	require.False(t, cfg.RestoreBackups)
+	require.False(t, cfg.NoRestoreAttributes)
 	require.Empty(t, cfg.CacheDir)
 	require.Empty(t, logs.SeqURL)
 	require.Empty(t, logs.SeqKey)

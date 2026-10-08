@@ -1,0 +1,6 @@
+kind: Fixed
+body: '`repair` flags `--purge-backups` and `--restore-backups` ignoring protected files in subfolders'
+time: 2026-10-08T09:45:34.472632863+02:00
+custom:
+    Issue: ""
+    PR: "94"

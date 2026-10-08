@@ -1,0 +1,6 @@
+kind: Added
+body: '`repair` gains `--no-restore-attributes`'
+time: 2026-10-08T09:44:28.32111275+02:00
+custom:
+    Issue: ""
+    PR: "94"

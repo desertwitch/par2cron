@@ -6,11 +6,14 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/logging"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
 	"github.com/desertwitch/par2cron/internal/util"
@@ -39,15 +42,38 @@ func (f *countingFailOpenFs) Open(name string) (afero.File, error) {
 	return f.Fs.Open(name)
 }
 
+// mockPar2Files returns a [testutil.MockPar2Handler] whose parsed PAR2
+// file lists the given names as the protected (recovery set) files.
+func mockPar2Files(t *testing.T, wantPath string, names ...string) *testutil.MockPar2Handler {
+	t.Helper()
+
+	return &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, path string, _ bool) (*par2.File, error) {
+			require.Equal(t, wantPath, path)
+
+			recoverySet := make([]par2.FilePacket, 0, len(names))
+			for _, name := range names {
+				recoverySet = append(recoverySet, par2.FilePacket{Name: name})
+			}
+
+			return &par2.File{
+				Name: filepath.Base(path),
+				Sets: []par2.Set{{RecoverySet: recoverySet}},
+			}, nil
+		},
+	}
+}
+
 // Expectation: A new repair job should be returned with the correct values.
 func Test_NewJob_Success(t *testing.T) {
 	t.Parallel()
 
 	args := Options{
-		Par2Args:       []string{"-v"},
-		Par2Verify:     true,
-		PurgeBackups:   true,
-		RestoreBackups: true,
+		Par2Args:            []string{"-v"},
+		Par2Verify:          true,
+		PurgeBackups:        true,
+		RestoreBackups:      true,
+		NoRestoreAttributes: true,
 	}
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
@@ -63,8 +89,29 @@ func Test_NewJob_Success(t *testing.T) {
 	require.Equal(t, "/data/test"+schema.Par2Extension+schema.LockExtension, job.lockPath)
 	require.True(t, job.purgeBackups)
 	require.True(t, job.restoreBackups)
+	require.False(t, job.restoreAttrs)
 
 	require.Equal(t, mf, job.manifest)
+}
+
+// Expectation: NewJob should enable restoring attributes by default.
+func Test_NewJob_RestoreAttrs_Default_Success(t *testing.T) {
+	t.Parallel()
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	job := NewJob("/data/test"+schema.Par2Extension, Options{}, mf, false)
+
+	require.True(t, job.restoreAttrs)
+}
+
+// Expectation: NewJob should disable restoring attributes with NoRestoreAttributes.
+func Test_NewJob_NoRestoreAttributes_Success(t *testing.T) {
+	t.Parallel()
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	job := NewJob("/data/test"+schema.Par2Extension, Options{NoRestoreAttributes: true}, mf, false)
+
+	require.False(t, job.restoreAttrs)
 }
 
 // Expectation: A new repair job for a bundle should reuse the bundle path for manifest and lock.
@@ -145,7 +192,7 @@ func Test_Service_openCache_NoCacheDir_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: ""}
 	prog.openCache(t.Context(), "/data", opts)
@@ -180,7 +227,7 @@ func Test_Service_openCache_WithCacheDir_LoadsCacheFromDisk_Success(t *testing.T
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	prog.openCache(t.Context(), "/data", opts)
@@ -212,7 +259,7 @@ func Test_Service_openCache_LoadError_LogsError_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	cache := prog.openCache(t.Context(), "/data", opts)
@@ -245,7 +292,7 @@ func Test_Service_openCache_LoadErrNotExist_NoLog_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	cache := prog.openCache(t.Context(), "/data", opts)
@@ -292,7 +339,7 @@ func Test_Service_Repair_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -352,7 +399,7 @@ func Test_Service_Repair_MultiRoot_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Repair(t.Context(), []string{"/data", "/data2"}, args)
 	require.NoError(t, err)
@@ -399,7 +446,7 @@ func Test_Service_Repair_FileLocked_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -443,7 +490,7 @@ func Test_Service_Repair_Generic_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
@@ -493,7 +540,7 @@ func Test_Service_Repair_MultipleJobs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -547,7 +594,7 @@ func Test_Service_Repair_MultipleJobs_OneFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -603,7 +650,7 @@ func Test_Service_Repair_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
@@ -630,7 +677,7 @@ func Test_Service_Repair_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Repair(t.Context(), []string{"/data"}, args)
@@ -667,7 +714,7 @@ func Test_Service_Repair_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Repair(ctx, []string{"/data"}, args)
@@ -718,7 +765,7 @@ func Test_Service_Repair_MaxDuration_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_ = args.MaxDuration.Set("1ms")
@@ -765,7 +812,7 @@ func Test_Service_Repair_HashMismatch_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
@@ -824,7 +871,7 @@ func Test_Service_Repair_PrunesCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -892,7 +939,7 @@ func Test_Service_Repair_UpdatesCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -952,7 +999,7 @@ func Test_Service_Repair_DoesNotSaveCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1011,7 +1058,7 @@ func Test_Service_Repair_LoadManifestReadError_ContinuesWithError_Error(t *testi
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	results, err := prog.Repair(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -1074,7 +1121,7 @@ func Test_Service_Repair_WithoutCacheDir_NotLoadsCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: ""}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1133,7 +1180,7 @@ func Test_Service_Repair_WithCacheDir_LoadsCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
 	_, err = prog.Repair(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1168,7 +1215,7 @@ func Test_Service_Enumerate_RepairNeeded_RepairPossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1205,7 +1252,7 @@ func Test_Service_Enumerate_RepairNotNeeded_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1242,7 +1289,7 @@ func Test_Service_Enumerate_RepairNeeded_RepairImpossible_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:             []string{"-v"},
@@ -1283,7 +1330,7 @@ func Test_Service_Enumerate_RepairNeeded_MinTestedCount_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -1323,7 +1370,7 @@ func Test_Service_Enumerate_RepairNeeded_MinTestedCount_NotMet_Success(t *testin
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -1363,7 +1410,7 @@ func Test_Service_Enumerate_AttemptUnrepairables_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:             []string{"-v"},
@@ -1399,7 +1446,7 @@ func Test_Service_Enumerate_NoVerificationManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1425,7 +1472,7 @@ func Test_Service_Enumerate_NoManifestFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1452,7 +1499,7 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1490,7 +1537,7 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -1533,7 +1580,7 @@ func Test_Service_Enumerate_ReadManifestFailure_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err = prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1558,7 +1605,7 @@ func Test_Service_Enumerate_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1596,7 +1643,7 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1635,7 +1682,7 @@ func Test_Service_Enumerate_IgnoreAllFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1664,7 +1711,7 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(ctx, "/data", args, &testutil.MockCache{})
@@ -1706,7 +1753,7 @@ func Test_Service_Enumerate_MisleadingDirectory_Skipped_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 2}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1755,7 +1802,7 @@ func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1788,7 +1835,7 @@ func Test_Service_Enumerate_Bundle_OpenFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1827,7 +1874,7 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1866,7 +1913,7 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1914,7 +1961,7 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true, MinTestedCount: 1}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1959,7 +2006,7 @@ func Test_Service_Enumerate_Bundle_NoVerificationManifest_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2006,7 +2053,7 @@ func Test_Service_Enumerate_Bundle_RepairNotNeeded_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2055,7 +2102,7 @@ func Test_Service_Enumerate_Bundle_RepairNotPossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2104,7 +2151,7 @@ func Test_Service_Enumerate_Bundle_AttemptUnrepairables_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1, AttemptUnrepairables: true}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2154,7 +2201,7 @@ func Test_Service_Enumerate_Bundle_BelowMinTestedCount_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 5}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2179,7 +2226,7 @@ func Test_Service_Enumerate_CacheHit_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:        "/data/test" + schema.Par2Extension,
@@ -2224,7 +2271,7 @@ func Test_Service_Enumerate_CacheHit_NotRepairCandidate_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:        "/data/test" + schema.Par2Extension,
@@ -2268,7 +2315,7 @@ func Test_Service_Enumerate_CacheHit_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:        "/data/test" + schema.Par2Extension,
@@ -2313,7 +2360,7 @@ func Test_Service_Enumerate_CacheHit_NoVerification_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:        "/data/test" + schema.Par2Extension,
@@ -2355,7 +2402,7 @@ func Test_Service_Enumerate_CacheHit_AttemptUnrepairables_Success(t *testing.T) 
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:        "/data/test" + schema.Par2Extension,
@@ -2400,7 +2447,7 @@ func Test_Service_Enumerate_CacheHit_BelowMinTestedCount_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:        "/data/test" + schema.Par2Extension,
@@ -2456,7 +2503,7 @@ func Test_Service_Enumerate_CacheMiss_SetsCache_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	var setCalled bool
 	var setKey string
@@ -2524,7 +2571,7 @@ func Test_Service_Enumerate_Bundle_CacheHit_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
@@ -2587,7 +2634,7 @@ func Test_Service_Enumerate_Bundle_CacheMiss_SetsCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, MinTestedCount: 1}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
@@ -2626,7 +2673,7 @@ func Test_Service_Enumerate_SkipMaybeEdited_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -2668,7 +2715,7 @@ func Test_Service_Enumerate_SkipMaybeEdited_NotCandidate_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -2711,7 +2758,7 @@ func Test_Service_Enumerate_NoSkipMaybeEdited_MaybeEdited_NoSkip_Success(t *test
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -2749,7 +2796,7 @@ func Test_Service_loadManifest_ValidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2782,7 +2829,7 @@ func Test_Service_loadManifest_FileNotFound_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2815,7 +2862,7 @@ func Test_Service_loadManifest_InvalidJSON_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2853,7 +2900,7 @@ func Test_Service_loadManifest_ReadError_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2907,7 +2954,7 @@ func Test_Service_loadBundleManifest_ValidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2946,7 +2993,7 @@ func Test_Service_loadBundleManifest_OpenFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2993,7 +3040,7 @@ func Test_Service_loadBundleManifest_ManifestReadFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -3040,7 +3087,7 @@ func Test_Service_loadBundleManifest_InvalidJSON_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -3082,7 +3129,7 @@ func Test_Service_runRepair_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3114,18 +3161,16 @@ func Test_Service_runRepair_Success(t *testing.T) {
 	require.True(t, manifestExists)
 }
 
-// Expectation: The repair should pass and the backup files be purged after.
-func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
+// Expectation: The repair should still run and succeed when the backup manager cannot be created.
+func Test_Service_runRepair_BackupManagerError_Success(t *testing.T) {
 	t.Parallel()
 
-	fs := afero.NewMemMapFs()
-	require.NoError(t, fs.MkdirAll("/data", 0o755))
-	require.NoError(t, afero.WriteFile(fs, "/data/test.txt", []byte("original file"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/other.txt", []byte("original file"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
-	require.NoError(t, afero.WriteFile(fs, "/data/old.file.1", []byte("unrelated file"), 0o644))
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
 
-	hash, err := util.HashFile(fs, "/data/test"+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
 	require.NoError(t, err)
 
 	var logBuf testutil.SafeBuffer
@@ -3141,14 +3186,16 @@ func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
 		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
 			called++
 
-			require.NoError(t, afero.WriteFile(fs, "/data/test.txt.1", []byte("backup file"), 0o644))
-			require.NoError(t, afero.WriteFile(fs, "/data/other.txt.2", []byte("backup file"), 0o644))
-
 			return nil
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return nil, errors.New("simulated parse failure")
+		},
+	}
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3158,15 +3205,157 @@ func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
 	}
 
 	job := &Job{
-		workingDir:   "/data",
+		workingDir:     dir,
+		par2Name:       "test" + schema.Par2Extension,
+		par2Path:       dir + "/test" + schema.Par2Extension,
+		par2Args:       []string{"-v"},
+		par2Verify:     false,
+		purgeBackups:   true,
+		restoreBackups: true,
+		manifestName:   "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath:   dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:       dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:       mf,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.Equal(t, 1, called)
+	require.Equal(t, schema.Par2ExitCodeSuccess, job.manifest.Repair.ExitCode)
+
+	require.Contains(t, logBuf.String(), "Failed to create backup file manager")
+	require.Contains(t, logBuf.String(), "simulated parse failure")
+}
+
+// Expectation: The repair should succeed but warn when a replaced file has no identifiable backup.
+func Test_Service_runRepair_BackupNotFound_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	dir := t.TempDir()
+
+	require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("original file"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			// Simulate a filesystem that does not keep the inode on rename:
+			// the original is gone and the numbered file is a different inode.
+			// The original is moved aside so its inode number cannot be reused.
+			require.NoError(t, fs.Rename(dir+"/test.txt", dir+"/moved"))
+			require.NoError(t, afero.WriteFile(fs, dir+"/test.txt.1", []byte("original file"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("repaired file"), 0o644))
+
+			return nil
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension, "test.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   dir,
 		par2Name:     "test" + schema.Par2Extension,
-		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Path:     dir + "/test" + schema.Par2Extension,
 		par2Args:     []string{"-v"},
 		par2Verify:   false,
 		purgeBackups: true,
 		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
-		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
-		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifestPath: dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.Equal(t, 1, called)
+
+	// The unidentifiable numbered file must not be purged.
+	backupExists, _ := afero.Exists(fs, dir+"/test.txt.1")
+	require.True(t, backupExists)
+
+	require.Contains(t, logBuf.String(), "Replaced file has no identifiable backup")
+}
+
+// Expectation: The repair should pass and the backup files be purged after.
+func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	dir := t.TempDir()
+
+	require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("original file"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/other.txt", []byte("other original"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/old.file.1", []byte("unrelated file"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, dir+"/other.txt.1", []byte("older backup"), 0o644))
+
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			// Simulate par2 renaming originals to the first free backup slot
+			// and writing the repaired files at the original paths.
+			require.NoError(t, fs.Rename(dir+"/test.txt", dir+"/test.txt.1"))
+			require.NoError(t, fs.Rename(dir+"/other.txt", dir+"/other.txt.2"))
+			require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("repaired file"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, dir+"/other.txt", []byte("other repaired"), 0o644))
+
+			return nil
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension, "test.txt", "other.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   dir,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     dir + "/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		par2Verify:   false,
+		purgeBackups: true,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     dir + "/test" + schema.Par2Extension + schema.LockExtension,
 		manifest:     mf,
 	}
 
@@ -3182,14 +3371,195 @@ func Test_Service_runRepair_PurgeBackups_Success(t *testing.T) {
 	manifestExists, _ := afero.Exists(fs, job.manifestPath)
 	require.True(t, manifestExists)
 
-	backup1Exists, _ := afero.Exists(fs, "/data/test.txt.1")
+	// Backups created by this repair should be purged.
+	backup1Exists, _ := afero.Exists(fs, dir+"/test.txt.1")
 	require.False(t, backup1Exists)
 
-	backup2Exists, _ := afero.Exists(fs, "/data/other.txt.2")
+	backup2Exists, _ := afero.Exists(fs, dir+"/other.txt.2")
 	require.False(t, backup2Exists)
 
-	backup3Exists, _ := afero.Exists(fs, "/data/old.file.1")
-	require.True(t, backup3Exists)
+	// Pre-existing numbered files should remain untouched.
+	olderBackupExists, _ := afero.Exists(fs, dir+"/other.txt.1")
+	require.True(t, olderBackupExists)
+
+	unrelatedExists, _ := afero.Exists(fs, dir+"/old.file.1")
+	require.True(t, unrelatedExists)
+
+	// Repaired files should be kept.
+	testContent, err := afero.ReadFile(fs, dir+"/test.txt")
+	require.NoError(t, err)
+	require.Equal(t, "repaired file", string(testContent))
+}
+
+// Expectation: Backups of repaired files in (nested) subdirectories should be
+// purged, while older backups and unrelated numbered files are left untouched.
+func Test_Service_runRepair_PurgeBackups_Subdirs_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	dir := t.TempDir()
+
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		require.NoError(t, fs.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, afero.WriteFile(fs, p, []byte(content), 0o644))
+	}
+
+	write("test"+schema.Par2Extension, "par2 file")
+	write("sub1/data.bin", "sub1 original")
+	write("sub1/data.bin.1", "sub1 older backup") // Pre-existing, par2 must pick .2
+	write("sub2/data.bin", "sub2 original")       // Same name as in sub1
+	write("sub2/deep/file.txt", "deep original")
+	write("sub2/deep/untouched.txt", "untouched original")
+	write("data.bin.1", "unrelated root file") // Matching name, wrong directory
+
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			// Simulate par2 renaming damaged originals to the first free backup
+			// slot in their own directory and writing the repaired files.
+			require.NoError(t, fs.Rename(dir+"/sub1/data.bin", dir+"/sub1/data.bin.2"))
+			require.NoError(t, fs.Rename(dir+"/sub2/data.bin", dir+"/sub2/data.bin.1"))
+			require.NoError(t, fs.Rename(dir+"/sub2/deep/file.txt", dir+"/sub2/deep/file.txt.1"))
+
+			write("sub1/data.bin", "sub1 repaired")
+			write("sub2/data.bin", "sub2 repaired")
+			write("sub2/deep/file.txt", "deep repaired")
+
+			return nil
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension,
+		"sub1/data.bin", "sub2/data.bin", "sub2/deep/file.txt", "sub2/deep/untouched.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   dir,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     dir + "/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		par2Verify:   false,
+		purgeBackups: true,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.Equal(t, 1, called)
+
+	// Backups created by this repair should be purged.
+	for _, rel := range []string{"sub1/data.bin.2", "sub2/data.bin.1", "sub2/deep/file.txt.1"} {
+		exists, _ := afero.Exists(fs, filepath.Join(dir, rel))
+		require.False(t, exists, rel)
+	}
+
+	// Pre-existing and unrelated numbered files should remain untouched.
+	for _, rel := range []string{"sub1/data.bin.1", "data.bin.1"} {
+		exists, _ := afero.Exists(fs, filepath.Join(dir, rel))
+		require.True(t, exists, rel)
+	}
+
+	// Repaired and untouched files should be kept.
+	for rel, want := range map[string]string{
+		"sub1/data.bin":           "sub1 repaired",
+		"sub2/data.bin":           "sub2 repaired",
+		"sub2/deep/file.txt":      "deep repaired",
+		"sub2/deep/untouched.txt": "untouched original",
+	} {
+		content, err := afero.ReadFile(fs, filepath.Join(dir, rel))
+		require.NoError(t, err, rel)
+		require.Equal(t, want, string(content), rel)
+	}
+}
+
+// Expectation: The repair should succeed but warn when the backup cannot be purged.
+func Test_Service_runRepair_PurgeBackups_RemoveError_Success(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	fs := &testutil.FailingRemoveFs{Fs: baseFs, FailSuffix: ".txt.1"}
+	dir := t.TempDir()
+
+	require.NoError(t, afero.WriteFile(baseFs, dir+"/test.txt", []byte("original file"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+
+	hash, err := util.HashFile(baseFs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			require.NoError(t, baseFs.Rename(dir+"/test.txt", dir+"/test.txt.1"))
+			require.NoError(t, afero.WriteFile(baseFs, dir+"/test.txt", []byte("repaired file"), 0o644))
+
+			return nil
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension, "test.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   dir,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     dir + "/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		par2Verify:   false,
+		purgeBackups: true,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.Equal(t, 1, called)
+
+	backupExists, _ := afero.Exists(baseFs, dir+"/test.txt.1")
+	require.True(t, backupExists)
+
+	require.Contains(t, logBuf.String(), "Failed to purge backup file (needs manual deletion)")
 }
 
 // Expectation: The repair should fail and the backup files be restored after.
@@ -3230,7 +3600,8 @@ func Test_Service_runRepair_RestoreBackups_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension, "test.txt", "other.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3277,6 +3648,333 @@ func Test_Service_runRepair_RestoreBackups_Success(t *testing.T) {
 	require.True(t, oldBackupExists)
 }
 
+// Expectation: After a failed repair, backups in (nested) subdirectories should
+// be restored, including when par2 did not write a replacement file yet.
+func Test_Service_runRepair_RestoreBackups_Subdirs_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	dir := t.TempDir()
+
+	write := func(rel, content string) {
+		t.Helper()
+		p := filepath.Join(dir, rel)
+		require.NoError(t, fs.MkdirAll(filepath.Dir(p), 0o755))
+		require.NoError(t, afero.WriteFile(fs, p, []byte(content), 0o644))
+	}
+
+	write("test"+schema.Par2Extension, "par2 file")
+	write("sub1/data.bin", "sub1 original")
+	write("sub1/data.bin.1", "sub1 older backup") // Pre-existing, par2 must pick .2
+	write("sub2/data.bin", "sub2 original")       // Same name as in sub1
+	write("sub2/deep/file.txt", "deep original")
+	write("sub2/deep/untouched.txt", "untouched original")
+	write("data.bin.1", "unrelated root file") // Matching name, wrong directory
+
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			// Simulate par2 renaming damaged originals and then failing:
+			// two files got corrupt reconstructions, one got none at all.
+			require.NoError(t, fs.Rename(dir+"/sub1/data.bin", dir+"/sub1/data.bin.2"))
+			require.NoError(t, fs.Rename(dir+"/sub2/data.bin", dir+"/sub2/data.bin.1"))
+			require.NoError(t, fs.Rename(dir+"/sub2/deep/file.txt", dir+"/sub2/deep/file.txt.1"))
+
+			write("sub1/data.bin", "corrupt")
+			write("sub2/data.bin", "corrupt")
+
+			return testutil.CreateExitError(t, ctx, 1)
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension,
+		"sub1/data.bin", "sub2/data.bin", "sub2/deep/file.txt", "sub2/deep/untouched.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:     dir,
+		par2Name:       "test" + schema.Par2Extension,
+		par2Path:       dir + "/test" + schema.Par2Extension,
+		par2Args:       []string{"-v"},
+		par2Verify:     false,
+		restoreBackups: true,
+		manifestName:   "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath:   dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:       dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:       mf,
+	}
+
+	err = prog.runRepair(t.Context(), job)
+	require.ErrorContains(t, err, "par2cmdline:")
+	require.Equal(t, 1, called)
+
+	// Originals should be restored, including the one without a replacement.
+	for rel, want := range map[string]string{
+		"sub1/data.bin":           "sub1 original",
+		"sub2/data.bin":           "sub2 original",
+		"sub2/deep/file.txt":      "deep original",
+		"sub2/deep/untouched.txt": "untouched original",
+	} {
+		content, err := afero.ReadFile(fs, filepath.Join(dir, rel))
+		require.NoError(t, err, rel)
+		require.Equal(t, want, string(content), rel)
+	}
+
+	// Backups created by this repair should be gone (renamed back).
+	for _, rel := range []string{"sub1/data.bin.2", "sub2/data.bin.1", "sub2/deep/file.txt.1"} {
+		exists, _ := afero.Exists(fs, filepath.Join(dir, rel))
+		require.False(t, exists, rel)
+	}
+
+	// Pre-existing and unrelated numbered files should remain untouched.
+	olderContent, err := afero.ReadFile(fs, dir+"/sub1/data.bin.1")
+	require.NoError(t, err)
+	require.Equal(t, "sub1 older backup", string(olderContent))
+
+	rootContent, err := afero.ReadFile(fs, dir+"/data.bin.1")
+	require.NoError(t, err)
+	require.Equal(t, "unrelated root file", string(rootContent))
+}
+
+// Expectation: The repair should fail and warn when the backup cannot be restored.
+func Test_Service_runRepair_RestoreBackups_RenameError_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	fs := &testutil.FailingRenameFs{Fs: baseFs, FailPattern: ".txt.1"}
+	dir := t.TempDir()
+
+	require.NoError(t, afero.WriteFile(baseFs, dir+"/test.txt", []byte("original file"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+
+	hash, err := util.HashFile(baseFs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			// The runner renames through the base filesystem, only
+			// the restore (through the service filesystem) fails.
+			require.NoError(t, baseFs.Rename(dir+"/test.txt", dir+"/test.txt.1"))
+			require.NoError(t, afero.WriteFile(baseFs, dir+"/test.txt", []byte("corrupt"), 0o644))
+
+			return testutil.CreateExitError(t, ctx, 1)
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension, "test.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:     dir,
+		par2Name:       "test" + schema.Par2Extension,
+		par2Path:       dir + "/test" + schema.Par2Extension,
+		par2Args:       []string{"-v"},
+		par2Verify:     false,
+		restoreBackups: true,
+		manifestName:   "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath:   dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:       dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:       mf,
+	}
+
+	err = prog.runRepair(t.Context(), job)
+	require.ErrorContains(t, err, "par2cmdline:")
+	require.Equal(t, 1, called)
+
+	// The backup stays in place and the corrupt reconstruction is not replaced.
+	backupContent, err := afero.ReadFile(baseFs, dir+"/test.txt.1")
+	require.NoError(t, err)
+	require.Equal(t, "original file", string(backupContent))
+
+	content, err := afero.ReadFile(baseFs, dir+"/test.txt")
+	require.NoError(t, err)
+	require.Equal(t, "corrupt", string(content))
+
+	require.Contains(t, logBuf.String(), "Failed to restore backup file (needs manual restore)")
+}
+
+// Expectation: The repair should restore the pre-repair mode and times on repaired files.
+func Test_Service_runRepair_RestoreAttrs_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	dir := t.TempDir()
+	mtime := time.Date(2020, 1, 2, 3, 4, 5, 6000, time.UTC)
+
+	require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("original file"), 0o600))
+	require.NoError(t, fs.Chmod(dir+"/test.txt", 0o600))
+	require.NoError(t, fs.Chtimes(dir+"/test.txt", mtime, mtime))
+	require.NoError(t, afero.WriteFile(fs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			// Simulate par2 renaming the original and writing the repaired file
+			// with its default mode and the current time.
+			require.NoError(t, fs.Rename(dir+"/test.txt", dir+"/test.txt.1"))
+			require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("repaired file"), 0o644))
+			require.NoError(t, fs.Chmod(dir+"/test.txt", 0o644))
+
+			return nil
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension, "test.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   dir,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     dir + "/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		par2Verify:   false,
+		restoreAttrs: true,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.Equal(t, 1, called)
+
+	info, err := fs.Stat(dir + "/test.txt")
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+	require.True(t, mtime.Equal(info.ModTime()), "want %v, got %v", mtime, info.ModTime())
+
+	content, err := afero.ReadFile(fs, dir+"/test.txt")
+	require.NoError(t, err)
+	require.Equal(t, "repaired file", string(content))
+}
+
+// Expectation: The repair should leave the repaired files' attributes alone when disabled.
+func Test_Service_runRepair_NoRestoreAttrs_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs() // Inode-based backup detection needs a real filesystem.
+	dir := t.TempDir()
+	mtime := time.Date(2020, 1, 2, 3, 4, 5, 6000, time.UTC)
+
+	require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("original file"), 0o600))
+	require.NoError(t, fs.Chmod(dir+"/test.txt", 0o600))
+	require.NoError(t, fs.Chtimes(dir+"/test.txt", mtime, mtime))
+	require.NoError(t, afero.WriteFile(fs, dir+"/test"+schema.Par2Extension, []byte("par2 file"), 0o644))
+
+	hash, err := util.HashFile(fs, dir+"/test"+schema.Par2Extension)
+	require.NoError(t, err)
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called int
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called++
+
+			require.NoError(t, fs.Rename(dir+"/test.txt", dir+"/test.txt.1"))
+			require.NoError(t, afero.WriteFile(fs, dir+"/test.txt", []byte("repaired file"), 0o644))
+			require.NoError(t, fs.Chmod(dir+"/test.txt", 0o644))
+
+			return nil
+		},
+	}
+
+	par2er := mockPar2Files(t, dir+"/test"+schema.Par2Extension, "test.txt")
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, par2er, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.SHA256 = hash
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+
+	job := &Job{
+		workingDir:   dir,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     dir + "/test" + schema.Par2Extension,
+		par2Args:     []string{"-v"},
+		par2Verify:   false,
+		restoreAttrs: false,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: dir + "/test" + schema.Par2Extension + schema.ManifestExtension,
+		lockPath:     dir + "/test" + schema.Par2Extension + schema.LockExtension,
+		manifest:     mf,
+	}
+
+	require.NoError(t, prog.runRepair(t.Context(), job))
+	require.Equal(t, 1, called)
+
+	info, err := fs.Stat(dir + "/test.txt")
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o644), info.Mode().Perm())
+	require.False(t, mtime.Equal(info.ModTime()))
+}
+
 // Expectation: The repair should use the correct arguments.
 func Test_Service_runRepair_CorrectArgs_Success(t *testing.T) {
 	t.Parallel()
@@ -3307,7 +4005,7 @@ func Test_Service_runRepair_CorrectArgs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3365,7 +4063,7 @@ func Test_Service_runRepair_IncrementCount_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3419,7 +4117,7 @@ func Test_Service_runRepair_GenericError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3469,7 +4167,7 @@ func Test_Service_runRepair_NonZeroExitCode_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3521,7 +4219,7 @@ func Test_Service_runRepair_ManifestWriteError_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3576,7 +4274,7 @@ func Test_Service_runRepair_WithVerify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3636,7 +4334,7 @@ func Test_Service_runRepair_VerifyFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3685,7 +4383,7 @@ func Test_Service_runRepair_StoresArgs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3736,7 +4434,7 @@ func Test_Service_runRepair_ArgsCloned_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = hash
@@ -3793,7 +4491,7 @@ func Test_Service_runRepair_UpdatesRepairFields_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	oldTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	mf := schema.NewManifest("test" + schema.Par2Extension)
@@ -3868,7 +4566,7 @@ func Test_Service_runRepair_HashMismatch_NoManifestWrite_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3910,7 +4608,7 @@ func Test_Service_runRepair_HashMismatch_ReturnsCorrectError(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "mismatched-hash"
@@ -3961,7 +4659,7 @@ func Test_Service_runRepair_HashMismatch_NoPar2Call_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wrong-hash"
@@ -4015,7 +4713,7 @@ func Test_Service_runRepair_HashMatch_ProceedsWithRepair_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = actualHash
@@ -4062,7 +4760,7 @@ func Test_Service_runRepair_HashError_FailsRepair_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
@@ -4127,7 +4825,7 @@ func Test_Service_runRepair_Bundle_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
@@ -4201,7 +4899,7 @@ func Test_Service_runRepair_Bundle_SkipsHashCheck_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.SHA256 = "deliberately-wrong-hash"
@@ -4249,7 +4947,7 @@ func Test_Service_runRepair_Bundle_Par2Fails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &testutil.MockBundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
@@ -4310,7 +5008,7 @@ func Test_Service_runRepair_Bundle_ManifestWriteError_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
@@ -4379,7 +5077,7 @@ func Test_Service_runRepair_Bundle_WithVerify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{
@@ -4457,7 +5155,7 @@ func Test_Service_runRepair_Bundle_VerifyFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{

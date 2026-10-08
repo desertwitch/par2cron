@@ -773,6 +773,7 @@ func newRepairCmd(ctx context.Context, globalOptions *globalOptions) *cobra.Comm
 	}
 	repairCmd.Flags().BoolVar(&repairOptions.SkipNotCreated, "skip-not-created", false, "skip PAR2 sets without a par2cron manifest containing a creation record")
 	repairCmd.Flags().BoolVar(&repairOptions.SkipMaybeEdited, "skip-maybe-edited", false, "skip PAR2 sets where protected files may have been edited (newer mtimes)")
+	repairCmd.Flags().BoolVar(&repairOptions.NoRestoreAttributes, "no-restore-attributes", false, "do not restore pre-repair mode, times and ownership on repaired files")
 	repairCmd.Flags().BoolVarP(&repairOptions.AttemptUnrepairables, "attempt-unrepairables", "u", false, "attempt to repair PAR2 sets marked as unrepairable")
 	repairCmd.Flags().BoolVarP(&repairOptions.Par2Verify, "verify", "v", false, "PAR2 sets must pass verification as part of repair")
 	repairCmd.Flags().BoolVarP(&repairOptions.PurgeBackups, "purge-backups", "p", false, "remove obsolete backup files (.1, .2, ...) after successful repair")
@@ -932,7 +933,7 @@ func NewProgram(
 	return &Program{
 		CreationService:     create.NewService(fsys, log, r, b, p, c),
 		VerificationService: verify.NewService(fsys, log, r, b, c),
-		RepairService:       repair.NewService(fsys, log, r, b, c),
+		RepairService:       repair.NewService(fsys, log, r, b, p, c),
 		InfoService:         info.NewService(fsys, log, r, b, c),
 		ListService:         list.NewService(fsys, log, r, b, c),
 		BundlerService:      bundler.NewService(fsys, log, b, p),

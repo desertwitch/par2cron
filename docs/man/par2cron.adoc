@@ -118,6 +118,8 @@ Repairs data flagged as needing repair during verification.
   Time budget per run (soft limit).
 *-t, --min-tested* _int_::
   Require N corrupted verifications before repair.
+*--no-restore-attributes*::
+  Do not restore pre-repair mode, times and ownership on repaired files.
 *-p, --purge-backups*::
   Remove backup files after successful repair.
 *-r, --restore-backups*::
@@ -314,6 +316,8 @@ configuration files before deployment using *par2cron config check*.
   Remove backup files after successful repair (default: false).
 *repair.restore-backups* _bool_::
   Restore backups after unsuccessful repair (default: false).
+*repair.no-restore-attributes* _bool_::
+  Do not restore pre-repair mode, times and ownership (default: false).
 *repair.cache* _string_::
   Manifest cache directory (default: disabled).
 
@@ -424,6 +428,33 @@ trimmed to fit *--duration*, with the first job always taken regardless of
 estimated duration to prevent starvation. A backlog warning is emitted when
 total work exceeds the capacity of *--age* divided by *--calc-run-interval*.
 *--duration* is a soft limit; for a hard limit, wrap par2cron in *timeout*(1).
+
+== PERMISSIONS
+
+par2cron does not require root privileges. It needs read and write access to
+the directory trees it operates on (and the optional manifest cache), as it
+writes its state (manifests, lockfiles and bundles) next to the protected files
+and replaces damaged files during repair. Running par2cron as the user owning
+the protected data is recommended. Files created by par2cron and by *par2*(1)
+respect the umask of the running process.
+
+During repair, *par2*(1) renames a damaged file to a backup (*.1*, *.2*, ...)
+and writes the reconstructed file as a new file. par2cron then attempts to
+restore the pre-repair attributes onto the repaired file:
+
+*Ownership*::
+  Only restored when running as root.
+*Mode*::
+  Only restored when the repaired file has the same owner and group as the
+  original file (either already, or after ownership was restored as root).
+  Otherwise left untouched, as the original permission bits were meant for a
+  different owner or group.
+*Times*::
+  Always restored.
+
+Failures to restore attributes are logged as warnings and do not fail the
+repair. With *--no-restore-attributes*, no attributes are restored and repaired
+files are left in the state produced by *par2*(1).
 
 == EXAMPLES
 

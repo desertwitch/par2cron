@@ -924,6 +924,32 @@ func Test_NewRepairCmd_HasAttemptUnrepairablesFlag_Success(t *testing.T) {
 	require.Equal(t, "false", flag.DefValue)
 }
 
+// Expectation: The "repair" command should have a "skip-maybe-edited" flag.
+func Test_NewRepairCmd_HasSkipMaybeEditedFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
+
+	flag := cmd.Flags().Lookup("skip-maybe-edited")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.DefValue)
+}
+
+// Expectation: The "repair" command should have a "no-restore-attributes" flag.
+func Test_NewRepairCmd_HasNoRestoreAttributesFlag_Success(t *testing.T) {
+	t.Parallel()
+
+	cmd := newRepairCmd(t.Context(), newGlobalOptions())
+
+	flag := cmd.Flags().Lookup("no-restore-attributes")
+
+	require.NotNil(t, flag)
+	require.Equal(t, "bool", flag.Value.Type())
+	require.Equal(t, "false", flag.DefValue)
+}
+
 // Expectation: The "repair" command should have a "purge-backups" flag.
 func Test_NewRepairCmd_HasPurgeBackupsFlag_Success(t *testing.T) {
 	t.Parallel()

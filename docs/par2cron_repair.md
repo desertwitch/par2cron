@@ -47,6 +47,7 @@ Repair repairable, verify after, run for around 1 hour:
   -d, --duration duration       time budget per run (best effort/soft limit)
   -h, --help                    help for repair
   -t, --min-tested int          repair only when verified as corrupted at least X times
+      --no-restore-attributes   do not restore pre-repair mode, times and ownership on repaired files
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
       --skip-maybe-edited       skip PAR2 sets where protected files may have been edited (newer mtimes)
