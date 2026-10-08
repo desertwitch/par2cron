@@ -543,7 +543,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 
 	backupManager, err := newBackupManager(ctx, job, prog.fsys, prog.par2er, prog.repairLogger(ctx, job, nil))
 	if err != nil {
-		logger := prog.repairLogger(ctx, job, job.par2Path)
+		logger := prog.repairLogger(ctx, job, nil)
 		logger.Warn("Failed to create backup file manager", "error", err)
 	}
 

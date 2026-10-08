@@ -990,9 +990,8 @@ tree mixes files of different owners, or of groups the running user is not a
 member of; such mixed trees are best avoided where possible.
 
 When repairing, `par2` renames a damaged file to a backup (`.1`, `.2`, ...) and
-writes the reconstructed file as a new file, which would otherwise end up with
-the default permissions (umask) and the current time. par2cron therefore
-attempts to restore the pre-repair attributes onto repaired files:
+writes the reconstructed file as a new file. par2cron then attempts to restore
+the pre-repair attributes onto the repaired file:
 
 - **Ownership** is restored as far as the running user is permitted to: as root,
   any owner and group; otherwise, only the group, and only to a group the user
