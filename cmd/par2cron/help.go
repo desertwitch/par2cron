@@ -234,6 +234,9 @@ const listHelpExample = `
 List all PAR2 sets with their current status:
   par2cron list /mnt/storage
 
+List all PAR2 sets in the current working directory:
+  par2cron list .
+
 Show only PAR2 sets with corruption found:
   par2cron list /mnt/storage | grep -E '^(unrepairable|repairable) '
 
