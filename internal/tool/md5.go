@@ -23,11 +23,12 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string, opts Options
 		}
 
 		var sets []par2.Set
-		var bundleParsed bool
 
 		if !opts.ParseAll && util.IsPar2Bundle(path) {
-			bse, err := util.ParseBundlePar2Index(ctx, prog.fsys, path, prog.par2er, prog.bundler)
-			if err != nil {
+			s, err := util.ParseBundlePar2Index(ctx, prog.fsys, path, prog.par2er, prog.bundler)
+			if err == nil {
+				sets = s
+			} else {
 				logger := prog.toolLogger(ctx, path)
 				logger.Error("Failed to parse PAR2 bundle", "error", err)
 
@@ -35,12 +36,9 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string, opts Options
 
 				continue
 			}
-
-			sets = bse
-			bundleParsed = true
 		}
 
-		if !bundleParsed {
+		if len(sets) == 0 {
 			f, err := prog.par2er.ParseFile(ctx, prog.fsys, path, false)
 			if err == nil {
 				sets = f.Sets

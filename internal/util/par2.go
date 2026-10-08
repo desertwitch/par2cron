@@ -24,6 +24,7 @@ func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p sch
 	}
 	defer bun.Close()
 
+	var found bool
 	var sets []par2.Set
 	for _, e := range bun.Entries() {
 		if IsPar2Index(e.Name) {
@@ -44,6 +45,7 @@ func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p sch
 				return nil, fmt.Errorf("failed to parse index file: %w", err)
 			}
 
+			found = true
 			sets = append(sets, s...)
 		}
 	}
@@ -52,5 +54,9 @@ func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p sch
 		return sets, nil
 	}
 
-	return nil, errors.New("no index file found in bundle")
+	if found {
+		return nil, errors.New("no sets in index file")
+	}
+
+	return nil, errors.New("no index file in bundle")
 }
