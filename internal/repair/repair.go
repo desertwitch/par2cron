@@ -541,7 +541,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	job.manifest.Repair.Args = slices.Clone(job.par2Args)
 	job.manifest.Repair.Count++
 
-	backupManager, err := newBackupManager(ctx, job, prog.fsys, prog.par2er, prog.repairLogger(ctx, job, nil))
+	backupManager, err := newBackupManager(ctx, job, prog.fsys, prog.par2er, prog.bundler, prog.repairLogger(ctx, job, nil))
 	if err != nil {
 		logger := prog.repairLogger(ctx, job, nil)
 		logger.Warn("Failed to create backup file manager", "error", err)
