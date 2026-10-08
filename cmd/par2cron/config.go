@@ -194,6 +194,7 @@ type configFileRepair struct {
 	AttemptUnrepairables *bool           `yaml:"attempt-unrepairables"`
 	PurgeBackups         *bool           `yaml:"purge-backups"`
 	RestoreBackups       *bool           `yaml:"restore-backups"`
+	NoRestoreAttributes  *bool           `yaml:"no-restore-attributes"`
 
 	Cgroup   *string         `yaml:"cgroup"`
 	LogLevel *flags.LogLevel `yaml:"log-level"`
@@ -232,6 +233,9 @@ func (yamlCfg *configFileRepair) Merge(cfg *repair.Options, global *globalOption
 	}
 	if yamlCfg.RestoreBackups != nil && !setFlags["restore-backups"] {
 		cfg.RestoreBackups = *yamlCfg.RestoreBackups
+	}
+	if yamlCfg.NoRestoreAttributes != nil && !setFlags["no-restore-attributes"] {
+		cfg.NoRestoreAttributes = *yamlCfg.NoRestoreAttributes
 	}
 	if yamlCfg.Cgroup != nil && !setFlags["cgroup"] {
 		global.cgroupPath = *yamlCfg.Cgroup

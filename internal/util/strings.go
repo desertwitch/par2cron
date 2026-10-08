@@ -1,7 +1,9 @@
 package util
 
 import (
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -124,4 +126,35 @@ func IsGlobRecursive(pattern string) bool {
 	}
 
 	return false
+}
+
+func SanitizePar2Path(name string) (string, error) {
+	s := strings.ReplaceAll(name, `\`, "/")
+
+	if s == "" {
+		return "", fmt.Errorf("invalid path %q: empty path", name)
+	}
+
+	if strings.HasPrefix(s, "/") {
+		return "", fmt.Errorf("invalid path %q: absolute path", name)
+	}
+
+	if slices.Contains(strings.Split(s, "/"), "..") {
+		return "", fmt.Errorf("invalid path %q: contains parent reference", name)
+	}
+
+	return filepath.Clean(s), nil
+}
+
+func JailedJoinPath(dir, name string) (string, error) {
+	if !filepath.IsLocal(name) {
+		return "", fmt.Errorf("invalid path %q: not a local path", name)
+	}
+
+	joined := filepath.Join(dir, name)
+	if joined == filepath.Clean(dir) {
+		return "", fmt.Errorf("invalid path %q: resolves to destination directory", name)
+	}
+
+	return joined, nil
 }

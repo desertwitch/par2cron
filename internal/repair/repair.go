@@ -30,6 +30,7 @@ type Options struct {
 	AttemptUnrepairables bool
 	PurgeBackups         bool
 	RestoreBackups       bool
+	NoRestoreAttributes  bool
 	CacheDir             string
 }
 
@@ -45,10 +46,11 @@ type Service struct {
 	runner  schema.CommandRunner
 	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
+	par2er  schema.Par2Handler
 	cacher  schema.CacheHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, cacher schema.CacheHandler) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, par2er schema.Par2Handler, cacher schema.CacheHandler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -63,6 +65,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 		runner:  runner,
 		walker:  walker,
 		bundler: bundler,
+		par2er:  par2er,
 		cacher:  cacher,
 	}
 }
@@ -86,6 +89,7 @@ type Job struct {
 	lockPath       string
 	purgeBackups   bool
 	restoreBackups bool
+	restoreAttrs   bool
 
 	isBundle bool
 	manifest *schema.Manifest
@@ -112,6 +116,7 @@ func NewJob(par2Path string, opts Options, mf *schema.Manifest, isBundle bool) *
 
 	rj.purgeBackups = opts.PurgeBackups
 	rj.restoreBackups = opts.RestoreBackups
+	rj.restoreAttrs = !opts.NoRestoreAttributes
 
 	rj.isBundle = isBundle
 	rj.manifest = mf
@@ -536,38 +541,29 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	job.manifest.Repair.Args = slices.Clone(job.par2Args)
 	job.manifest.Repair.Count++
 
-	var purger *backupPurger
-	if job.purgeBackups {
-		purger, err = newBackupPurger(prog.fsys, prog.repairLogger(ctx, job, nil), job.workingDir)
-		if err != nil {
-			logger := prog.repairLogger(ctx, job, job.par2Path)
-			logger.Warn("Failed to create backup file purger (cannot --purge-backups)",
-				"error", err)
-		}
+	backupManager, err := newBackupManager(ctx, job, prog.fsys, prog.par2er, prog.repairLogger(ctx, job, nil))
+	if err != nil {
+		logger := prog.repairLogger(ctx, job, nil)
+		logger.Warn("Failed to create backup file manager", "error", err)
 	}
 
 	var needsRestore bool
-	if job.restoreBackups {
-		restorer, err := newBackupRestorer(prog.fsys, prog.repairLogger(ctx, job, nil), job.workingDir)
-		if err != nil {
-			logger := prog.repairLogger(ctx, job, job.par2Path)
-			logger.Warn("Failed to create backup file restorer (cannot --restore-backups)", "error", err)
-		} else {
-			defer func() {
-				if needsRestore {
-					if err := restorer.Restore(); err != nil {
-						logger := prog.repairLogger(ctx, job, job.par2Path)
-						logger.Warn("Failed to restore backup files (cannot --restore-backups)", "error", err)
-					}
-				}
-			}()
-		}
+	if backupManager != nil && job.restoreBackups {
+		defer func() {
+			if needsRestore {
+				backupManager.Restore()
+			}
+		}()
 	}
 
 	start := time.Now()
 	job.manifest.Repair.Time = start.UTC()
 	err = prog.runner.Run(ctx, "par2", cmdArgs, job.workingDir, prog.log.Options.Stdout, prog.log.Options.Stdout)
 	job.manifest.Repair.Duration = time.Since(start)
+
+	if backupManager != nil {
+		backupManager.FindBackups()
+	}
 
 	if err != nil {
 		needsRestore = true
@@ -590,6 +586,10 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 		logger.Warn("Failed to write par2cron manifest (will retry on verify)", "error", err)
 	}
 
+	if backupManager != nil && job.restoreAttrs {
+		backupManager.RestoreAttrs()
+	}
+
 	if job.par2Verify {
 		vs := verify.NewService(prog.fsys, prog.logbase, prog.runner, prog.bundler, prog.cacher)
 		vj := verify.NewJob(job.par2Path, verify.Options{}, job.manifest, job.isBundle)
@@ -599,12 +599,8 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 		}
 	}
 
-	if purger != nil && job.purgeBackups {
-		if err := purger.Purge(); err != nil {
-			logger := prog.repairLogger(ctx, job, job.par2Path)
-			logger.Warn("Failed to remove backup files (cannot --purge-backups)",
-				"error", err)
-		}
+	if backupManager != nil && job.purgeBackups {
+		backupManager.Purge()
 	}
 
 	return nil

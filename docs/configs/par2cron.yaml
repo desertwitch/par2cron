@@ -262,6 +262,12 @@ repair:
   # Default: false
   restore-backups: false
 
+  # no-restore-attributes: Do not restore pre-repair mode, times and ownership
+  # When enabled, repaired files will remain in their par2cmdline-produced state
+  #
+  # Default: false
+  no-restore-attributes: false
+
   # cache: Directory for optional manifest cache (works best on fast storage)
   # Caches manifests between commands so filesystem scanning completes faster
   # If enabled, ensure using same cache directory for all applicable commands

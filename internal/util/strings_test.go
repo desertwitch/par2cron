@@ -425,3 +425,120 @@ func Test_IsGlobRecursive_Table(t *testing.T) {
 		})
 	}
 }
+
+// Expectation: SanitizePar2Path should normalize harmless PAR2 names and
+// reject absolute names and names containing parent references.
+func Test_SanitizePar2Path(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		input   string
+		want    string // Expected path, if no error.
+		wantErr string // Expected error substring, empty if none.
+	}{
+		// Plain names.
+		{name: "simple file", input: "file.txt", want: "file.txt"},
+		{name: "subdirectory", input: "sub/file.txt", want: "sub/file.txt"},
+		{name: "hidden file", input: ".hidden", want: ".hidden"},
+		{name: "leading dots in name", input: "..foo", want: "..foo"},
+		{name: "leading dots in nested name", input: "a/..foo/b", want: "a/..foo/b"},
+		{name: "drive letter stays relative", input: "C:/x", want: "C:/x"},
+
+		// Normalized names.
+		{name: "windows separators", input: `sub\file.txt`, want: "sub/file.txt"},
+		{name: "mixed separators", input: `a\b/c\d.txt`, want: "a/b/c/d.txt"},
+		{name: "leading dot segment", input: "./a", want: "a"},
+		{name: "inner dot segment", input: "a/./b", want: "a/b"},
+		{name: "duplicate separators", input: "a//b", want: "a/b"},
+		{name: "trailing separator", input: "a/", want: "a"},
+		{name: "dot passes through", input: ".", want: "."}, // Rejected by JailedJoinPath.
+
+		// Rejected names.
+		{name: "empty", input: "", wantErr: "empty path"},
+		{name: "absolute", input: "/etc/passwd", wantErr: "absolute path"},
+		{name: "absolute windows", input: `\etc\passwd`, wantErr: "absolute path"},
+		{name: "double leading separator", input: "//x", wantErr: "absolute path"},
+		{name: "exact parent", input: "..", wantErr: "contains parent reference"},
+		{name: "leading parent", input: "../x", wantErr: "contains parent reference"},
+		{name: "inner parent", input: "a/../b", wantErr: "contains parent reference"},
+		{name: "inner parent windows", input: `a\..\b`, wantErr: "contains parent reference"},
+		{name: "trailing parent", input: "a/..", wantErr: "contains parent reference"},
+		{name: "nested trailing parent", input: "a/b/..", wantErr: "contains parent reference"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := SanitizePar2Path(tt.input)
+
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				require.Empty(t, got)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Expectation: JailedJoinPath should accept names that stay inside the
+// directory, reject names that escape it or resolve to it.
+func Test_JailedJoinPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		dir     string
+		input   string
+		want    string // Expected path, if no error.
+		wantErr string // Expected error substring, empty if none.
+	}{
+		// Valid names.
+		{name: "simple file", dir: "/dest", input: "file.txt", want: "/dest/file.txt"},
+		{name: "subdirectory", dir: "/dest", input: "sub/file.txt", want: "/dest/sub/file.txt"},
+		{name: "nested subdirectory", dir: "/dest", input: "a/b/c/file.txt", want: "/dest/a/b/c/file.txt"},
+		{name: "leading dots in name", dir: "/dest", input: "..foo", want: "/dest/..foo"},
+		{name: "hidden file", dir: "/dest", input: ".hidden", want: "/dest/.hidden"},
+		{name: "traversal staying inside", dir: "/dest", input: "a/../file.txt", want: "/dest/file.txt"},
+		{name: "leading dot segment", dir: "/dest", input: "./a", want: "/dest/a"},
+		{name: "duplicate separators", dir: "/dest", input: "a//b", want: "/dest/a/b"},
+		{name: "dir with trailing separator", dir: "/dest/", input: "file.txt", want: "/dest/file.txt"},
+
+		// Names that are not local.
+		{name: "empty", dir: "/dest", input: "", wantErr: "not a local path"},
+		{name: "absolute", dir: "/dest", input: "/etc/passwd", wantErr: "not a local path"},
+		{name: "exact parent", dir: "/dest", input: "..", wantErr: "not a local path"},
+		{name: "parent file", dir: "/dest", input: "../x", wantErr: "not a local path"},
+		{name: "nested escape", dir: "/dest", input: "a/../../x", wantErr: "not a local path"},
+		{name: "escape and return", dir: "/dest", input: "../dest/file.txt", wantErr: "not a local path"},
+
+		// Names resolving to the directory itself.
+		{name: "dot", dir: "/dest", input: ".", wantErr: "resolves to destination directory"},
+		{name: "dot with separator", dir: "/dest", input: "./", wantErr: "resolves to destination directory"},
+		{name: "subdir and back", dir: "/dest", input: "a/..", wantErr: "resolves to destination directory"},
+		{name: "dot with dir trailing separator", dir: "/dest/", input: ".", wantErr: "resolves to destination directory"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := JailedJoinPath(tt.dir, tt.input)
+
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				require.Empty(t, got)
+
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

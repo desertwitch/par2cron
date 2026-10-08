@@ -57,8 +57,9 @@
 - [Marker Files](#marker-files)
   - [Marker filename](#marker-filename)
   - [Marker configuration](#marker-configuration)
-- [Verification Scheduling](#verification-scheduling)
 - [Ignore Files](#ignore-files)
+- [Verification Scheduling](#verification-scheduling)
+- [Permissions](#permissions)
 - [Performance](#performance)
   - [Manifest cache](#manifest-cache)
   - [Control groups](#control-groups)
@@ -351,6 +352,7 @@ Flags:
   -d, --duration duration       time budget per run (best effort/soft limit)
   -h, --help                    help for repair
   -t, --min-tested int          repair only when verified as corrupted at least X times
+      --no-restore-attributes   do not restore pre-repair mode, times and ownership on repaired files
   -p, --purge-backups           remove obsolete backup files (.1, .2, ...) after successful repair
   -r, --restore-backups         roll back protected files to pre-repair state after unsuccessful repair
       --skip-maybe-edited       skip PAR2 sets where protected files may have been edited (newer mtimes)
@@ -909,6 +911,17 @@ The directives are designed to be easy to remember, although for the rare case
 that you should need such a marker configuration [a little cheat-sheet](QUICKGUIDE)
 is to be recommended, because YAML errors will result in a non-zero exit code.
 
+## Ignore Files
+
+A situation may arise where you want to exclude a folder (or directory tree)
+from all par2cron operations either temporarily or permanently. You can do so
+by placing an ignore file in that directory, so that it is excluded from the
+job enumeration of par2cron. This allows to e.g. exclude directories with PAR2
+sets that you do not want verified or otherwise interacted with by the program.
+
+- `.par2cron-ignore` (ignore this folder)
+- `.par2cron-ignore-all` (ignore this folder and subfolders)
+
 ## Verification Scheduling
 
 | Priority | Description                          |
@@ -958,16 +971,41 @@ As `--duration` is a soft limit, users needing a hard limit can wrap par2cron in
 use cases as it may prevent par2cron from completing its current job and will
 result in a non-zero exit code.
 
-## Ignore Files
+## Permissions
 
-A situation may arise where you want to exclude a folder (or directory tree)
-from all par2cron operations either temporarily or permanently. You can do so
-by placing an ignore file in that directory, so that it is excluded from the
-job enumeration of par2cron. This allows to e.g. exclude directories with PAR2
-sets that you do not want verified or otherwise interacted with by the program.
+par2cron does not require root privileges. It only needs read and write access
+to the directory trees it operates on (and the optional manifest cache), as it
+writes its state (manifests, lock files and bundles) next to the protected files
+and needs to replace damaged files during repair. Files created by par2cron,
+as well as the PAR2 files created by `par2`, respect the umask of the running
+process; their permissions can be controlled by setting the umask accordingly
+(for example `UMask=` in a systemd service, or `umask` in a wrapper script).
 
-- `.par2cron-ignore` (ignore this folder)
-- `.par2cron-ignore-all` (ignore this folder and subfolders)
+It is recommended to run par2cron as the user owning the protected data. All
+files produced by par2cron and `par2` (including repaired files) then belong to
+the same user as the files they protect, so no permission problems arise.
+Repaired files belonging to another group are restored to that group, as long
+as the running user is a member of it. Running as root is only needed when a
+tree mixes files of different owners, or of groups the running user is not a
+member of; such mixed trees are best avoided where possible.
+
+When repairing, `par2` renames a damaged file to a backup (`.1`, `.2`, ...) and
+writes the reconstructed file as a new file. par2cron then attempts to restore
+the pre-repair attributes onto the repaired file:
+
+- **Ownership** is restored as far as the running user is permitted to: as root,
+  any owner and group; otherwise, only the group, and only to a group the user
+  is a member of.
+- **Mode** is only restored when the repaired file has the same owner and group
+  as the original file (either already, or after ownership was restored as
+  above). Otherwise it is left untouched, as the original permission bits were
+  meant for a different owner or group.
+- **Times** are always restored.
+
+Failures to restore any of these attributes are logged as warnings, but do not
+fail the repair. With `--no-restore-attributes` (or `no-restore-attributes` in
+the configuration file), par2cron does not attempt any of this and leaves
+repaired files in the state they were produced in by `par2`.
 
 ## Performance
 
