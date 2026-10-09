@@ -493,7 +493,7 @@ func Test_ParseFile_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 	require.NoError(t, afero.WriteFile(fs, "/test.par2", packet, 0o644))
 
 	f, err := ParseFile(t.Context(), fs, "/test.par2", false)
@@ -565,8 +565,9 @@ func Test_ParseFile_MultipleSets_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	set1 := buildMainPacket(4096, [][16]byte{idA}, nil, idA)
-	set2 := buildMainPacket(4096, [][16]byte{idB}, nil, idB)
+	// Different main packet bodies result in different set IDs
+	set1 := buildMainPacket(4096, [][16]byte{idA}, nil)
+	set2 := buildMainPacket(4096, [][16]byte{idB}, nil)
 	combined := slices.Concat(set1, set2)
 
 	require.NoError(t, afero.WriteFile(fs, "/multi.par2", combined, 0o644))
@@ -584,7 +585,7 @@ func Test_ParseFile_CorrectFilename_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 	require.NoError(t, afero.WriteFile(fs, "/some/deep/path/myfile.par2", packet, 0o644))
 
 	f, err := ParseFile(t.Context(), fs, "/some/deep/path/myfile.par2", false)
@@ -600,9 +601,9 @@ func Test_ParseFileSet_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB}, nil, sID)
-	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
-	fileB := buildFileDescPacket("b.txt", 200, idB, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
+	fileB := buildFileDescPacket("b.txt", 200, idB, setIDOf(mainPacket))
 
 	indexData := slices.Concat(mainPacket, fileA)
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
@@ -636,8 +637,8 @@ func Test_ParseFileSet_SomeUnparseableFiles_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
 
 	indexData := slices.Concat(mainPacket, fileA)
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
@@ -658,8 +659,8 @@ func Test_ParseFileSet_NoIndexButVolumeFiles_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
 	volData := slices.Concat(mainPacket, fileA)
 
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
@@ -678,8 +679,8 @@ func Test_ParseFileSet_NoDuplicateIndex_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
 	indexData := slices.Concat(mainPacket, fileA)
 
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
@@ -696,10 +697,10 @@ func Test_ParseFileSet_MergesMultipleVolumes_Success(t *testing.T) {
 
 	fs := afero.NewMemMapFs()
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB, idC}, nil, sID)
-	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
-	fileB := buildFileDescPacket("b.txt", 200, idB, sID)
-	fileC := buildFileDescPacket("c.txt", 300, idC, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB, idC}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
+	fileB := buildFileDescPacket("b.txt", 200, idB, setIDOf(mainPacket))
+	fileC := buildFileDescPacket("c.txt", 300, idC, setIDOf(mainPacket))
 
 	indexData := slices.Concat(mainPacket, fileA)
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
@@ -719,20 +720,26 @@ func Test_ParseFileSet_MergesMultipleVolumes_Success(t *testing.T) {
 	require.Len(t, result.SetsMerged[0].RecoverySet, 3)
 }
 
-// Expectation: ParseFileSet should handle conflicting main packets.
-func Test_ParseFileSet_ConflictingMainPackets_Error(t *testing.T) {
+// Expectation: ParseFileSet should drop a main packet whose body does not match
+// its set ID, so a "conflicting" copy can no longer reach the merge step.
+func Test_ParseFileSet_ConflictingMainPacketRejected_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
 
-	mainPacket1 := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	mainPacket2 := buildMainPacket(8192, [][16]byte{idA}, nil, sID)
+	mainPacket1 := buildMainPacket(4096, [][16]byte{idA}, nil)
+
+	// Same set ID as mainPacket1, but a different body (slice size 8192)
+	mainPacket2 := buildPacket(mainType, buildMainBody(8192, [][16]byte{idA}, nil), setIDOf(mainPacket1))
 
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", mainPacket1, 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", mainPacket2, 0o644))
 
-	_, err := ParseFileSet(fs, "/archive.par2", false)
-	require.ErrorIs(t, err, errUnresolvableConflict)
+	result, err := ParseFileSet(fs, "/archive.par2", false)
+	require.NoError(t, err)
+
+	require.Len(t, result.SetsMerged, 1)
+	require.Equal(t, uint64(4096), result.SetsMerged[0].MainPacket.SliceSize)
 }
 
 // Expectation: ParseFileSet should handle empty index file with valid volumes.
@@ -743,8 +750,8 @@ func Test_ParseFileSet_EmptyIndexValidVolumes_Success(t *testing.T) {
 
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", []byte{}, 0o644))
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	fileA := buildFileDescPacket("a.txt", 100, idA, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
 	volData := slices.Concat(mainPacket, fileA)
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
 

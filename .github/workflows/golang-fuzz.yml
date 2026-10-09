@@ -52,14 +52,17 @@ jobs:
       matrix:
         goarch: [amd64, 386]
         target:
-          - { cat: par2,     name: Fuzz_Parse,             pkg: ./internal/par2 }
-          - { cat: bundle,   name: Fuzz_Bundle_Open,       pkg: ./internal/bundle }
-          - { cat: bundle,   name: Fuzz_Bundle_Scan,       pkg: ./internal/bundle }
-          - { cat: bundle,   name: Fuzz_Bundle_Pack,       pkg: ./internal/bundle }
-          - { cat: bundle,   name: Fuzz_Bundle_Manifest,   pkg: ./internal/bundle }
-          - { cat: bundle,   name: Fuzz_Bundle_Unpack,     pkg: ./internal/bundle }
-          - { cat: bundle,   name: Fuzz_Bundle_Update,     pkg: ./internal/bundle }
-          - { cat: bundle,   name: Fuzz_Bundle_Validate,   pkg: ./internal/bundle }
+          - { cat: par2,     name: Fuzz_Parse,                    pkg: ./internal/par2 }
+          - { cat: par2,     name: Fuzz_parseMainPacketBody,      pkg: ./internal/par2 }
+          - { cat: par2,     name: Fuzz_parseFileDescriptionBody, pkg: ./internal/par2 }
+          - { cat: par2,     name: Fuzz_decodeUTF16LE,            pkg: ./internal/par2 }
+          - { cat: bundle,   name: Fuzz_Bundle_Open,              pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Scan,              pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Pack,              pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Manifest,          pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Unpack,            pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Update,            pkg: ./internal/bundle }
+          - { cat: bundle,   name: Fuzz_Bundle_Validate,          pkg: ./internal/bundle }
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -76,9 +79,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /home/runner/.cache/gocache/fuzz
-          key: fuzz-${{ matrix.target.name }}-${{ github.run_id }}
+          key: fuzz-v2-${{ matrix.target.name }}-${{ github.run_id }}
           restore-keys: |
-            fuzz-${{ matrix.target.name }}-
+            fuzz-v2-${{ matrix.target.name }}-
       - name: Run fuzz target
         env:
           GOARCH: ${{ matrix.goarch }}

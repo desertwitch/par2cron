@@ -1,0 +1,6 @@
+kind: Fixed
+body: bound parsed par2 packet lengths by remaining stream size
+time: 2026-10-09T11:12:40.053786836+02:00
+custom:
+    Issue: ""
+    PR: "96"
