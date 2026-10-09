@@ -1,5 +1,5 @@
 kind: Changed
-body: '`repair` now defaults to restoring attributes (ownership, mode, times) where possible'
+body: '`repair` now defaults to restoring attributes (ownership, mode, times)'
 time: 2026-10-08T09:44:55.044559253+02:00
 custom:
     Issue: ""
