@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 	"unicode/utf16"
 )
 
@@ -63,8 +64,28 @@ var (
 // In compliance with the specification, unparsable packets are silently skipped.
 // Unless there is a fatal error, no parseable packets will return an empty slice.
 // It parses: [MainPacket], [FilePacket] and [UnicodePacket], skipping all others.
+//
+// Parsing starts at r's current position.
+// r must support seeking to its end, which is used to bound packet lengths.
+//
+//nolint:gocognit,cyclop
 func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 	grouper := newSetGrouper()
+
+	origin, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to seek start position: %w",
+			errFileCorrupted, err)
+	}
+	size, err := r.Seek(0, io.SeekEnd)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to seek stream size: %w",
+			errFileCorrupted, err)
+	}
+	if _, err := r.Seek(origin, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("%w: failed to rewind to start position: %w",
+			errFileCorrupted, err)
+	}
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -77,8 +98,8 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 				errFileCorrupted, err)
 		}
 
-		entry, err := readNextPacket(ctx, r, checkMD5)
-		if err != nil {
+		entry, err := readNextPacket(ctx, r, size-before, checkMD5)
+		if err != nil { //nolint:nestif
 			if err := ctx.Err(); err != nil {
 				return nil, fmt.Errorf("context error: %w", err)
 			}
@@ -86,6 +107,15 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 				// Do not catch [io.ErrUnexpectedEOF] here, a packet could
 				// claim an excessive length, cause it, and we'd skip others.
 				break // No more packets.
+			}
+			if errors.Is(err, io.ErrUnexpectedEOF) {
+				// Try one more byte to see if the reader is really done.
+				if pos, serr := r.Seek(0, io.SeekCurrent); serr == nil && pos < size {
+					var probe [1]byte
+					if n, perr := r.Read(probe[:]); n == 0 && errors.Is(perr, io.EOF) {
+						size = pos // The reader is really at its end.
+					}
+				}
 			}
 			if errors.Is(err, errSkipPacket) {
 				// Reader is already positioned at next packet start.
@@ -283,7 +313,7 @@ func (s *setGrouper) Sets() []Set {
 // readNextPacket reads packets of interest from the PAR2.
 //
 //nolint:cyclop
-func readNextPacket(ctx context.Context, r io.ReadSeeker, checkMD5 bool) (any, error) {
+func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 bool) (any, error) {
 	// Read the 64-byte header
 	headerBytes := make([]byte, packetHeaderSize)
 	if _, err := io.ReadFull(r, headerBytes); err != nil {
@@ -313,6 +343,9 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, checkMD5 bool) (any, e
 	if header.length > math.MaxInt64 {
 		return nil, fmt.Errorf("%w: packet length %d exceeds system capacity", errInvalidPacket, header.length)
 	}
+	if int64(header.length) > avail {
+		return nil, fmt.Errorf("%w: packet length %d exceeds remaining %d bytes", errInvalidPacket, header.length, avail)
+	}
 	bodyLen := int64(header.length) - int64(packetHeaderSize)
 
 	// Wrap the reader for the body read to be Context-aware.
@@ -324,7 +357,10 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, checkMD5 bool) (any, e
 	case bytes.Equal(header.packetType[:], fileDescType):
 	case bytes.Equal(header.packetType[:], unicodeDescType):
 	default:
-		// If the packet is valid (MD5) we can trust the packet length and skip past it.
+		// With a valid MD5 we can trust the packet length and skip past it.
+		// This costs more CPU than scanning, but keeps the scanner out of the
+		// body, so packets embedded in recovery data (PAR2 protecting PAR2)
+		// are not picked up, as long as the packet itself is intact.
 		if checkMD5 && bodyLen > 0 {
 			if err := verifyPacketStream(header, headerBytes, ctxReader, bodyLen); err != nil {
 				return nil, fmt.Errorf("failed to checksum body stream: %w", err)
@@ -333,7 +369,9 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, checkMD5 bool) (any, e
 			return nil, errSkipPacket
 		}
 
-		// No way to trust packet length without MD5, defer to scanning mechanism.
+		// Without MD5 the length can't be trusted, so defer to the scanner.
+		// Embedded packets can't be told apart from real ones this way, so
+		// PAR2-in-PAR2 data may get picked up; production runs with checkMD5.
 		return nil, errUnhandledPacket
 	}
 
@@ -369,11 +407,23 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, checkMD5 bool) (any, e
 	}
 }
 
+// Use a pool for the seek buffers, avoids continuous allocations.
+var scanBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, recoverBufferSize)
+
+		return &b
+	},
+}
+
 // seekToNextPacket tries to find the next [packetMagic] sequence.
 // It scans until [io.EOF], [io.ErrUnexpectedEOF] or another fatal error occurs.
 // It advances the reader to the position at the start of [packetMagic] (if found).
 func seekToNextPacket(ctx context.Context, r io.ReadSeeker) error {
-	buf := make([]byte, recoverBufferSize)
+	bp := scanBufPool.Get().(*[]byte) //nolint:forcetypeassert
+	defer scanBufPool.Put(bp)
+	buf := *bp
+
 	magicLen := len(packetMagic)
 	readerStalls := 0
 
@@ -465,7 +515,7 @@ func verifyPacketChecksum(header *packetHeader, headerBytes, bodyBytes []byte) e
 	// Hash from setID (offset 32) to end of header
 	hasher.Write(headerBytes[packetHashOffset:])
 
-	// Hash the reset (until end of body of the packet)
+	// Hash the rest (until end of body of the packet)
 	hasher.Write(bodyBytes)
 
 	var computed Hash
@@ -487,6 +537,13 @@ func verifyPacketStream(header *packetHeader, headerBytes []byte, r io.Reader, b
 	hasher.Write(headerBytes[packetHashOffset:])
 
 	if _, err := io.CopyN(hasher, r, bodyLen); err != nil {
+		// [io.EOF] means "no more packets" upstream, so we remap
+		// it to [io.ErrUnexpectedEOF] as it's more accurate here.
+		// Otherwise any later valid packets get skipped upstream.
+		if errors.Is(err, io.EOF) {
+			err = io.ErrUnexpectedEOF
+		}
+
 		return fmt.Errorf("failed to read: %w", err)
 	}
 
@@ -510,6 +567,11 @@ func parseMainPacketBody(setID Hash, body []byte) (*MainPacket, error) {
 
 	if len(body) < mainSizeFixed {
 		return nil, fmt.Errorf("%w: body too short for main packet", errInvalidPacket)
+	}
+
+	// Per spec, the set ID is the MD5 of the main packet body.
+	if Hash(md5.Sum(body)) != setID {
+		return nil, fmt.Errorf("%w: main packet body does not match set ID", errChecksumMismatch)
 	}
 
 	sliceSize := binary.LittleEndian.Uint64(body[0:8])

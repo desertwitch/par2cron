@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/binary"
+	"errors"
 	"io"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -20,6 +22,16 @@ var (
 	idA = [16]byte{0x01}
 	idB = [16]byte{0x02}
 	idC = [16]byte{0x03}
+
+	// Per spec, the set ID is the MD5 of the main packet body,
+	// so these must match the main packets built in the tests.
+	setA  = mainSetID(4096, [][16]byte{idA}, nil)
+	setB  = mainSetID(4096, [][16]byte{idB}, nil)
+	setC  = mainSetID(4096, [][16]byte{idC}, nil)
+	setAB = mainSetID(4096, [][16]byte{idA, idB}, nil)
+
+	// A packet type that Parse does not handle.
+	unknownType = []byte{'P', 'A', 'R', ' ', '2', '.', '0', 0x00, 'U', 'n', 'k', 'n', 'o', 'w', 'n', '!'}
 
 	realSeeds = []struct {
 		file     string
@@ -41,48 +53,48 @@ var (
 	syntheticSeeds = [][]byte{
 		// Valid spec: ASCII FileDesc
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-			buildFileDescPacket("test.txt", 100, idA, sID),
+			buildMainPacket(4096, [][16]byte{idA}, nil),
+			buildFileDescPacket("test.txt", 100, idA, setA),
 		),
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idA, idB}, nil, sID),
-			buildFileDescPacket("a.txt", 50, idA, sID),
-			buildFileDescPacket("b.txt", 75, idB, sID),
+			buildMainPacket(4096, [][16]byte{idA, idB}, nil),
+			buildFileDescPacket("a.txt", 50, idA, setAB),
+			buildFileDescPacket("b.txt", 75, idB, setAB),
 		),
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-			buildFileDescPacket("a.txt", 50, idA, sID),
-			buildUnicodePacket("a.txt", idA, sID),
+			buildMainPacket(4096, [][16]byte{idA}, nil),
+			buildFileDescPacket("a.txt", 50, idA, setA),
+			buildUnicodePacket("a.txt", idA, setA),
 		),
 
 		// Valid spec: ASCII FileDesc + Unicode override
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-			buildFileDescPacket("placeholder.txt", 50, idA, sID),
-			buildUnicodePacket("日本語.txt", idA, sID)),
+			buildMainPacket(4096, [][16]byte{idA}, nil),
+			buildFileDescPacket("placeholder.txt", 50, idA, setA),
+			buildUnicodePacket("日本語.txt", idA, setA)),
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idB}, nil, sID),
-			buildFileDescPacket("placeholder.txt", 50, idB, sID),
-			buildUnicodePacket("🎉🎊🎁.txt", idB, sID),
+			buildMainPacket(4096, [][16]byte{idB}, nil),
+			buildFileDescPacket("placeholder.txt", 50, idB, setB),
+			buildUnicodePacket("🎉🎊🎁.txt", idB, setB),
 		),
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idC}, nil, sID),
-			buildFileDescPacket("placeholder.txt", 50, idC, sID),
-			buildUnicodePacket("mixed_αβγ_🚀.txt", idC, sID),
+			buildMainPacket(4096, [][16]byte{idC}, nil),
+			buildFileDescPacket("placeholder.txt", 50, idC, setC),
+			buildUnicodePacket("mixed_αβγ_🚀.txt", idC, setC),
 		),
 
 		// Invalid spec, but done in most PAR2 software: UTF-8 in ASCII FileDesc
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-			buildFileDescPacket("not_ascii_日本語.txt", 100, idA, sID),
+			buildMainPacket(4096, [][16]byte{idA}, nil),
+			buildFileDescPacket("not_ascii_日本語.txt", 100, idA, setA),
 		),
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-			buildFileDescPacket("not_ascii_🎉🎊🎁.txt", 100, idA, sID),
+			buildMainPacket(4096, [][16]byte{idA}, nil),
+			buildFileDescPacket("not_ascii_🎉🎊🎁.txt", 100, idA, setA),
 		),
 		slices.Concat(
-			buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-			buildFileDescPacket("not_ascii_mixed_αβγ_🚀.txt", 100, idA, sID),
+			buildMainPacket(4096, [][16]byte{idA}, nil),
+			buildFileDescPacket("not_ascii_mixed_αβγ_🚀.txt", 100, idA, setA),
 		),
 	}
 )
@@ -92,31 +104,61 @@ var (
 // ============================================================================
 
 func Fuzz_Parse(f *testing.F) {
+	addSeed := func(seed []byte) {
+		f.Add(seed, false)
+		f.Add(seed, true)
+	}
+
 	// Synthetic PAR2 files constructed for testing
 	for _, seed := range syntheticSeeds {
-		f.Add(seed)
+		addSeed(seed)
 	}
 
 	// Real PAR2 files from actual PAR2 software
 	for _, r := range realSeeds {
 		seed, err := os.ReadFile(r.file)
 		require.NoError(f, err)
-		f.Add(seed)
+		addSeed(seed)
 	}
 
 	// A minimal/empty packet and nothing else
-	f.Add([]byte{})
-	f.Add([]byte("PAR2\x00PKT"))
+	addSeed([]byte{})
+	addSeed([]byte("PAR2\x00PKT"))
 
 	// A very small length packet and nothing else
-	f.Add([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"))
+	addSeed([]byte("PAR2\x00PKT\x00\x00\x00\x00\x00\x00\x00\x00"))
 
-	f.Fuzz(func(t *testing.T, data []byte) {
-		sets1, err1 := Parse(t.Context(), bytes.NewReader(data), false)
-		sets2, err2 := Parse(t.Context(), bytes.NewReader(data), false)
+	f.Fuzz(func(t *testing.T, data []byte, checkMD5 bool) {
+		sets1, err1 := Parse(t.Context(), bytes.NewReader(data), checkMD5)
+		sets2, err2 := Parse(t.Context(), bytes.NewReader(data), checkMD5)
 
 		require.Equal(t, err1, err2, "non-deterministic error")
 		require.Equal(t, sets1, sets2, "non-deterministic result")
+	})
+}
+
+func Fuzz_parseMainPacketBody(f *testing.F) {
+	f.Add(buildMainBody(4096, [][16]byte{idA, idB}, [][16]byte{idC}))
+
+	f.Fuzz(func(t *testing.T, body []byte) {
+		// Satisfy the set ID gate so mutations reach the body parsing.
+		_, _ = parseMainPacketBody(Hash(md5.Sum(body)), body)
+	})
+}
+
+func Fuzz_parseFileDescriptionBody(f *testing.F) {
+	f.Add(buildFileDescPacket("test.txt", 100, idA, sID)[packetHeaderSize:])
+
+	f.Fuzz(func(t *testing.T, body []byte) {
+		_, _ = parseFileDescriptionBody(Hash{}, body)
+	})
+}
+
+func Fuzz_decodeUTF16LE(f *testing.F) {
+	f.Add([]byte{0x41, 0x00, 0x42, 0x00, 0x00, 0x00})
+
+	f.Fuzz(func(t *testing.T, b []byte) {
+		_, _ = decodeUTF16LE(b)
 	})
 }
 
@@ -190,6 +232,72 @@ func (c *cancelAfterNReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// flakyReader returns io.ErrUnexpectedEOF once when a read starts at failAt,
+// simulating a transient fetch error from a network-backed reader.
+type flakyReader struct {
+	*bytes.Reader
+
+	failAt int64
+	failed bool
+}
+
+func (f *flakyReader) Read(p []byte) (int, error) {
+	pos := f.Size() - int64(f.Len())
+	if !f.failed && pos == f.failAt {
+		f.failed = true
+
+		return 0, io.ErrUnexpectedEOF
+	}
+
+	return f.Reader.Read(p)
+}
+
+// Expectation: Parse should start at the reader's current position,
+// ignoring anything before it.
+func Test_Parse_NonZeroStartOffset_Success(t *testing.T) {
+	t.Parallel()
+
+	prefix := buildMainPacket(4096, [][16]byte{idB}, nil) // Must be ignored
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	data := slices.Concat(prefix, main, buildFileDescPacket("a.txt", 100, idA, setA))
+
+	r := bytes.NewReader(data)
+	_, err := r.Seek(int64(len(prefix)), io.SeekStart)
+	require.NoError(t, err)
+
+	sets, err := Parse(t.Context(), r, true)
+	require.NoError(t, err)
+	require.Len(t, sets, 1)
+	require.Equal(t, Hash(setA), sets[0].SetID)
+	require.Len(t, sets[0].RecoverySet, 1)
+}
+
+// Expectation: a transient io.ErrUnexpectedEOF mid-stream must not shrink
+// the known stream size, otherwise all later packets get rejected.
+func Test_Parse_TransientUnexpectedEOF_KeepsSize_Success(t *testing.T) {
+	t.Parallel()
+
+	mainA := buildMainPacket(4096, [][16]byte{idA}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setA)
+	mainB := buildMainPacket(4096, [][16]byte{idB}, nil)
+	fileB := buildFileDescPacket("b.txt", 200, idB, setB)
+	data := slices.Concat(mainA, fileA, mainB, fileB)
+
+	// Fail once at the start of fileA's header, mid-stream.
+	r := &flakyReader{Reader: bytes.NewReader(data), failAt: int64(len(mainA))}
+
+	sets, err := Parse(t.Context(), r, false)
+	require.NoError(t, err)
+	require.True(t, r.failed, "the transient error was never triggered")
+
+	// fileA is lost to recovery, but set B after it must survive.
+	// Without the probe, size would shrink to failAt and reject it.
+	require.Len(t, sets, 2)
+	require.Equal(t, Hash(setB), sets[1].SetID)
+	require.Len(t, sets[1].RecoverySet, 1)
+	require.Equal(t, "b.txt", sets[1].RecoverySet[0].Name)
+}
+
 // Expectation: Parse should handle empty input gracefully.
 func Test_Parse_EmptyInput_Success(t *testing.T) {
 	t.Parallel()
@@ -203,12 +311,12 @@ func Test_Parse_EmptyInput_Success(t *testing.T) {
 func Test_Parse_MultipleSets_Success(t *testing.T) {
 	t.Parallel()
 
-	// Create two different sets with different setIDs
-	set1Main := buildMainPacket(4096, [][16]byte{idA}, nil, idA)
-	set1File := buildFileDescPacket("file1.txt", 100, idA, idA)
+	// Different main packet bodies result in different set IDs
+	set1Main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	set1File := buildFileDescPacket("file1.txt", 100, idA, setA)
 
-	set2Main := buildMainPacket(4096, [][16]byte{idB}, nil, idB)
-	set2File := buildFileDescPacket("file2.txt", 200, idB, idB)
+	set2Main := buildMainPacket(4096, [][16]byte{idB}, nil)
+	set2File := buildFileDescPacket("file2.txt", 200, idB, setB)
 
 	combined := slices.Concat(set1Main, set1File, set2Main, set2File)
 
@@ -236,7 +344,7 @@ func Test_Parse_OnlyStrayPackets_Success(t *testing.T) {
 func Test_Parse_MissingFileDescriptions_Success(t *testing.T) {
 	t.Parallel()
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB}, [][16]byte{idC}, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA, idB}, [][16]byte{idC})
 
 	sets, err := Parse(t.Context(), bytes.NewReader(mainPacket), false)
 	require.NoError(t, err)
@@ -249,9 +357,9 @@ func Test_Parse_MissingFileDescriptions_Success(t *testing.T) {
 func Test_Parse_RecoveryAndNonRecovery_Success(t *testing.T) {
 	t.Parallel()
 
-	main := buildMainPacket(4096, [][16]byte{idA}, [][16]byte{idB}, sID)
-	file1 := buildFileDescPacket("recovery.txt", 100, idA, sID)
-	file2 := buildFileDescPacket("nonrecovery.txt", 200, idB, sID)
+	main := buildMainPacket(4096, [][16]byte{idA}, [][16]byte{idB})
+	file1 := buildFileDescPacket("recovery.txt", 100, idA, setIDOf(main))
+	file2 := buildFileDescPacket("nonrecovery.txt", 200, idB, setIDOf(main))
 
 	combined := slices.Concat(main, file1, file2)
 
@@ -268,9 +376,9 @@ func Test_Parse_RecoveryAndNonRecovery_Success(t *testing.T) {
 func Test_Parse_UnicodeOverride_Success(t *testing.T) {
 	t.Parallel()
 
-	main := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	ascii := buildFileDescPacket("placeholder.txt", 100, idA, sID)
-	unicode := buildUnicodePacket("日本語.txt", idA, sID)
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	ascii := buildFileDescPacket("placeholder.txt", 100, idA, setA)
+	unicode := buildUnicodePacket("日本語.txt", idA, setA)
 
 	combined := slices.Concat(main, ascii, unicode)
 
@@ -285,8 +393,8 @@ func Test_Parse_UnicodeOverride_Success(t *testing.T) {
 func Test_Parse_UnicodeWithoutASCII_Success(t *testing.T) {
 	t.Parallel()
 
-	main := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	unicode := buildUnicodePacket("orphan.txt", idB, sID)
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	unicode := buildUnicodePacket("orphan.txt", idB, setA)
 
 	combined := slices.Concat(main, unicode)
 
@@ -300,11 +408,11 @@ func Test_Parse_UnicodeWithoutASCII_Success(t *testing.T) {
 func Test_Parse_MultipleUnicodeOverrides_Success(t *testing.T) {
 	t.Parallel()
 
-	main := buildMainPacket(4096, [][16]byte{idA, idB}, nil, sID)
-	ascii1 := buildFileDescPacket("file1.txt", 100, idA, sID)
-	ascii2 := buildFileDescPacket("file2.txt", 200, idB, sID)
-	unicode1 := buildUnicodePacket("ファイル1.txt", idA, sID)
-	unicode2 := buildUnicodePacket("ファイル2.txt", idB, sID)
+	main := buildMainPacket(4096, [][16]byte{idA, idB}, nil)
+	ascii1 := buildFileDescPacket("file1.txt", 100, idA, setAB)
+	ascii2 := buildFileDescPacket("file2.txt", 200, idB, setAB)
+	unicode1 := buildUnicodePacket("ファイル1.txt", idA, setAB)
+	unicode2 := buildUnicodePacket("ファイル2.txt", idB, setAB)
 
 	combined := slices.Concat(main, ascii1, ascii2, unicode1, unicode2)
 
@@ -346,8 +454,8 @@ func Test_Parse_RecoveryAfterTooShortPacket_AtStart_Success(t *testing.T) {
 
 	packets := slices.Concat(
 		garbagePacket,
-		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-		buildFileDescPacket("test.txt", 100, idA, sID),
+		buildMainPacket(4096, [][16]byte{idA}, nil),
+		buildFileDescPacket("test.txt", 100, idA, setA),
 	)
 
 	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
@@ -369,9 +477,9 @@ func Test_Parse_RecoveryAfterTooShortPacket_InMiddle_Success(t *testing.T) {
 	garbagePacket := slices.Concat(packetMagic, []byte("GARBAGE"))
 
 	packets := slices.Concat(
-		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
+		buildMainPacket(4096, [][16]byte{idA}, nil),
 		garbagePacket,
-		buildFileDescPacket("test.txt", 100, idA, sID),
+		buildFileDescPacket("test.txt", 100, idA, setA),
 	)
 
 	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
@@ -393,8 +501,8 @@ func Test_Parse_RecoveryAfterTooShortPacket_AtEnd_Success(t *testing.T) {
 	garbagePacket := slices.Concat(packetMagic, []byte("GARBAGE"))
 
 	packets := slices.Concat(
-		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-		buildFileDescPacket("test.txt", 100, idA, sID),
+		buildMainPacket(4096, [][16]byte{idA}, nil),
+		buildFileDescPacket("test.txt", 100, idA, setA),
 		garbagePacket,
 	)
 
@@ -414,12 +522,12 @@ func Test_Parse_RecoveryAfterTooShortPacket_AtEnd_Success(t *testing.T) {
 func Test_Parse_RecoveryAfterCorruptPacket_AtStart_Success(t *testing.T) {
 	t.Parallel()
 
-	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
 	length := binary.LittleEndian.Uint64(corruptPacket[8:16])
 	binary.LittleEndian.PutUint64(corruptPacket[8:16], length+1) // misaligned
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	validPacket := buildFileDescPacket("test.txt", 100, idA, setA)
 	packets := slices.Concat(corruptPacket, mainPacket, validPacket)
 
 	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
@@ -438,12 +546,12 @@ func Test_Parse_RecoveryAfterCorruptPacket_AtStart_Success(t *testing.T) {
 func Test_Parse_RecoveryAfterCorruptPacket_InMiddle_Success(t *testing.T) {
 	t.Parallel()
 
-	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
 	length := binary.LittleEndian.Uint64(corruptPacket[8:16])
 	binary.LittleEndian.PutUint64(corruptPacket[8:16], length+1) // misaligned
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	validPacket := buildFileDescPacket("test.txt", 100, idA, setA)
 	packets := slices.Concat(mainPacket, corruptPacket, validPacket)
 
 	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
@@ -462,12 +570,12 @@ func Test_Parse_RecoveryAfterCorruptPacket_InMiddle_Success(t *testing.T) {
 func Test_Parse_RecoveryAfterCorruptPacket_AtEnd_Success(t *testing.T) {
 	t.Parallel()
 
-	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
 	length := binary.LittleEndian.Uint64(corruptPacket[8:16])
 	binary.LittleEndian.PutUint64(corruptPacket[8:16], length+1) // misaligned
 
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	validPacket := buildFileDescPacket("test.txt", 100, idA, sID)
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	validPacket := buildFileDescPacket("test.txt", 100, idA, setA)
 	packets := slices.Concat(mainPacket, validPacket, corruptPacket)
 
 	sets, err := Parse(t.Context(), bytes.NewReader(packets), false)
@@ -482,21 +590,21 @@ func Test_Parse_RecoveryAfterCorruptPacket_AtEnd_Success(t *testing.T) {
 	require.Empty(t, sets[0].StrayPackets)
 }
 
-// Expectation: Parse should recover when a packet read causes ErrUnexpectedEOF.
+// Expectation: Parse should recover when a packet claims more bytes than remain.
 func Test_Parse_RecoveryAfterExcessiveLengthPacket_Success(t *testing.T) {
 	t.Parallel()
 
 	// First packet claims a body length much larger than the actual data
-	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	corruptPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
 
-	// This will cause the reader trying to read way past EOF.
+	// This exceeds the remaining stream size and is rejected before reading.
 	binary.LittleEndian.PutUint64(corruptPacket[8:16], 10000)
 
-	// Valid packets follow immediately after the corrupt one
-	// We'd miss these if we considered ErrUnexpectedEOF as EOF.
+	// Valid packets follow immediately after the corrupt one,
+	// we'd miss these if we trusted the length or stopped parsing.
 	validPackets := slices.Concat(
-		buildMainPacket(4096, [][16]byte{idB}, nil, sID),
-		buildFileDescPacket("recovered.txt", 100, idB, sID),
+		buildMainPacket(4096, [][16]byte{idB}, nil),
+		buildFileDescPacket("recovered.txt", 100, idB, setB),
 	)
 
 	packets := slices.Concat(corruptPacket, validPackets)
@@ -522,8 +630,6 @@ func Test_Parse_RecoveryAfterExcessiveLengthPacket_Success(t *testing.T) {
 func Test_Parse_RecoveryAfterExcessiveLengthUnknownPacket_Success(t *testing.T) {
 	t.Parallel()
 
-	unknownType := []byte{'P', 'A', 'R', ' ', '2', '.', '0', 0x00, 'U', 'n', 'k', 'n', 'o', 'w', 'n', '!'}
-
 	// Build an unknown packet type that claims excessive length
 	corruptBody := make([]byte, 16) // Small actual body
 	corruptPacket := buildPacket(unknownType, corruptBody, sID)
@@ -535,8 +641,8 @@ func Test_Parse_RecoveryAfterExcessiveLengthUnknownPacket_Success(t *testing.T) 
 	// If we trust the header's length field to seek over skipped packets,
 	// these will be skipped, so we should always only trust our mechanism.
 	validPackets := slices.Concat(
-		buildMainPacket(4096, [][16]byte{idB}, nil, sID),
-		buildFileDescPacket("recovered.txt", 100, idB, sID),
+		buildMainPacket(4096, [][16]byte{idB}, nil),
+		buildFileDescPacket("recovered.txt", 100, idB, setB),
 	)
 
 	packets := slices.Concat(corruptPacket, validPackets)
@@ -559,17 +665,96 @@ func Test_Parse_RecoveryAfterExcessiveLengthUnknownPacket_Success(t *testing.T) 
 	require.Empty(t, sets[0].StrayPackets)
 }
 
+// Expectation: Parse should not stop at an unknown packet claiming an excessive
+// length when MD5 checking is enabled. Previously its body stream hit io.EOF,
+// which Parse took as "no more packets", silently dropping everything after it.
+func Test_Parse_RecoveryAfterExcessiveLengthUnknownPacket_MD5_Success(t *testing.T) {
+	t.Parallel()
+
+	corruptPacket := buildPacket(unknownType, make([]byte, 16), sID)
+	binary.LittleEndian.PutUint64(corruptPacket[8:16], uint64(math.MaxInt64&^3))
+
+	validPackets := slices.Concat(
+		buildMainPacket(4096, [][16]byte{idB}, nil),
+		buildFileDescPacket("recovered.txt", 100, idB, setB),
+	)
+
+	packets := slices.Concat(corruptPacket, validPackets)
+
+	sets, err := Parse(t.Context(), bytes.NewReader(packets), true)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Equal(t, "recovered.txt", sets[0].RecoverySet[0].Name)
+}
+
+// Expectation: Parse should correct an overreported stream size after the first
+// short read, so later bogus lengths are rejected instead of streamed to EOF.
+func Test_Parse_OverreportedSize_CorrectsSize_Success(t *testing.T) {
+	t.Parallel()
+
+	const (
+		numHostile = 50
+		claimedLen = 1 << 19 // Within the lied size, beyond the real data
+		lieExtra   = 1 << 20 // How much the reader overreports its size
+	)
+
+	hostile := buildPacket(unknownType, nil, sID)
+	binary.LittleEndian.PutUint64(hostile[8:16], claimedLen)
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	data := slices.Concat(
+		bytes.Repeat(hostile, numHostile),
+		main,
+		buildFileDescPacket("test.txt", 100, idA, setIDOf(main)),
+	)
+	require.Less(t, len(data), claimedLen, "test data must be smaller than the claimed length")
+
+	r := &lyingSizeReader{Reader: bytes.NewReader(data), extra: lieExtra}
+
+	sets, err := Parse(t.Context(), r, true)
+	require.NoError(t, err)
+
+	require.Len(t, sets, 1)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Equal(t, "test.txt", sets[0].RecoverySet[0].Name)
+
+	// Without the size correction, every hostile header streams to EOF.
+	// With it, only the first one does, plus the final end-of-stream read.
+	require.Less(t, r.eofs, 5, "stream was read to EOF %d times", r.eofs)
+}
+
+// Expectation: Parse should handle multiple consecutive corrupted packets.
+func Test_Parse_MultipleCorruptedPackets_Success(t *testing.T) {
+	t.Parallel()
+
+	validPacket := slices.Concat(
+		buildMainPacket(4096, [][16]byte{idA}, nil),
+		buildFileDescPacket("test.txt", 100, idA, setA),
+	)
+
+	// Multiple fake magic sequences followed by garbage
+	garbage1 := []byte("PAR2\x00PKTgarbage1")
+	garbage2 := []byte("PAR2\x00PKTgarbage2")
+	combined := slices.Concat(garbage1, garbage2, validPacket)
+
+	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
+	require.NoError(t, err)
+	require.Len(t, sets, 1)
+}
+
 // Expectation: Parse should return error when too many sets are encountered.
 func Test_Parse_TooManySets_Error(t *testing.T) {
 	t.Parallel()
 
-	// Build packets for maxSets + 1 different sets
+	// Build packets for maxSets + 1 different sets (distinct bodies = distinct set IDs)
 	var packets []byte
 	for i := range maxSets + 1 {
-		setID := [16]byte{byte(i)}
 		fileID := [16]byte{byte(i)}
 		packets = slices.Concat(packets,
-			buildMainPacket(4096, [][16]byte{fileID}, nil, setID),
+			buildMainPacket(4096, [][16]byte{fileID}, nil),
 		)
 	}
 
@@ -585,7 +770,7 @@ func Test_Parse_ContextCancelledBeforeFirstPacket_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	data := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	data := buildMainPacket(4096, [][16]byte{idA}, nil)
 
 	_, err := Parse(ctx, bytes.NewReader(data), false)
 	require.Error(t, err)
@@ -599,8 +784,8 @@ func Test_Parse_ContextCancelledMidParse_Error(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Build two valid packets; cancel after the first is consumed.
-	packet1 := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
-	packet2 := buildFileDescPacket("test.txt", 100, idA, sID)
+	packet1 := buildMainPacket(4096, [][16]byte{idA}, nil)
+	packet2 := buildFileDescPacket("test.txt", 100, idA, setA)
 	data := slices.Concat(packet1, packet2)
 
 	// Use a reader that cancels the context after delivering the first packet.
@@ -877,25 +1062,6 @@ func Test_setGrouper_Sets_OrphanUnicodePacket_Success(t *testing.T) {
 	require.Equal(t, sets[0].MissingRecoveryPackets[0], Hash(idA))
 }
 
-// Expectation: Parse should handle multiple consecutive corrupted packets.
-func Test_Parse_MultipleCorruptedPackets_Success(t *testing.T) {
-	t.Parallel()
-
-	validPacket := slices.Concat(
-		buildMainPacket(4096, [][16]byte{idA}, nil, sID),
-		buildFileDescPacket("test.txt", 100, idA, sID),
-	)
-
-	// Multiple fake magic sequences followed by garbage
-	garbage1 := []byte("PAR2\x00PKTgarbage1")
-	garbage2 := []byte("PAR2\x00PKTgarbage2")
-	combined := slices.Concat(garbage1, garbage2, validPacket)
-
-	sets, err := Parse(t.Context(), bytes.NewReader(combined), false)
-	require.NoError(t, err)
-	require.Len(t, sets, 1)
-}
-
 // Expectation: setGrouper.Sets should categorize stray packets correctly.
 func Test_setGrouper_Sets_StrayPackets_Success(t *testing.T) {
 	t.Parallel()
@@ -932,6 +1098,61 @@ func Test_setGrouper_Sets_MissingNonRecoveryPackets_Success(t *testing.T) {
 	require.Equal(t, Hash(idA), sets[0].MissingNonRecoveryPackets[0])
 }
 
+// Expectation: Sets should preserve order of sets.
+func Test_setGrouper_Sets_PreservesOrder_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := &setGrouper{}
+	grouper.groups = map[Hash]*setGroup{
+		idA: {setID: idA},
+		idB: {setID: idB},
+		idC: {setID: idC},
+	}
+	grouper.order = []Hash{idC, idA, idB}
+
+	sets := grouper.Sets()
+
+	require.Len(t, sets, 3)
+	require.Equal(t, Hash(idC), sets[0].SetID)
+	require.Equal(t, Hash(idA), sets[1].SetID)
+	require.Equal(t, Hash(idB), sets[2].SetID)
+}
+
+// Expectation: Sets should handle empty groups.
+func Test_setGrouper_EmptyGroups_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := &setGrouper{}
+	grouper.groups = map[Hash]*setGroup{}
+	grouper.order = []Hash{}
+
+	sets := grouper.Sets()
+
+	require.Empty(t, sets)
+}
+
+// Expectation: asSets should handle set with no main packet.
+func Test_setGrouper_NoMainPacket_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := &setGrouper{}
+	grouper.groups = map[Hash]*setGroup{
+		idA: {
+			setID:             idA,
+			recoveryIDs:       make(map[Hash]struct{}),
+			nonRecoveryIDs:    make(map[Hash]struct{}),
+			unfilteredASCII:   make(map[Hash]*FilePacket),
+			unfilteredUnicode: make(map[Hash]*UnicodePacket),
+		},
+	}
+	grouper.order = []Hash{idA}
+
+	sets := grouper.Sets()
+
+	require.Len(t, sets, 1)
+	require.Nil(t, sets[0].MainPacket)
+}
+
 // Expectation: readNextPacket should fail when parsePacketHeader returns error.
 func Test_readNextPacket_ParseHeaderError_Error(t *testing.T) {
 	t.Parallel()
@@ -939,7 +1160,7 @@ func Test_readNextPacket_ParseHeaderError_Error(t *testing.T) {
 	invalidHeader := make([]byte, 64)
 	binary.LittleEndian.PutUint64(invalidHeader[8:16], 64) // length
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(invalidHeader), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(invalidHeader), int64(len(invalidHeader)), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid PAR2 magic bytes")
 }
@@ -950,7 +1171,7 @@ func Test_readNextPacket_HeaderEOF_Error(t *testing.T) {
 
 	emptyReader := bytes.NewReader([]byte{})
 
-	_, err := readNextPacket(t.Context(), emptyReader, false)
+	_, err := readNextPacket(t.Context(), emptyReader, 0, false)
 	require.ErrorIs(t, err, io.EOF)
 }
 
@@ -960,7 +1181,7 @@ func Test_readNextPacket_PartialHeader_Error(t *testing.T) {
 
 	partialHeader := make([]byte, 50)
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(partialHeader), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(partialHeader), int64(len(partialHeader)), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read packet header")
 }
@@ -980,7 +1201,8 @@ func Test_readNextPacket_BodyEOF_Error(t *testing.T) {
 
 	// No body despite 100 bytes claimed...
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
+	// Simulate an overreported stream size so the body read is attempted.
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), math.MaxInt64, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read packet body")
 }
@@ -1001,16 +1223,51 @@ func Test_readNextPacket_PartialBody_Error(t *testing.T) {
 	partialBody := make([]byte, 50) // Only 50 of 100 bytes
 	combined := slices.Concat(header, partialBody)
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(combined), false)
+	// Simulate an overreported stream size so the body read is attempted.
+	_, err := readNextPacket(t.Context(), bytes.NewReader(combined), math.MaxInt64, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to read packet body")
 }
 
-// Expectation: readNextPacket should return errSkipPacket for unknown packet types.
-func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
+// Expectation: readNextPacket should reject a packet claiming more bytes than remain.
+func Test_readNextPacket_LengthExceedsAvailable_Error(t *testing.T) {
 	t.Parallel()
 
-	unknownType := []byte{'P', 'A', 'R', ' ', '2', '.', '0', 0x00, 'U', 'n', 'k', 'n', 'o', 'w', 'n', '!'}
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
+
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), int64(len(packet))-4, false)
+	require.ErrorIs(t, err, errInvalidPacket)
+	require.Contains(t, err.Error(), "exceeds remaining")
+}
+
+// Expectation: readNextPacket should accept a packet that exactly fills the remaining bytes.
+func Test_readNextPacket_LengthEqualsAvailable_Success(t *testing.T) {
+	t.Parallel()
+
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
+
+	entry, err := readNextPacket(t.Context(), bytes.NewReader(packet), int64(len(packet)), true)
+	require.NoError(t, err)
+	require.IsType(t, &MainPacket{}, entry)
+}
+
+// Expectation: a short body stream must surface as io.ErrUnexpectedEOF, never io.EOF,
+// otherwise Parse treats it as the end of the stream and skips later packets.
+func Test_readNextPacket_UnknownPacketShortStream_UnexpectedEOF_Error(t *testing.T) {
+	t.Parallel()
+
+	packet := buildPacket(unknownType, make([]byte, 16), sID)
+	binary.LittleEndian.PutUint64(packet[8:16], 64+1024) // Claims far more than present
+
+	// Simulate an overreported stream size so the body stream is attempted.
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), math.MaxInt64, true)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.NotErrorIs(t, err, io.EOF)
+}
+
+// Expectation: readNextPacket should return errUnhandledPacket for unknown packet types without MD5.
+func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
+	t.Parallel()
 
 	header := make([]byte, 64)
 	copy(header[0:8], packetMagic)
@@ -1025,7 +1282,7 @@ func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
 
 	combined := slices.Concat(header, body)
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(combined), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(combined), int64(len(combined)), false)
 	require.ErrorIs(t, err, errUnhandledPacket)
 }
 
@@ -1042,7 +1299,7 @@ func Test_readNextPacket_LengthExceedsMaxInt64_Error(t *testing.T) {
 	hasher.Write(header[packetHashOffset:])
 	copy(header[16:32], hasher.Sum(nil))
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), int64(len(header)), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "exceeds system capacity")
 }
@@ -1060,7 +1317,7 @@ func Test_readNextPacket_NegativeBodyLength_Error(t *testing.T) {
 	hasher.Write(header[packetHashOffset:])
 	copy(header[16:32], hasher.Sum(nil))
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), int64(len(header)), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "packet length")
 }
@@ -1079,7 +1336,8 @@ func Test_readNextPacket_ExceedingBodyLength_Error(t *testing.T) {
 	hasher.Write(header[packetHashOffset:])
 	copy(header[16:32], hasher.Sum(nil))
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(header), false)
+	// Simulate an overreported stream size so the max packet size check is reached.
+	_, err := readNextPacket(t.Context(), bytes.NewReader(header), math.MaxInt64, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid body length")
 }
@@ -1088,12 +1346,12 @@ func Test_readNextPacket_ExceedingBodyLength_Error(t *testing.T) {
 func Test_readNextPacket_InvalidAlignment_Error(t *testing.T) {
 	t.Parallel()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 
 	// Set packet length to non-multiple of 4
 	binary.LittleEndian.PutUint64(packet[8:16], 65)
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), int64(len(packet)), false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not aligned to 4 bytes")
 }
@@ -1104,7 +1362,7 @@ func Test_readNextPacket_PacketAtMaxSize_Success(t *testing.T) {
 	body := make([]byte, maxPacketSize)
 	packet := buildPacket(mainType, body, sID)
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), false)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), int64(len(packet)), false)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "invalid body length")
 }
@@ -1113,12 +1371,12 @@ func Test_readNextPacket_PacketAtMaxSize_Success(t *testing.T) {
 func Test_readNextPacket_MD5ChecksumMismatch_Error(t *testing.T) {
 	t.Parallel()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 
 	// Corrupt the MD5 hash in the header (bytes 16-32)
 	packet[16] ^= 0xFF
 
-	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), true)
+	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), int64(len(packet)), true)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to validate packet checksum")
 }
@@ -1129,7 +1387,7 @@ func Test_seekToNextPacket_FindsMagic_Success(t *testing.T) {
 
 	// Create data with garbage followed by valid packet magic
 	garbage := []byte("some random garbage data")
-	validPacket := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	validPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
 	combined := slices.Concat(garbage, validPacket)
 
 	reader := bytes.NewReader(combined)
@@ -1310,7 +1568,7 @@ func Test_parsePacketHeader_ValidHeader_Success(t *testing.T) {
 func Test_verifyPacketChecksum_ValidChecksum_Success(t *testing.T) {
 	t.Parallel()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 
 	header, err := parsePacketHeader(packet[:64])
 	require.NoError(t, err)
@@ -1323,7 +1581,7 @@ func Test_verifyPacketChecksum_ValidChecksum_Success(t *testing.T) {
 func Test_verifyPacketChecksum_InvalidChecksum_Error(t *testing.T) {
 	t.Parallel()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 
 	header, err := parsePacketHeader(packet[:64])
 	require.NoError(t, err)
@@ -1340,7 +1598,7 @@ func Test_verifyPacketChecksum_InvalidChecksum_Error(t *testing.T) {
 func Test_verifyPacketStream_ValidChecksum_Success(t *testing.T) {
 	t.Parallel()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 
 	header, err := parsePacketHeader(packet[:64])
 	require.NoError(t, err)
@@ -1358,7 +1616,7 @@ func Test_verifyPacketStream_ValidChecksum_Success(t *testing.T) {
 func Test_verifyPacketStream_InvalidChecksum_Error(t *testing.T) {
 	t.Parallel()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil, sID)
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
 	header, err := parsePacketHeader(packet[:64])
 	require.NoError(t, err)
 
@@ -1374,6 +1632,43 @@ func Test_verifyPacketStream_InvalidChecksum_Error(t *testing.T) {
 	require.Equal(t, int64(len(packet)-64), pos)
 }
 
+// Expectation: verifyPacketStream should report a short stream as io.ErrUnexpectedEOF, not io.EOF.
+func Test_verifyPacketStream_ShortStream_UnexpectedEOF_Error(t *testing.T) {
+	t.Parallel()
+
+	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
+	header, err := parsePacketHeader(packet[:64])
+	require.NoError(t, err)
+
+	// Claim more body bytes than the reader holds
+	r := bytes.NewReader(packet[64:])
+	err = verifyPacketStream(header, packet[:64], r, int64(len(packet)-64)+100)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.NotErrorIs(t, err, io.EOF)
+}
+
+// Expectation: parseMainPacketBody should reject a body that does not hash to the set ID.
+func Test_parseMainPacketBody_SetIDMismatch_Error(t *testing.T) {
+	t.Parallel()
+
+	body := buildMainBody(4096, [][16]byte{idA}, nil)
+
+	_, err := parseMainPacketBody(Hash{}, body)
+	require.ErrorIs(t, err, errChecksumMismatch)
+	require.Contains(t, err.Error(), "does not match set ID")
+}
+
+// Expectation: parseMainPacketBody should accept a body that hashes to the set ID.
+func Test_parseMainPacketBody_SetIDMatch_Success(t *testing.T) {
+	t.Parallel()
+
+	body := buildMainBody(4096, [][16]byte{idA}, nil)
+
+	packet, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
+	require.NoError(t, err)
+	require.Equal(t, Hash(md5.Sum(body)), packet.SetID)
+}
+
 // Expectation: parseMainPacketBody should reject invalid slice size alignment.
 func Test_parseMainPacketBody_InvalidSliceSizeAlignment_Error(t *testing.T) {
 	t.Parallel()
@@ -1382,7 +1677,7 @@ func Test_parseMainPacketBody_InvalidSliceSizeAlignment_Error(t *testing.T) {
 	binary.LittleEndian.PutUint64(body[0:8], 4097) // Not multiple of 4
 	binary.LittleEndian.PutUint32(body[8:12], 0)
 
-	_, err := parseMainPacketBody(Hash{}, body)
+	_, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "slice size")
 }
@@ -1393,7 +1688,7 @@ func Test_parseMainPacketBody_BodyTooShort_Error(t *testing.T) {
 
 	shortBody := make([]byte, 8)
 
-	_, err := parseMainPacketBody(Hash{}, shortBody)
+	_, err := parseMainPacketBody(Hash(md5.Sum(shortBody)), shortBody)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "body too short")
 }
@@ -1406,7 +1701,7 @@ func Test_parseMainPacketBody_ZeroRecoveryFiles_Success(t *testing.T) {
 	binary.LittleEndian.PutUint64(body[0:8], 4096)
 	binary.LittleEndian.PutUint32(body[8:12], 0)
 
-	packet, err := parseMainPacketBody(Hash{}, body)
+	packet, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
 	require.NoError(t, err)
 	require.Empty(t, packet.RecoveryIDs)
 	require.Empty(t, packet.NonRecoveryIDs)
@@ -1422,7 +1717,7 @@ func Test_parseMainPacketBody_OnlyRecoveryFiles_Success(t *testing.T) {
 	copy(body[12:28], idA[:])
 	copy(body[28:44], idB[:])
 
-	packet, err := parseMainPacketBody(Hash{}, body)
+	packet, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
 	require.NoError(t, err)
 	require.Len(t, packet.RecoveryIDs, 2)
 	require.Empty(t, packet.NonRecoveryIDs)
@@ -1438,7 +1733,7 @@ func Test_parseMainPacketBody_OnlyNonRecoveryFiles_Success(t *testing.T) {
 	copy(body[12:28], idA[:])
 	copy(body[28:44], idB[:])
 
-	packet, err := parseMainPacketBody(Hash{}, body)
+	packet, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
 	require.NoError(t, err)
 	require.Empty(t, packet.RecoveryIDs)
 	require.Len(t, packet.NonRecoveryIDs, 2)
@@ -1452,7 +1747,7 @@ func Test_parseMainPacketBody_InsufficientRecoveryBytes_Error(t *testing.T) {
 	binary.LittleEndian.PutUint64(body[0:8], 4096)
 	binary.LittleEndian.PutUint32(body[8:12], 2)
 
-	_, err := parseMainPacketBody(Hash{}, body)
+	_, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "bytes mismatch packet body")
 }
@@ -1465,7 +1760,7 @@ func Test_parseMainPacketBody_MisalignedNonRecovery_Error(t *testing.T) {
 	binary.LittleEndian.PutUint64(body[0:8], 4096)
 	binary.LittleEndian.PutUint32(body[8:12], 0)
 
-	_, err := parseMainPacketBody(Hash{}, body)
+	_, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not aligned to 4 bytes")
 }
@@ -1800,61 +2095,6 @@ func Test_decodeUTF16LE_SurrogatePairs_Success(t *testing.T) {
 	require.Equal(t, name, result)
 }
 
-// Expectation: Sets should preserve order of sets.
-func Test_setGrouper_Sets_PreservesOrder_Success(t *testing.T) {
-	t.Parallel()
-
-	grouper := &setGrouper{}
-	grouper.groups = map[Hash]*setGroup{
-		idA: {setID: idA},
-		idB: {setID: idB},
-		idC: {setID: idC},
-	}
-	grouper.order = []Hash{idC, idA, idB}
-
-	sets := grouper.Sets()
-
-	require.Len(t, sets, 3)
-	require.Equal(t, Hash(idC), sets[0].SetID)
-	require.Equal(t, Hash(idA), sets[1].SetID)
-	require.Equal(t, Hash(idB), sets[2].SetID)
-}
-
-// Expectation: Sets should handle empty groups.
-func Test_setGrouper_EmptyGroups_Success(t *testing.T) {
-	t.Parallel()
-
-	grouper := &setGrouper{}
-	grouper.groups = map[Hash]*setGroup{}
-	grouper.order = []Hash{}
-
-	sets := grouper.Sets()
-
-	require.Empty(t, sets)
-}
-
-// Expectation: asSets should handle set with no main packet.
-func Test_setGrouper_NoMainPacket_Success(t *testing.T) {
-	t.Parallel()
-
-	grouper := &setGrouper{}
-	grouper.groups = map[Hash]*setGroup{
-		idA: {
-			setID:             idA,
-			recoveryIDs:       make(map[Hash]struct{}),
-			nonRecoveryIDs:    make(map[Hash]struct{}),
-			unfilteredASCII:   make(map[Hash]*FilePacket),
-			unfilteredUnicode: make(map[Hash]*UnicodePacket),
-		},
-	}
-	grouper.order = []Hash{idA}
-
-	sets := grouper.Sets()
-
-	require.Len(t, sets, 1)
-	require.Nil(t, sets[0].MainPacket)
-}
-
 // ============================================================================
 // Helper Functions for Tests
 // ============================================================================
@@ -1894,7 +2134,35 @@ func (s *stallingReader) Seek(offset int64, whence int) (int64, error) {
 	return s.offset, nil
 }
 
-func buildMainPacket(sliceSize uint64, recoveryIDs [][16]byte, nonRecoveryIDs [][16]byte, setID [16]byte) []byte {
+// lyingSizeReader overreports its size on io.SeekEnd by extra bytes,
+// and counts how many times a read hit the real end of the stream.
+type lyingSizeReader struct {
+	*bytes.Reader
+
+	extra int64
+	eofs  int
+}
+
+func (l *lyingSizeReader) Read(p []byte) (int, error) {
+	n, err := l.Reader.Read(p)
+	if errors.Is(err, io.EOF) {
+		l.eofs++
+	}
+
+	return n, err
+}
+
+func (l *lyingSizeReader) Seek(offset int64, whence int) (int64, error) {
+	n, err := l.Reader.Seek(offset, whence)
+	if whence == io.SeekEnd {
+		n += l.extra
+	}
+
+	return n, err
+}
+
+// buildMainBody returns the body of a main packet.
+func buildMainBody(sliceSize uint64, recoveryIDs [][16]byte, nonRecoveryIDs [][16]byte) []byte {
 	bodyLen := 12 + len(recoveryIDs)*16 + len(nonRecoveryIDs)*16
 	body := make([]byte, bodyLen)
 
@@ -1911,7 +2179,25 @@ func buildMainPacket(sliceSize uint64, recoveryIDs [][16]byte, nonRecoveryIDs []
 		offset += 16
 	}
 
-	return buildPacket(mainType, body, setID)
+	return body
+}
+
+// mainSetID returns the set ID of the main packet with the given contents,
+// which per spec is the MD5 of the main packet body.
+func mainSetID(sliceSize uint64, recoveryIDs [][16]byte, nonRecoveryIDs [][16]byte) [16]byte {
+	return md5.Sum(buildMainBody(sliceSize, recoveryIDs, nonRecoveryIDs))
+}
+
+// buildMainPacket returns a main packet whose set ID is derived from its body.
+func buildMainPacket(sliceSize uint64, recoveryIDs [][16]byte, nonRecoveryIDs [][16]byte) []byte {
+	body := buildMainBody(sliceSize, recoveryIDs, nonRecoveryIDs)
+
+	return buildPacket(mainType, body, md5.Sum(body))
+}
+
+// setIDOf returns the set ID from a built packet's header.
+func setIDOf(packet []byte) [16]byte {
+	return [16]byte(packet[32:48])
 }
 
 func buildPacket(packetType []byte, body []byte, setID [16]byte) []byte {

@@ -134,6 +134,9 @@ test: ## Runs all written tests for and on the application code
 test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3min of fuzzing
 	go test -failfast ./internal/par2 ./internal/bundle
 	./scripts/golang-fuzz.sh Fuzz_Parse ./internal/par2 3m
+	./scripts/golang-fuzz.sh Fuzz_parseMainPacketBody ./internal/par2 3m
+	./scripts/golang-fuzz.sh Fuzz_parseFileDescriptionBody ./internal/par2 3m
+	./scripts/golang-fuzz.sh Fuzz_decodeUTF16LE ./internal/par2 3m
 	./scripts/golang-fuzz.sh Fuzz_Bundle_Open ./internal/bundle 3m
 	./scripts/golang-fuzz.sh Fuzz_Bundle_Scan ./internal/bundle 3m
 	./scripts/golang-fuzz.sh Fuzz_Bundle_Pack ./internal/bundle 3m
@@ -145,6 +148,9 @@ test-fuzz-quick: ## Runs fuzz-related unit tests followed by 3min of fuzzing
 test-fuzz-long: ## Runs fuzz-related unit tests followed by 60min of fuzzing
 	go test -failfast ./internal/par2 ./internal/bundle
 	./scripts/golang-fuzz.sh Fuzz_Parse ./internal/par2 60m
+	./scripts/golang-fuzz.sh Fuzz_parseMainPacketBody ./internal/par2 60m
+	./scripts/golang-fuzz.sh Fuzz_parseFileDescriptionBody ./internal/par2 60m
+	./scripts/golang-fuzz.sh Fuzz_decodeUTF16LE ./internal/par2 60m
 	./scripts/golang-fuzz.sh Fuzz_Bundle_Open ./internal/bundle 60m
 	./scripts/golang-fuzz.sh Fuzz_Bundle_Scan ./internal/bundle 60m
 	./scripts/golang-fuzz.sh Fuzz_Bundle_Pack ./internal/bundle 60m
