@@ -88,7 +88,7 @@ func Test_ParseBundlePar2Index_NoIndexEntries_Error(t *testing.T) {
 
 	require.Nil(t, sets)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no index file found in bundle")
+	require.Contains(t, err.Error(), "no index file in bundle")
 }
 
 // Expectation: The function should return an error when the bundle has no entries at all.
@@ -110,7 +110,41 @@ func Test_ParseBundlePar2Index_EmptyEntries_Error(t *testing.T) {
 
 	require.Nil(t, sets)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "no index file found in bundle")
+	require.Contains(t, err.Error(), "no index file in bundle")
+}
+
+// Expectation: The function should return an error when the index entries contain no sets.
+func Test_ParseBundlePar2Index_IndexWithoutSets_Error(t *testing.T) {
+	t.Parallel()
+
+	mockBundle := &testutil.MockBundle{
+		EntriesFunc: func() []bundle.IndexEntry {
+			return []bundle.IndexEntry{
+				{Name: "file.par2", DataLength: 100},
+			}
+		},
+		ExtractEntryFunc: func(e bundle.IndexEntry, w io.Writer) error {
+			_, err := w.Write([]byte("fake par2 data"))
+
+			return err
+		},
+	}
+	bundleHandler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+	par2Handler := &testutil.MockPar2Handler{
+		ParseFunc: func(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
+			return []par2.Set{}, nil
+		},
+	}
+
+	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+
+	require.Nil(t, sets)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no sets in index file")
 }
 
 // Expectation: The function should return an error when an index entry exceeds the maximum size.

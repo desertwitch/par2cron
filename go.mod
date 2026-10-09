@@ -2,11 +2,11 @@ module github.com/desertwitch/par2cron
 
 go 1.26.0
 
-toolchain go1.27.1
+toolchain go1.27.2
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.2
-	github.com/desertwitch/slog-seq v0.8.1
+	github.com/desertwitch/slog-seq v0.8.2
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/klauspost/compress v1.20.1
 	github.com/lmittmann/tint v1.2.1

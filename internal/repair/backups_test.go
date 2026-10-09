@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -33,7 +34,7 @@ func bmNewManager(t *testing.T, fs afero.Fs, dir string, names ...string) (*back
 	par2Path := dir + "/test" + schema.Par2Extension
 	job := &Job{workingDir: dir, par2Path: par2Path}
 
-	man, err := newBackupManager(t.Context(), job, fs, mockPar2Files(t, par2Path, names...), logging.NewLogger(ls))
+	man, err := newBackupManager(t.Context(), job, fs, mockPar2Files(t, par2Path, names...), &testutil.MockBundleHandler{}, logging.NewLogger(ls))
 	require.NoError(t, err)
 
 	return man, &logBuf
@@ -75,6 +76,49 @@ func bmForeignGID(t *testing.T) uint32 {
 			return uint32(gid)
 		}
 	}
+}
+
+// bmBundleJob returns a bundle [Job] in dir and a discarding logger.
+func bmBundleJob(dir string) (*Job, *logging.Logger) {
+	job := &Job{
+		workingDir: dir,
+		par2Path:   dir + "/test" + schema.BundleExtension + schema.Par2Extension,
+		isBundle:   true,
+	}
+	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
+
+	return job, log
+}
+
+// bmMockBundle returns a [testutil.MockBundle] containing the given entries.
+func bmMockBundle(closed *bool, entries ...bundle.IndexEntry) *testutil.MockBundle {
+	return &testutil.MockBundle{
+		EntriesFunc: func() []bundle.IndexEntry {
+			return entries
+		},
+		ExtractEntryFunc: func(e bundle.IndexEntry, w io.Writer) error {
+			_, err := w.Write([]byte("index data of " + e.Name))
+
+			return err
+		},
+		CloseFunc: func() error {
+			if closed != nil {
+				*closed = true
+			}
+
+			return nil
+		},
+	}
+}
+
+// bmRecoverySets returns a single [par2.Set] protecting the given names.
+func bmRecoverySets(names ...string) []par2.Set {
+	recoverySet := make([]par2.FilePacket, 0, len(names))
+	for _, name := range names {
+		recoverySet = append(recoverySet, par2.FilePacket{Name: name})
+	}
+
+	return []par2.Set{{RecoverySet: recoverySet}}
 }
 
 // Expectation: The constructor should record the protected files of the PAR2 recovery set.
@@ -144,7 +188,7 @@ func Test_newBackupManager_MultipleSets_Success(t *testing.T) {
 	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
 	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
 
-	man, err := newBackupManager(t.Context(), job, fs, par2er, log)
+	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, log)
 
 	require.NoError(t, err)
 	require.Len(t, man.snapshot, 2)
@@ -170,7 +214,7 @@ func Test_newBackupManager_NonRecoverySet_Ignored(t *testing.T) {
 	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
 	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
 
-	man, err := newBackupManager(t.Context(), job, fs, par2er, log)
+	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, log)
 
 	require.NoError(t, err)
 	require.Len(t, man.snapshot, 1)
@@ -192,7 +236,7 @@ func Test_newBackupManager_ParseError_Error(t *testing.T) {
 	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
 	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
 
-	man, err := newBackupManager(t.Context(), job, fs, par2er, log)
+	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, log)
 
 	require.ErrorContains(t, err, "failed to parse par2")
 	require.Nil(t, man)
@@ -286,6 +330,247 @@ func Test_newBackupManager_StatError_Skipped(t *testing.T) {
 	require.Len(t, man.snapshot, 1)
 	require.NotContains(t, man.snapshot, dir+"/denied.txt")
 	require.Contains(t, logBuf.String(), "Skipping non-accessible PAR2-referenced file")
+}
+
+// Expectation: The constructor should read the protected files from the index inside a bundle.
+func Test_newBackupManager_Bundle_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+	job, log := bmBundleJob(dir)
+
+	var closed bool
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, path string) (schema.Bundle, error) {
+			require.Equal(t, job.par2Path, path)
+
+			return bmMockBundle(&closed,
+				bundle.IndexEntry{Name: "test" + schema.Par2Extension},
+				bundle.IndexEntry{Name: "test.vol0+1" + schema.Par2Extension},
+			), nil
+		},
+	}
+
+	var parsed []string
+	par2er := &testutil.MockPar2Handler{
+		ParseFunc: func(r io.ReadSeeker, _ bool) ([]par2.Set, error) {
+			data, err := io.ReadAll(r)
+			require.NoError(t, err)
+			parsed = append(parsed, string(data))
+
+			return bmRecoverySets("a.txt"), nil
+		},
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			require.Fail(t, "should not parse the bundle as a whole when its index can be read")
+
+			return nil, errors.New("unexpected call")
+		},
+	}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, bundler, log)
+
+	require.NoError(t, err)
+	require.Len(t, man.snapshot, 1)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
+
+	// Only the index entry is parsed, not the recovery volume.
+	require.Equal(t, []string{"index data of test" + schema.Par2Extension}, parsed)
+	require.True(t, closed)
+}
+
+// Expectation: The constructor should fall back to parsing the bundle file when it cannot be opened.
+func Test_newBackupManager_Bundle_OpenError_Fallback(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+	job, log := bmBundleJob(dir)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return nil, errors.New("simulated open failure")
+		},
+	}
+
+	var fallback bool
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			require.Equal(t, job.par2Path, path)
+			require.True(t, panicAsErr)
+			fallback = true
+
+			return &par2.File{Sets: bmRecoverySets("a.txt")}, nil
+		},
+	}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, bundler, log)
+
+	require.NoError(t, err)
+	require.True(t, fallback)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
+}
+
+// Expectation: The constructor should fall back to parsing the bundle file when the bundle has no index.
+func Test_newBackupManager_Bundle_NoIndex_Fallback(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+	job, log := bmBundleJob(dir)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return bmMockBundle(nil, bundle.IndexEntry{Name: "test.vol0+1" + schema.Par2Extension}), nil
+		},
+	}
+
+	var fallback bool
+	par2er := &testutil.MockPar2Handler{
+		ParseFunc: func(_ io.ReadSeeker, _ bool) ([]par2.Set, error) {
+			require.Fail(t, "should not parse recovery volumes")
+
+			return nil, errors.New("unexpected call")
+		},
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			fallback = true
+
+			return &par2.File{Sets: bmRecoverySets("a.txt")}, nil
+		},
+	}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, bundler, log)
+
+	require.NoError(t, err)
+	require.True(t, fallback)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
+}
+
+// Expectation: The constructor should fall back to parsing the bundle file when the bundled index cannot be parsed.
+func Test_newBackupManager_Bundle_ParseError_Fallback(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+	job, log := bmBundleJob(dir)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return bmMockBundle(nil, bundle.IndexEntry{Name: "test" + schema.Par2Extension}), nil
+		},
+	}
+
+	var fallback bool
+	par2er := &testutil.MockPar2Handler{
+		ParseFunc: func(_ io.ReadSeeker, _ bool) ([]par2.Set, error) {
+			return nil, errors.New("simulated parse failure")
+		},
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			fallback = true
+
+			return &par2.File{Sets: bmRecoverySets("a.txt")}, nil
+		},
+	}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, bundler, log)
+
+	require.NoError(t, err)
+	require.True(t, fallback)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
+}
+
+// Expectation: The constructor should fall back to parsing the bundle file when the bundled index has no sets.
+func Test_newBackupManager_Bundle_EmptySets_Fallback(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+	job, log := bmBundleJob(dir)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return bmMockBundle(nil, bundle.IndexEntry{Name: "test" + schema.Par2Extension}), nil
+		},
+	}
+
+	var fallback bool
+	par2er := &testutil.MockPar2Handler{
+		ParseFunc: func(_ io.ReadSeeker, _ bool) ([]par2.Set, error) {
+			return []par2.Set{}, nil
+		},
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			fallback = true
+
+			return &par2.File{Sets: bmRecoverySets("a.txt")}, nil
+		},
+	}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, bundler, log)
+
+	require.NoError(t, err)
+	require.True(t, fallback)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
+}
+
+// Expectation: The constructor should return an error when neither the bundled index nor the bundle file can be parsed.
+func Test_newBackupManager_Bundle_FallbackError_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	job, log := bmBundleJob(dir)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return nil, errors.New("simulated open failure")
+		},
+	}
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return nil, errors.New("simulated parse failure")
+		},
+	}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, bundler, log)
+
+	require.ErrorContains(t, err, "failed to parse par2")
+	require.ErrorContains(t, err, "simulated parse failure")
+	require.Nil(t, man)
+}
+
+// Expectation: The constructor should not open a bundle for regular PAR2 files.
+func Test_newBackupManager_NotBundle_BundlerUnused(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+
+	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
+	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			require.Fail(t, "should not open regular PAR2 files as bundles")
+
+			return nil, errors.New("unexpected call")
+		},
+	}
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return &par2.File{Sets: bmRecoverySets("a.txt")}, nil
+		},
+	}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, bundler, log)
+
+	require.NoError(t, err)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
 }
 
 // Expectation: FindBackups should pair a renamed original with its replaced path.

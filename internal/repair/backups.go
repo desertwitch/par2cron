@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/logging"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
@@ -34,17 +35,32 @@ type backupManager struct {
 
 // newBackupManager returns a new [backupManager].
 // It records the pre-repair state as part of the construction.
-func newBackupManager(ctx context.Context, job *Job, fsys afero.Fs, par2er schema.Par2Handler, log *logging.Logger) (*backupManager, error) {
-	p2, err := par2er.ParseFile(ctx, fsys, job.par2Path, true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse par2: %w", err)
+func newBackupManager(ctx context.Context, job *Job, fsys afero.Fs, par2er schema.Par2Handler, bundler schema.BundleHandler, log *logging.Logger) (*backupManager, error) {
+	log = log.With("component", "backupManager")
+
+	var sets []par2.Set
+	if job.isBundle {
+		s, err := util.ParseBundlePar2Index(ctx, fsys, job.par2Path, par2er, bundler)
+		if err == nil {
+			sets = s
+		} else {
+			log.Debug("Failed to parse PAR2 bundle", "error", err)
+		}
+	}
+	if len(sets) == 0 {
+		f, err := par2er.ParseFile(ctx, fsys, job.par2Path, true)
+		if err == nil {
+			sets = f.Sets
+		} else {
+			return nil, fmt.Errorf("failed to parse par2: %w", err)
+		}
 	}
 
-	man := &backupManager{log: log.With("component", "backupManager"), fsys: fsys}
+	man := &backupManager{log: log, fsys: fsys}
 	man.backups = make(map[*syscall.Stat_t]backupPair)
 	man.snapshot = make(map[string]*syscall.Stat_t)
 
-	for _, set := range p2.Sets {
+	for _, set := range sets {
 		for _, rset := range set.RecoverySet {
 			path, err := util.SanitizePar2Path(rset.Name)
 			if err == nil {
