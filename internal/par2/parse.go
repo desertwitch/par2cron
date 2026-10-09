@@ -357,7 +357,10 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 
 	case bytes.Equal(header.packetType[:], fileDescType):
 	case bytes.Equal(header.packetType[:], unicodeDescType):
 	default:
-		// If the packet is valid (MD5) we can trust the packet length and skip past it.
+		// With a valid MD5 we can trust the packet length and skip past it.
+		// This costs more CPU than scanning, but keeps the scanner out of the
+		// body, so packets embedded in recovery data (PAR2 protecting PAR2)
+		// are not picked up, as long as the packet itself is intact.
 		if checkMD5 && bodyLen > 0 {
 			if err := verifyPacketStream(header, headerBytes, ctxReader, bodyLen); err != nil {
 				return nil, fmt.Errorf("failed to checksum body stream: %w", err)
@@ -366,7 +369,9 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 
 			return nil, errSkipPacket
 		}
 
-		// No way to trust packet length without MD5, defer to scanning mechanism.
+		// Without MD5 the length can't be trusted, so defer to the scanner.
+		// Embedded packets can't be told apart from real ones this way, so
+		// PAR2-in-PAR2 data may get picked up; production runs with checkMD5.
 		return nil, errUnhandledPacket
 	}
 
