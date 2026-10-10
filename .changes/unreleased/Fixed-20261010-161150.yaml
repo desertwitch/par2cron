@@ -1,0 +1,6 @@
+kind: Fixed
+body: allow cancelling par2 parsing on a stalled reader
+time: 2026-10-10T16:11:50.59479442+02:00
+custom:
+    Issue: ""
+    PR: "97"

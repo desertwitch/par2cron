@@ -88,6 +88,7 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 		return nil, fmt.Errorf("failed to rewind to start position: %w", err)
 	}
 
+	ctxReader := &contextReader{ctx, r}
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("context error: %w", err)
@@ -98,7 +99,7 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 			return nil, fmt.Errorf("failed to seek pre-parse position: %w", err)
 		}
 
-		entry, err := readNextPacket(ctx, r, size-before, checkMD5)
+		entry, err := readNextPacket(ctxReader, size-before, checkMD5)
 		if err != nil { //nolint:nestif
 			if err := ctx.Err(); err != nil {
 				return nil, fmt.Errorf("context error: %w", err)
@@ -312,7 +313,7 @@ func (s *setGrouper) Sets() []Set {
 // readNextPacket reads packets of interest from the PAR2.
 //
 //nolint:cyclop
-func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 bool) (any, error) {
+func readNextPacket(r io.Reader, avail int64, checkMD5 bool) (any, error) {
 	// Read the 64-byte header
 	headerBytes := make([]byte, packetHeaderSize)
 	if _, err := io.ReadFull(r, headerBytes); err != nil {
@@ -347,9 +348,6 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 
 	}
 	bodyLen := int64(header.length) - int64(packetHeaderSize)
 
-	// Wrap the reader for the body read to be Context-aware.
-	ctxReader := &contextReader{ctx, r}
-
 	// Read the body only for packets we care about, skip the others.
 	switch {
 	case bytes.Equal(header.packetType[:], mainType):
@@ -361,7 +359,7 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 
 		// body, so packets embedded in recovery data (PAR2 protecting PAR2)
 		// are not picked up, as long as the packet itself is intact.
 		if checkMD5 && bodyLen > 0 {
-			if err := verifyPacketStream(header, headerBytes, ctxReader, bodyLen); err != nil {
+			if err := verifyPacketStream(header, headerBytes, r, bodyLen); err != nil {
 				return nil, fmt.Errorf("failed to checksum body stream: %w", err)
 			}
 
@@ -383,7 +381,7 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 
 	// Read the body into memory
 	bodyBytes := make([]byte, bodyLen)
 	if bodyLen > 0 {
-		if _, err := io.ReadFull(ctxReader, bodyBytes); err != nil {
+		if _, err := io.ReadFull(r, bodyBytes); err != nil {
 			return nil, fmt.Errorf("%w: failed to read packet body: %w", errIO, err)
 		}
 	}
