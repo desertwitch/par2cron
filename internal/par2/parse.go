@@ -440,7 +440,6 @@ func seekToNextPacket(ctx context.Context, r io.ReadSeeker) error {
 		}
 
 		n, readErr := r.Read(buf) // Read [recoverBufferSize] (or less)
-
 		if n > 0 {
 			idx := bytes.Index(buf[:n], packetMagic) // Find magic sequence
 			if idx != -1 {
@@ -467,17 +466,13 @@ func seekToNextPacket(ctx context.Context, r io.ReadSeeker) error {
 			if readerStalls < recoverStallRetries {
 				readerStalls++ // Let's wait some more...
 			} else {
-				return io.ErrUnexpectedEOF // Something is funky, EOF.
+				return io.ErrNoProgress
 			}
 		} else {
 			readerStalls = 0 // Reset, may have new data (or an error).
 		}
 
 		if readErr != nil {
-			if errors.Is(readErr, io.EOF) {
-				return io.EOF // Nothing more to do here.
-			}
-
 			return fmt.Errorf("failed to read: %w", readErr)
 		}
 	}

@@ -878,6 +878,37 @@ func Test_Parse_TooManySets_Error(t *testing.T) {
 	require.ErrorIs(t, err, errTooManySets)
 }
 
+// stallAfterReader returns no data and no error for reads starting at or after stallAt.
+type stallAfterReader struct {
+	*bytes.Reader
+
+	stallAt int64
+}
+
+func (s *stallAfterReader) Read(p []byte) (int, error) {
+	if s.Size()-int64(s.Len()) >= s.stallAt {
+		return 0, nil
+	}
+
+	return s.Reader.Read(p)
+}
+
+// Expectation: Parse should fail on a reader that stalls during recovery, instead of stopping silently.
+func Test_Parse_StalledReaderDuringRecovery_Error(t *testing.T) {
+	t.Parallel()
+
+	// An invalid packet header, followed by data without any magic sequence.
+	data := slices.Concat(packetMagic, bytes.Repeat([]byte{0xFF}, packetHeaderSize-len(packetMagic)+128))
+
+	// The header is readable, the scanner stalls once it reaches the tail.
+	r := &stallAfterReader{Reader: bytes.NewReader(data), stallAt: packetHeaderSize}
+
+	sets, err := Parse(t.Context(), r, true)
+
+	require.ErrorIs(t, err, io.ErrNoProgress)
+	require.Nil(t, sets)
+}
+
 // Expectation: Parse should return context error when cancelled before first packet.
 func Test_Parse_ContextCancelledBeforeFirstPacket_Error(t *testing.T) {
 	t.Parallel()
@@ -1605,7 +1636,7 @@ func Test_seekToNextPacket_InfiniteStall_Error(t *testing.T) {
 	reader := &stallingReader{data: packetMagic, maxStalls: 15}
 
 	err := seekToNextPacket(t.Context(), reader)
-	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.ErrorIs(t, err, io.ErrNoProgress)
 }
 
 // Expectation: seekToNextPacket should return context error when cancelled.
