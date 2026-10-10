@@ -99,6 +99,10 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 			return nil, fmt.Errorf("failed to seek pre-parse position: %w", err)
 		}
 
+		if size-before < packetHeaderSize {
+			break // Remaining size cannot fit another packet, we're done.
+		}
+
 		entry, err := readNextPacket(ctxReader, size-before, checkMD5)
 		if err != nil { //nolint:nestif
 			if err := ctx.Err(); err != nil {
@@ -415,9 +419,10 @@ var scanBufPool = sync.Pool{
 	},
 }
 
-// seekToNextPacket tries to find the next [packetMagic] sequence.
-// It scans until [io.EOF], [io.ErrUnexpectedEOF] or another fatal error occurs.
-// It advances the reader to the position at the start of [packetMagic] (if found).
+// seekToNextPacket tries to find the next [packetMagic] sequence and advances
+// the reader to its start. If none is found, it returns the wrapped [io.EOF]
+// (or [io.ErrUnexpectedEOF]) of the reader; it returns [io.ErrNoProgress] on
+// a stalled reader, and any other read, seek or context error as is.
 func seekToNextPacket(ctx context.Context, r io.ReadSeeker) error {
 	bp := scanBufPool.Get().(*[]byte) //nolint:forcetypeassert
 	defer scanBufPool.Put(bp)
