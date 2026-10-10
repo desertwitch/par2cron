@@ -494,6 +494,38 @@ func Test_Open_ScanReadFails_Error(t *testing.T) {
 	require.True(t, closed)
 }
 
+// Expectation: Open should close the file when the bundle is too damaged to reconstruct.
+func Test_Open_TooDamaged_ClosesFile_Error(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(base, "/bundle.par2", []byte("broken"), 0o644))
+
+	closed := false
+	fs := &testFs{
+		Fs: base,
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := base.OpenFile(name, flag, perm)
+			require.NoError(t, err)
+
+			return &testFile{
+				File: f,
+				closeFunc: func() error {
+					closed = true
+
+					return f.Close()
+				},
+			}, nil
+		},
+	}
+
+	_, err := Open(t.Context(), fs, "/bundle.par2")
+
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.ErrorContains(t, err, "bundle too damaged")
+	require.True(t, closed)
+}
+
 // Expectation: Close should forward file close errors.
 func Test_Bundle_Close_Error(t *testing.T) {
 	t.Parallel()

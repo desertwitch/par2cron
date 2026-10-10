@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 	"unicode/utf16"
 
 	"github.com/stretchr/testify/require"
@@ -327,6 +328,24 @@ func Test_Parse_SkippedPacketReadFails_Error(t *testing.T) {
 	require.ErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "read boom")
 	require.Nil(t, sets)
+}
+
+// Expectation: Parse should not read or fail on a tail too short to hold another packet.
+func Test_Parse_ReadFailsInShortTail_Success(t *testing.T) {
+	t.Parallel()
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	file := buildFileDescPacket("a.txt", 100, idA, setA)
+	data := slices.Concat(main, file, bytes.Repeat([]byte{0xFF}, packetHeaderSize-1))
+
+	// Only the tail is unreadable, it cannot fit a packet so must not be read.
+	r := &failingReader{Reader: bytes.NewReader(data), failAt: int64(len(main) + len(file)), err: errors.New("read boom")}
+
+	sets, err := Parse(t.Context(), r, true)
+
+	require.NoError(t, err)
+	require.Len(t, sets, 1)
+	require.Len(t, sets[0].RecoverySet, 1)
 }
 
 // Expectation: Parse should still recover from a truncated packet at the end (not an I/O error).
@@ -876,6 +895,32 @@ func Test_Parse_TooManySets_Error(t *testing.T) {
 	_, err := Parse(t.Context(), bytes.NewReader(packets), false)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errTooManySets)
+}
+
+// Expectation: Parse should return a context error when the reader stalls inside a packet read.
+func Test_Parse_StalledReaderDuringPacketRead_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+
+	// The header is readable, the body read stalls forever (blocking io.ReadFull).
+	r := &stallAfterReader{Reader: bytes.NewReader(main), stallAt: packetHeaderSize}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Parse(ctx, r, true)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "Parse did not return after context cancellation")
+	}
 }
 
 // stallAfterReader returns no data and no error for reads starting at or after stallAt.
