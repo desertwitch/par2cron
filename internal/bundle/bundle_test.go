@@ -411,6 +411,89 @@ func Test_Open_TooDamaged_Error(t *testing.T) {
 	require.ErrorContains(t, err, "bundle too damaged")
 }
 
+// Expectation: Open should surface an I/O error on the index instead of rebuilding it, and close the file.
+func Test_Open_IndexReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+
+	closed := false
+	fs := &testFs{
+		Fs: fixture.fs,
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := fixture.fs.OpenFile(name, flag, perm)
+			require.NoError(t, err)
+
+			return &callbackFile{
+				File: &testFile{
+					File: f,
+					closeFunc: func() error {
+						closed = true
+
+						return f.Close()
+					},
+				},
+				readAtFunc: func(p []byte, off int64) (int, error) {
+					return 0, errors.New("read boom")
+				},
+			}, nil
+		},
+	}
+
+	_, err := Open(t.Context(), fs, fixture.bundlePath)
+
+	require.ErrorIs(t, err, errIO)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
+	require.ErrorContains(t, err, "failed to read index")
+	require.ErrorContains(t, err, "read boom")
+	require.True(t, closed)
+}
+
+// Expectation: Open should surface an I/O error during the fallback scan instead of rebuilding a partial index.
+func Test_Open_ScanReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	overwriteBundleBytes(t, fixture.fs, fixture.bundlePath, func(raw []byte) {
+		raw[0] ^= 0xFF
+	})
+
+	closed := false
+	fs := &testFs{
+		Fs: fixture.fs,
+		openFileFunc: func(name string, flag int, perm os.FileMode) (afero.File, error) {
+			f, err := fixture.fs.OpenFile(name, flag, perm)
+			require.NoError(t, err)
+
+			return &callbackFile{
+				File: &testFile{
+					File: f,
+					closeFunc: func() error {
+						closed = true
+
+						return f.Close()
+					},
+				},
+				readAtFunc: func(p []byte, off int64) (int, error) {
+					// The corrupt index at offset 0 is readable, everything after fails.
+					if off > 0 {
+						return 0, errors.New("read boom")
+					}
+
+					return f.ReadAt(p, off)
+				},
+			}, nil
+		},
+	}
+
+	_, err := Open(t.Context(), fs, fixture.bundlePath)
+
+	require.ErrorContains(t, err, "failed to scan")
+	require.ErrorContains(t, err, "read boom")
+	require.NotErrorIs(t, err, ErrDataCorrupt)
+	require.True(t, closed)
+}
+
 // Expectation: Close should forward file close errors.
 func Test_Bundle_Close_Error(t *testing.T) {
 	t.Parallel()
@@ -572,7 +655,7 @@ func Test_Bundle_ValidateFiles_ReadPacketFails_Error(t *testing.T) {
 	err := b.ValidateFiles(t.Context(), false)
 
 	require.ErrorContains(t, err, "file packet 0")
-	require.ErrorContains(t, err, "unexpected EOF")
+	require.ErrorContains(t, err, "remaining file cannot fit another packet")
 }
 
 // Expectation: ValidateFiles should surface hash-read I/O failures in strict mode.
@@ -718,7 +801,7 @@ func Test_Bundle_ValidateManifest_ReadPacketFails_Error(t *testing.T) {
 	err := b.ValidateManifest(t.Context(), false)
 
 	require.ErrorContains(t, err, "manifest packet at offset")
-	require.ErrorContains(t, err, "unexpected EOF")
+	require.ErrorContains(t, err, "remaining file cannot fit another packet")
 }
 
 // Expectation: MarshalJSON should serialize OpenError as its error string instead of an empty object.

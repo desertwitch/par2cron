@@ -1,0 +1,6 @@
+kind: Fixed
+body: do not rebuild bundles on transient I/O errors
+time: 2026-10-10T11:47:46.77338819+02:00
+custom:
+    Issue: ""
+    PR: "97"

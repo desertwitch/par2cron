@@ -104,6 +104,98 @@ func Test_Scan_ContextCancelled_Error(t *testing.T) {
 	require.ErrorContains(t, err, "context error")
 }
 
+// Expectation: Scan should surface an I/O error while reading a packet instead of skipping past the packet.
+func Test_Scan_PacketReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+	raw := readBundleBytes(t, fixture.fs, fixture.bundlePath)
+
+	// The index at offset 0 stays readable, reads from a file packet onwards fail.
+	r := selectiveFailReaderAt{
+		data:          raw,
+		failAtOrAfter: int64(b.Index.Entries[0].PacketOffset), //nolint:gosec
+		err:           errors.New("read boom"),
+	}
+
+	files, manifest, err := Scan(t.Context(), r, int64(len(raw)), true)
+
+	require.ErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "failed to read packet")
+	require.ErrorContains(t, err, "read boom")
+	require.Nil(t, files)
+	require.Nil(t, manifest)
+}
+
+// Expectation: Scan should surface an I/O error while searching for the next packet instead of stopping silently.
+func Test_Scan_SearchReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	raw := append([]byte("junk!"), readBundleBytes(t, fixture.fs, fixture.bundlePath)...)
+
+	// The junk header at offset 0 is readable (and invalid), the search from offset 1 fails.
+	r := selectiveFailReaderAt{
+		data:          raw,
+		failAtOrAfter: 1,
+		err:           errors.New("read boom"),
+	}
+
+	files, manifest, err := Scan(t.Context(), r, int64(len(raw)), true)
+
+	require.ErrorContains(t, err, "failed to find next packet")
+	require.ErrorContains(t, err, "read boom")
+	require.Nil(t, files)
+	require.Nil(t, manifest)
+}
+
+// Expectation: Scan should treat data ending before the reported size as an I/O error, not as corruption.
+func Test_Scan_DataShorterThanSize_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	raw := readBundleBytes(t, fixture.fs, fixture.bundlePath)
+
+	// Simulates a file shrinking after its size was determined.
+	_, _, err := Scan(t.Context(), bytes.NewReader(raw), int64(len(raw))+1024, true)
+
+	require.ErrorIs(t, err, errIO)
+	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: Scan should treat data ending before the reported size during the search as an I/O error.
+func Test_Scan_DataShorterThanSizeDuringSearch_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+
+	// Readable but invalid trailing data, so the shrink is hit by the search.
+	raw := append(readBundleBytes(t, fixture.fs, fixture.bundlePath), bytes.Repeat([]byte{'x'}, 100)...)
+
+	_, _, err := Scan(t.Context(), bytes.NewReader(raw), int64(len(raw))+1024, true)
+
+	require.ErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "failed to find next packet")
+}
+
+// Expectation: Scan should still find all packets when a corrupt packet is followed by intact ones.
+func Test_Scan_CorruptFilePacket_Success(t *testing.T) {
+	t.Parallel()
+
+	b, fixture := openTestBundle(t)
+	raw := readBundleBytes(t, fixture.fs, fixture.bundlePath)
+
+	// Corrupt the first file packet's body, so its checksum fails.
+	raw[b.Index.Entries[0].PacketOffset+commonHeaderSize] ^= 0xFF
+
+	files, manifest, err := Scan(t.Context(), bytes.NewReader(raw), int64(len(raw)), true)
+
+	require.NoError(t, err)
+	require.NotNil(t, manifest)
+	require.Len(t, files, len(fixture.files)-1)
+	require.NotEqual(t, b.Index.Entries[0].Name, files[0].Name)
+}
+
 // Expectation: findNextMagic should return the offset of the first matching magic sequence.
 func Test_findNextMagic_Success(t *testing.T) {
 	t.Parallel()
@@ -138,7 +230,7 @@ func Test_findNextMagic_ReadError_Error(t *testing.T) {
 	buf := make([]byte, 16*1024)
 	_, err := findNextMagic(t.Context(), failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize, buf)
 
-	require.ErrorContains(t, err, "failed to io")
+	require.ErrorContains(t, err, "failed to read")
 	require.ErrorContains(t, err, "read boom")
 }
 
@@ -150,6 +242,35 @@ func Test_findNextMagic_NotFound_Error(t *testing.T) {
 	_, err := findNextMagic(t.Context(), bytes.NewReader([]byte("plain bytes")), 0, int64(len("plain bytes")), buf)
 
 	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: findNextMagic should terminate with errIO and io.EOF when the data ends before the reported size.
+func Test_findNextMagic_DataShorterThanSize_Error(t *testing.T) {
+	t.Parallel()
+
+	data := []byte("plain bytes")
+
+	// Reads near the real end return fewer than len(Magic) bytes, which
+	// must still advance the offset instead of stalling the loop.
+	buf := make([]byte, 16*1024)
+	_, err := findNextMagic(t.Context(), bytes.NewReader(data), 0, int64(len(data))+100, buf)
+
+	require.ErrorIs(t, err, errIO)
+	require.ErrorIs(t, err, io.EOF)
+}
+
+// Expectation: findNextMagic should find a magic sequence in a short read that also returned an error.
+func Test_findNextMagic_ShortReadWithError_Success(t *testing.T) {
+	t.Parallel()
+
+	data := append([]byte("prefix"), Magic[:]...)
+
+	// The reader returns all remaining bytes together with io.EOF.
+	buf := make([]byte, 16*1024)
+	offset, err := findNextMagic(t.Context(), bytes.NewReader(data), 0, int64(len(data))+100, buf)
+
+	require.NoError(t, err)
+	require.Equal(t, int64(6), offset)
 }
 
 // Expectation: findNextMagic should return a context error when the context is cancelled before scanning begins.

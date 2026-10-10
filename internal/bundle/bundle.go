@@ -29,7 +29,15 @@ const (
 	FlagIndexRebuilt uint64 = 1 << 0
 )
 
-var ErrDataCorrupt = errors.New("data corrupt")
+var (
+	// ErrDataCorrupt is an error indicating bundle corruption.
+	ErrDataCorrupt = errors.New("data corrupt")
+
+	// errIO is an I/O error not indicating bundle corruption.
+	// We do not use it everywhere I/O happens, but at relevant
+	// places where we need to decide between corruption/non-corruption.
+	errIO = errors.New("io error")
+)
 
 // Bundle is an opened bundle file with a parsed index packet. If the index was
 // corrupt on open, it is reconstructed from intact found packets and OpenError
@@ -89,8 +97,18 @@ func Open(ctx context.Context, fsys afero.Fs, bundlePath string) (*Bundle, error
 
 	b := &Bundle{f: f, size: fi.Size()}
 	if err := b.readIndexPacket(); err != nil {
+		if errors.Is(err, errIO) {
+			// We do not want a transient I/O error to cause a bundle
+			// rebuild, so we surface the error instead of rebuilding.
+			_ = f.Close()
+
+			return nil, fmt.Errorf("failed to read index: %w", err)
+		}
+
 		files, manifest, serr := Scan(ctx, f, fi.Size(), true)
 		if serr != nil {
+			_ = f.Close()
+
 			return nil, fmt.Errorf("failed to scan: %w", serr)
 		}
 

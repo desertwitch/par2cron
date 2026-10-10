@@ -211,7 +211,8 @@ func Test_readAndValidatePacket_Bounds_Error(t *testing.T) {
 			t.Parallel()
 
 			_, _, err := readAndValidatePacket(bytes.NewReader(nil), tt.offset, tt.fileSize, false)
-			require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+			require.ErrorContains(t, err, "remaining file cannot fit another packet")
+			require.NotErrorIs(t, err, errIO)
 		})
 	}
 }
@@ -238,6 +239,7 @@ func Test_readAndValidatePacket_ReadHeaderFails_Error(t *testing.T) {
 
 	_, _, err := readAndValidatePacket(failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize, false)
 
+	require.ErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "failed to read header")
 	require.ErrorContains(t, err, "read boom")
 }
@@ -261,8 +263,56 @@ func Test_readAndValidatePacket_ReadBodyFails_Error(t *testing.T) {
 
 	_, _, err := readAndValidatePacket(r, 0, int64(len(raw)), false)
 
+	require.ErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "failed to read body")
 	require.ErrorContains(t, err, "body boom")
+}
+
+// Expectation: readAndValidatePacket should accept an empty-body packet at the very end without reading past it.
+func Test_readAndValidatePacket_EmptyBodyAtEnd_Success(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeCommonPacket(&buf, testRecoverySetID, PacketTypeManifest, nil))
+	raw := buf.Bytes()
+
+	// bytes.Reader.ReadAt returns io.EOF for any read at the end, even zero-length.
+	ch, body, err := readAndValidatePacket(bytes.NewReader(raw), 0, int64(len(raw)), true)
+
+	require.NoError(t, err)
+	require.Equal(t, PacketTypeManifest, ch.PacketType)
+	require.Empty(t, body)
+}
+
+// Expectation: readAndValidatePacket should report validation failures as corruption, not as I/O errors.
+func Test_readAndValidatePacket_ValidationFailures_NotIO_Error(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	require.NoError(t, writeCommonPacket(&buf, testRecoverySetID, PacketTypeFile, []byte("name")))
+
+	tests := []struct {
+		name   string
+		mutate func(raw []byte)
+	}{
+		{name: "invalid magic", mutate: func(raw []byte) { raw[0] ^= 0xFF }},
+		{name: "invalid checksum", mutate: func(raw []byte) { raw[commonHeaderSize] ^= 0xFF }},
+		{name: "unknown packet type", mutate: func(raw []byte) { raw[48] ^= 0xFF }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			raw := bytes.Clone(buf.Bytes())
+			tt.mutate(raw)
+
+			_, _, err := readAndValidatePacket(bytes.NewReader(raw), 0, int64(len(raw)), true)
+
+			require.Error(t, err)
+			require.NotErrorIs(t, err, errIO)
+		})
+	}
 }
 
 // Expectation: parseIndexPacket should decode manifest metadata and file entries with padded names.
