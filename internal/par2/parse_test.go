@@ -879,6 +879,21 @@ func Test_Parse_MultipleCorruptedPackets_Success(t *testing.T) {
 	require.Len(t, sets, 1)
 }
 
+// Expectation: Parse should error on two different main packets claiming the same set.
+func Test_Parse_ConflictingMainPackets_Error(t *testing.T) {
+	t.Parallel()
+
+	main1 := buildMainPacket(4096, [][16]byte{idA}, nil)
+
+	// Same set ID as main1, but a different body (slice size 8192).
+	main2 := buildPacket(mainType, buildMainBody(8192, [][16]byte{idA}, nil), setIDOf(main1))
+
+	sets, err := Parse(t.Context(), bytes.NewReader(slices.Concat(main1, main2)), true)
+
+	require.ErrorIs(t, err, errUnresolvableConflict)
+	require.Nil(t, sets)
+}
+
 // Expectation: Parse should return error when too many sets are encountered.
 func Test_Parse_TooManySets_Error(t *testing.T) {
 	t.Parallel()
@@ -1826,26 +1841,18 @@ func Test_verifyPacketStream_ShortStream_EOF_Error(t *testing.T) {
 	require.ErrorIs(t, err, errIO)
 }
 
-// Expectation: parseMainPacketBody should reject a body that does not hash to the set ID.
-func Test_parseMainPacketBody_SetIDMismatch_Error(t *testing.T) {
+// Expectation: parseMainPacketBody should accept any set ID, as the spec tells readers
+// not to check how it was calculated (only that it remain the same across all packets).
+func Test_parseMainPacketBody_ArbitrarySetID_Success(t *testing.T) {
 	t.Parallel()
 
 	body := buildMainBody(4096, [][16]byte{idA}, nil)
+	setID := Hash{0xDE, 0xAD, 0xBE, 0xEF}
 
-	_, err := parseMainPacketBody(Hash{}, body)
-	require.ErrorIs(t, err, errChecksumMismatch)
-	require.Contains(t, err.Error(), "does not match set ID")
-}
-
-// Expectation: parseMainPacketBody should accept a body that hashes to the set ID.
-func Test_parseMainPacketBody_SetIDMatch_Success(t *testing.T) {
-	t.Parallel()
-
-	body := buildMainBody(4096, [][16]byte{idA}, nil)
-
-	packet, err := parseMainPacketBody(Hash(md5.Sum(body)), body)
+	packet, err := parseMainPacketBody(setID, body)
 	require.NoError(t, err)
-	require.Equal(t, Hash(md5.Sum(body)), packet.SetID)
+	require.Equal(t, setID, packet.SetID)
+	require.Equal(t, uint64(4096), packet.SliceSize)
 }
 
 // Expectation: parseMainPacketBody should reject invalid slice size alignment.

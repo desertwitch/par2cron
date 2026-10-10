@@ -561,11 +561,6 @@ func parseMainPacketBody(setID Hash, body []byte) (*MainPacket, error) {
 		return nil, fmt.Errorf("%w: body too short for main packet", errInvalidPacket)
 	}
 
-	// Per spec, the set ID is the MD5 of the main packet body.
-	if Hash(md5.Sum(body)) != setID {
-		return nil, fmt.Errorf("%w: main packet body does not match set ID", errChecksumMismatch)
-	}
-
 	sliceSize := binary.LittleEndian.Uint64(body[0:8])
 	numRecoveryFiles := binary.LittleEndian.Uint32(body[8:12])
 
