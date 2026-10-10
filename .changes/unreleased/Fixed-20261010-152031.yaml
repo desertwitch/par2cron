@@ -1,0 +1,6 @@
+kind: Fixed
+body: file handle leak on bundle open
+time: 2026-10-10T15:20:31.097339667+02:00
+custom:
+    Issue: ""
+    PR: "97"
