@@ -252,6 +252,121 @@ func (f *flakyReader) Read(p []byte) (int, error) {
 	return f.Reader.Read(p)
 }
 
+// failingReader fails every read that starts at or after failAt (and before
+// failUntil, if set) with err, simulating an unreadable region in a file.
+type failingReader struct {
+	*bytes.Reader
+
+	failAt    int64
+	failUntil int64
+	err       error
+}
+
+func (f *failingReader) Read(p []byte) (int, error) {
+	pos := f.Size() - int64(f.Len())
+	if pos >= f.failAt && (f.failUntil == 0 || pos < f.failUntil) {
+		return 0, f.err
+	}
+
+	return f.Reader.Read(p)
+}
+
+// Expectation: Parse should return a packet header read error instead of skipping the packet.
+func Test_Parse_HeaderReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	data := slices.Concat(main, buildFileDescPacket("a.txt", 100, idA, setA))
+
+	r := &failingReader{Reader: bytes.NewReader(data), failAt: int64(len(main)), err: errors.New("read boom")}
+
+	sets, err := Parse(t.Context(), r, true)
+
+	require.ErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "failed to read packet")
+	require.ErrorContains(t, err, "read boom")
+	require.Nil(t, sets)
+}
+
+// Expectation: Parse should return a packet body read error instead of skipping the packet.
+func Test_Parse_BodyReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	data := slices.Concat(main, buildFileDescPacket("a.txt", 100, idA, setA))
+
+	// Fails inside the file packet's body, after its header was read.
+	r := &failingReader{Reader: bytes.NewReader(data), failAt: int64(len(main) + packetHeaderSize), err: errors.New("read boom")}
+
+	sets, err := Parse(t.Context(), r, true)
+
+	require.ErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "read boom")
+	require.Nil(t, sets)
+}
+
+// Expectation: Parse should return a read error while hashing a skipped packet instead of scanning past it.
+func Test_Parse_SkippedPacketReadFails_Error(t *testing.T) {
+	t.Parallel()
+
+	unknown := buildPacket(unknownType, make([]byte, 64), sID)
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	data := slices.Concat(unknown, main)
+
+	// Only the unknown packet's body (streamed for its checksum) is unreadable,
+	// so scanning past it would succeed and silently hide the read error.
+	r := &failingReader{
+		Reader:    bytes.NewReader(data),
+		failAt:    packetHeaderSize,
+		failUntil: int64(len(unknown)),
+		err:       errors.New("read boom"),
+	}
+
+	sets, err := Parse(t.Context(), r, true)
+
+	require.ErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "read boom")
+	require.Nil(t, sets)
+}
+
+// Expectation: Parse should still recover from a truncated packet at the end (not an I/O error).
+func Test_Parse_TruncatedLastPacket_Success(t *testing.T) {
+	t.Parallel()
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	file := buildFileDescPacket("a.txt", 100, idA, setA)
+	data := slices.Concat(main, file, main[:len(main)/2])
+
+	sets, err := Parse(t.Context(), bytes.NewReader(data), true)
+
+	require.NoError(t, err)
+	require.Len(t, sets, 1)
+	require.Len(t, sets[0].RecoverySet, 1)
+}
+
+// Expectation: Parse should recover from a skipped packet whose body is cut off by the
+// end of the data, keeping all packets before it instead of failing with a read error.
+func Test_Parse_TruncatedSkippedPacket_Success(t *testing.T) {
+	t.Parallel()
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	file := buildFileDescPacket("a.txt", 100, idA, setA)
+	unknown := buildPacket(unknownType, make([]byte, 1024), sID)
+
+	// The unknown packet is cut off mid-body. The reader overreports its size,
+	// so the length check passes and the body is streamed until the real end.
+	data := slices.Concat(main, file, unknown[:packetHeaderSize+100])
+	r := &lyingSizeReader{Reader: bytes.NewReader(data), extra: 4096}
+
+	sets, err := Parse(t.Context(), r, true)
+
+	require.NoError(t, err)
+	require.Len(t, sets, 1)
+	require.Equal(t, Hash(setA), sets[0].SetID)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Equal(t, "a.txt", sets[0].RecoverySet[0].Name)
+}
+
 // Expectation: Parse should start at the reader's current position,
 // ignoring anything before it.
 func Test_Parse_NonZeroStartOffset_Success(t *testing.T) {
@@ -1251,20 +1366,6 @@ func Test_readNextPacket_LengthEqualsAvailable_Success(t *testing.T) {
 	require.IsType(t, &MainPacket{}, entry)
 }
 
-// Expectation: a short body stream must surface as io.ErrUnexpectedEOF, never io.EOF,
-// otherwise Parse treats it as the end of the stream and skips later packets.
-func Test_readNextPacket_UnknownPacketShortStream_UnexpectedEOF_Error(t *testing.T) {
-	t.Parallel()
-
-	packet := buildPacket(unknownType, make([]byte, 16), sID)
-	binary.LittleEndian.PutUint64(packet[8:16], 64+1024) // Claims far more than present
-
-	// Simulate an overreported stream size so the body stream is attempted.
-	_, err := readNextPacket(t.Context(), bytes.NewReader(packet), math.MaxInt64, true)
-	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
-	require.NotErrorIs(t, err, io.EOF)
-}
-
 // Expectation: readNextPacket should return errUnhandledPacket for unknown packet types without MD5.
 func Test_readNextPacket_UnknownPacketType_Success(t *testing.T) {
 	t.Parallel()
@@ -1632,19 +1733,21 @@ func Test_verifyPacketStream_InvalidChecksum_Error(t *testing.T) {
 	require.Equal(t, int64(len(packet)-64), pos)
 }
 
-// Expectation: verifyPacketStream should report a short stream as io.ErrUnexpectedEOF, not io.EOF.
-func Test_verifyPacketStream_ShortStream_UnexpectedEOF_Error(t *testing.T) {
+// Expectation: verifyPacketStream should report a short stream as truncation (io.EOF),
+// so Parse recovers from it instead of failing on it as a read error.
+func Test_verifyPacketStream_ShortStream_EOF_Error(t *testing.T) {
 	t.Parallel()
 
-	packet := buildMainPacket(4096, [][16]byte{idA}, nil)
+	packet := buildPacket(unknownType, make([]byte, 64), sID)
 	header, err := parsePacketHeader(packet[:64])
 	require.NoError(t, err)
 
 	// Claim more body bytes than the reader holds
 	r := bytes.NewReader(packet[64:])
 	err = verifyPacketStream(header, packet[:64], r, int64(len(packet)-64)+100)
-	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
-	require.NotErrorIs(t, err, io.EOF)
+
+	require.ErrorIs(t, err, io.EOF)
+	require.ErrorIs(t, err, errIO)
 }
 
 // Expectation: parseMainPacketBody should reject a body that does not hash to the set ID.

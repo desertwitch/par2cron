@@ -45,7 +45,6 @@ const (
 )
 
 var (
-	errFileCorrupted        = errors.New("file corrupted")
 	errChecksumMismatch     = errors.New("packet checksum mismatch")
 	errFilenameTooLong      = errors.New("filename exceeds maximum length")
 	errInvalidAlignment     = errors.New("packet length not aligned to 4 bytes")
@@ -58,6 +57,11 @@ var (
 	errSkipPacket           = errors.New("skip this packet")
 	errUnhandledPacket      = errors.New("unhandled packet")
 	errUnresolvableConflict = errors.New("unresolvable conflict")
+
+	// errIO is an I/O error not indicating corruption.
+	// We do not use it everywhere I/O happens, but at relevant
+	// places where we need to decide between corruption/non-corruption.
+	errIO = errors.New("io error")
 )
 
 // Parse reads PAR2 data and returns a slice of [Set] in the order they appeared.
@@ -74,17 +78,14 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 
 	origin, err := r.Seek(0, io.SeekCurrent)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to seek start position: %w",
-			errFileCorrupted, err)
+		return nil, fmt.Errorf("failed to seek start position: %w", err)
 	}
 	size, err := r.Seek(0, io.SeekEnd)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to seek stream size: %w",
-			errFileCorrupted, err)
+		return nil, fmt.Errorf("failed to seek stream size: %w", err)
 	}
 	if _, err := r.Seek(origin, io.SeekStart); err != nil {
-		return nil, fmt.Errorf("%w: failed to rewind to start position: %w",
-			errFileCorrupted, err)
+		return nil, fmt.Errorf("failed to rewind to start position: %w", err)
 	}
 
 	for {
@@ -94,8 +95,7 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 
 		before, err := r.Seek(0, io.SeekCurrent)
 		if err != nil {
-			return nil, fmt.Errorf("%w: failed to seek pre-parse position: %w",
-				errFileCorrupted, err)
+			return nil, fmt.Errorf("failed to seek pre-parse position: %w", err)
 		}
 
 		entry, err := readNextPacket(ctx, r, size-before, checkMD5)
@@ -103,12 +103,14 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 			if err := ctx.Err(); err != nil {
 				return nil, fmt.Errorf("context error: %w", err)
 			}
-			if errors.Is(err, io.EOF) {
-				// Do not catch [io.ErrUnexpectedEOF] here, a packet could
-				// claim an excessive length, cause it, and we'd skip others.
-				break // No more packets.
+			if errors.Is(err, errSkipPacket) {
+				// Reader is already positioned at next packet start.
+				continue
 			}
-			if errors.Is(err, io.ErrUnexpectedEOF) {
+
+			// EOF before errIO: truncation is wrapped in errIO by readNextPacket,
+			// but is content damage to recover from, not an I/O error to fail on.
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 				// Try one more byte to see if the reader is really done.
 				if pos, serr := r.Seek(0, io.SeekCurrent); serr == nil && pos < size {
 					var probe [1]byte
@@ -116,18 +118,16 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 						size = pos // The reader is really at its end.
 					}
 				}
-			}
-			if errors.Is(err, errSkipPacket) {
-				// Reader is already positioned at next packet start.
-				continue
+			} else if errors.Is(err, errIO) {
+				// We do not want to skip packets on transient I/O errors.
+				return nil, fmt.Errorf("failed to read packet: %w", err)
 			}
 
 			// Reposition the reader 1 byte after the pre-parse position,
 			// this avoids corrupt packets being reparsed endlessly and we
 			// can still find other non-corrupt packets from them onwards.
 			if _, err := r.Seek(before+1, io.SeekStart); err != nil {
-				return nil, fmt.Errorf("%w: failed to seek past corrupt packet: %w",
-					errFileCorrupted, err)
+				return nil, fmt.Errorf("failed to seek past corrupt packet: %w", err)
 			}
 
 			// Attempt to seek to the next [packetMagic] sequence.
@@ -139,8 +139,7 @@ func Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]Set, error) {
 					break // No more packets.
 				}
 
-				return nil, fmt.Errorf("%w: failed to recover after corrupt packet: %w",
-					errFileCorrupted, err)
+				return nil, fmt.Errorf("failed to recover after corrupt packet: %w", err)
 			}
 
 			continue
@@ -317,7 +316,7 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 
 	// Read the 64-byte header
 	headerBytes := make([]byte, packetHeaderSize)
 	if _, err := io.ReadFull(r, headerBytes); err != nil {
-		return nil, fmt.Errorf("failed to read packet header: %w", err)
+		return nil, fmt.Errorf("%w: failed to read packet header: %w", errIO, err)
 	}
 
 	// Parse header fields
@@ -383,8 +382,10 @@ func readNextPacket(ctx context.Context, r io.ReadSeeker, avail int64, checkMD5 
 
 	// Read the body into memory
 	bodyBytes := make([]byte, bodyLen)
-	if _, err := io.ReadFull(ctxReader, bodyBytes); err != nil {
-		return nil, fmt.Errorf("failed to read packet body: %w", err)
+	if bodyLen > 0 {
+		if _, err := io.ReadFull(ctxReader, bodyBytes); err != nil {
+			return nil, fmt.Errorf("%w: failed to read packet body: %w", errIO, err)
+		}
 	}
 
 	if checkMD5 {
@@ -537,14 +538,7 @@ func verifyPacketStream(header *packetHeader, headerBytes []byte, r io.Reader, b
 	hasher.Write(headerBytes[packetHashOffset:])
 
 	if _, err := io.CopyN(hasher, r, bodyLen); err != nil {
-		// [io.EOF] means "no more packets" upstream, so we remap
-		// it to [io.ErrUnexpectedEOF] as it's more accurate here.
-		// Otherwise any later valid packets get skipped upstream.
-		if errors.Is(err, io.EOF) {
-			err = io.ErrUnexpectedEOF
-		}
-
-		return fmt.Errorf("failed to read: %w", err)
+		return fmt.Errorf("%w: failed to read: %w", errIO, err)
 	}
 
 	var computed Hash
