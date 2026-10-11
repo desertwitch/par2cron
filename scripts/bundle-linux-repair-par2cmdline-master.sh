@@ -185,6 +185,21 @@ for NAME in "${BUNDLE_NAMES[@]}"; do
     fi
     popd > /dev/null
 
+    # Verify the repaired files match the originals, independent of par2's exit code
+    echo "Checking repaired files against the originals..."
+    for src in "$SOURCES_DIR"/*; do
+        [ -f "$src" ] || continue
+        fname=$(basename "$src")
+        want=$(md5sum "$src" | awk '{print $1}')
+        got=$(md5sum "$VERIFY_DIR/$fname" 2>/dev/null | awk '{print $1}' || true)
+        if [ "$want" != "$got" ]; then
+            echo "::error::Repaired file $fname does not match the original! (expected $want, got ${got:-missing})"
+            FAILED=1
+        else
+            echo "  OK: $fname matches the original ($want)"
+        fi
+    done
+
     # Verify bundle file was not modified during repair
     MD5_AFTER=$(md5sum "$BUNDLE_PATH" | awk '{print $1}')
     echo "Bundle MD5 after repair:  $MD5_AFTER"

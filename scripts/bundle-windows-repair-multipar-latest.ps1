@@ -137,6 +137,20 @@ try {
             $failed = $true
         }
 
+        # Verify the repaired files match the originals, independent of par2's exit code
+        Write-Output "Checking repaired files against the originals..."
+        foreach ($src in Get-ChildItem -Path $sourcesDir -File) {
+            $want = (Get-FileHash -Path $src.FullName -Algorithm MD5).Hash
+            $repaired = Join-Path $verifyDir $src.Name
+            $got = if (Test-Path $repaired) { (Get-FileHash -Path $repaired -Algorithm MD5).Hash } else { "missing" }
+            if ($want -ne $got) {
+                Write-Output "::error::Repaired file $($src.Name) does not match the original! (expected $want, got $got)"
+                $failed = $true
+            } else {
+                Write-Output "  OK: $($src.Name) matches the original ($want)"
+            }
+        }
+
         # Verify bundle file was not modified during repair
         $md5After = (Get-FileHash -Path $bundlePath -Algorithm MD5).Hash
         Write-Output "Bundle MD5 after repair:  $md5After"
