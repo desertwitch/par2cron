@@ -1,0 +1,6 @@
+kind: Fixed
+body: do not skip par2 packets on transient I/O errors
+time: 2026-10-10T15:05:47.125428911+02:00
+custom:
+    Issue: ""
+    PR: "97"

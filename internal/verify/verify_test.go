@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
@@ -1853,8 +1854,8 @@ func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	require.Contains(t, jobs[0].Par2Path, schema.BundleExtension)
 }
 
-// Expectation: A nil manifest should be returned when the bundle manifest cannot be read.
-func Test_Service_Enumerate_Bundle_ManifestReadFails_Success(t *testing.T) {
+// Expectation: A nil manifest should be returned when the bundle manifest is corrupted.
+func Test_Service_Enumerate_Bundle_ManifestCorrupted_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1862,7 +1863,7 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Success(t *testing.T) {
 
 	mockBundle := &testutil.MockBundle{
 		ManifestFunc: func() ([]byte, error) {
-			return nil, errors.New("corrupt bundle")
+			return nil, bundle.ErrDataCorrupt
 		},
 		CloseFunc: func() error {
 			return nil
@@ -1893,6 +1894,48 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Success(t *testing.T) {
 	require.False(t, jobs[0].HasManifest)
 	require.True(t, jobs[0].IsBundle)
 	require.Contains(t, logBuf.String(), "resetting manifest")
+}
+
+// Expectation: A bundle manifest read error that is not corruption should be retried, not reset.
+func Test_Service_Enumerate_Bundle_ManifestReadIOFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return nil, errors.New("read boom")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
+
+	require.ErrorIs(t, err, schema.ErrNonFatal)
+	require.Empty(t, jobs)
+	require.Contains(t, logBuf.String(), "will retry next run")
+	require.Contains(t, logBuf.String(), "read boom")
+	require.NotContains(t, logBuf.String(), "resetting manifest")
 }
 
 // Expectation: A nil manifest should be returned when the bundle manifest is invalid JSON.
@@ -2455,8 +2498,8 @@ func Test_Service_loadManifest_ValidManifest_Success(t *testing.T) {
 	require.NotNil(t, mf.Creation)
 }
 
-// Expectation: loadBundleManifest should return nil manifest when the bundle manifest cannot be read.
-func Test_Service_loadBundleManifest_ManifestReadFails_ReturnsNilManifest_Success(t *testing.T) {
+// Expectation: loadBundleManifest should return nil manifest when the bundle manifest is corrupted.
+func Test_Service_loadBundleManifest_ManifestCorrupted_ReturnsNilManifest_Success(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -2464,7 +2507,7 @@ func Test_Service_loadBundleManifest_ManifestReadFails_ReturnsNilManifest_Succes
 
 	mockBundle := &testutil.MockBundle{
 		ManifestFunc: func() ([]byte, error) {
-			return nil, errors.New("corrupt manifest")
+			return nil, bundle.ErrDataCorrupt
 		},
 		CloseFunc: func() error {
 			return nil
@@ -2500,6 +2543,54 @@ func Test_Service_loadBundleManifest_ManifestReadFails_ReturnsNilManifest_Succes
 	require.NoError(t, err)
 	require.Nil(t, mf)
 	require.Contains(t, logBuf.String(), "resetting manifest")
+}
+
+// Expectation: loadBundleManifest should return a bundle manifest read error that is not corruption, without resetting.
+func Test_Service_loadBundleManifest_ManifestReadIOFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundle"), 0o644))
+
+	mockBundle := &testutil.MockBundle{
+		ManifestFunc: func() ([]byte, error) {
+			return nil, errors.New("read boom")
+		},
+		CloseFunc: func() error {
+			return nil
+		},
+	}
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return mockBundle, nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+
+	meta := &JobMeta{
+		&schema.JobMeta{
+			Par2Path:    "/data/test" + schema.BundleExtension + schema.Par2Extension,
+			HasManifest: true,
+			IsBundle:    true,
+		},
+	}
+
+	mf, err := prog.loadBundleManifest(t.Context(), meta)
+
+	require.ErrorContains(t, err, "failed to read")
+	require.ErrorContains(t, err, "read boom")
+	require.Nil(t, mf)
+	require.NotContains(t, logBuf.String(), "resetting manifest")
 }
 
 // Expectation: loadBundleManifest should return nil manifest when the bundle manifest is invalid JSON.

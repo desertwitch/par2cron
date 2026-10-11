@@ -1,0 +1,6 @@
+kind: Fixed
+body: possible endless scanning in bundle and par2 parsing
+time: 2026-10-10T15:20:53.709177426+02:00
+custom:
+    Issue: ""
+    PR: "97"

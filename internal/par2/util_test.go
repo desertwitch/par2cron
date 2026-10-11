@@ -720,9 +720,8 @@ func Test_ParseFileSet_MergesMultipleVolumes_Success(t *testing.T) {
 	require.Len(t, result.SetsMerged[0].RecoverySet, 3)
 }
 
-// Expectation: ParseFileSet should drop a main packet whose body does not match
-// its set ID, so a "conflicting" copy can no longer reach the merge step.
-func Test_ParseFileSet_ConflictingMainPacketRejected_Success(t *testing.T) {
+// Expectation: ParseFileSet should handle conflicting main packets.
+func Test_ParseFileSet_ConflictingMainPackets_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -735,11 +734,8 @@ func Test_ParseFileSet_ConflictingMainPacketRejected_Success(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", mainPacket1, 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", mainPacket2, 0o644))
 
-	result, err := ParseFileSet(fs, "/archive.par2", false)
-	require.NoError(t, err)
-
-	require.Len(t, result.SetsMerged, 1)
-	require.Equal(t, uint64(4096), result.SetsMerged[0].MainPacket.SliceSize)
+	_, err := ParseFileSet(fs, "/archive.par2", false)
+	require.ErrorIs(t, err, errUnresolvableConflict)
 }
 
 // Expectation: ParseFileSet should handle empty index file with valid volumes.

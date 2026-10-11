@@ -102,13 +102,13 @@ func packetMD5(recoverySetID [16]byte, packetType [16]byte, body []byte) [16]byt
 func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64, checkMD5 bool) (CommonHeader, []byte, error) {
 	// Bounds check: can we fit a header in the remaining file?
 	if offset < 0 || fileSize < commonHeaderSize || offset > fileSize-commonHeaderSize {
-		return CommonHeader{}, nil, io.ErrUnexpectedEOF
+		return CommonHeader{}, nil, errors.New("remaining file cannot fit another packet")
 	}
 
 	// Read the header.
 	var hdrBuf [commonHeaderSize]byte
 	if _, err := r.ReadAt(hdrBuf[:], offset); err != nil {
-		return CommonHeader{}, nil, fmt.Errorf("failed to read header: %w", err)
+		return CommonHeader{}, nil, fmt.Errorf("%w: failed to read header: %w", errIO, err)
 	}
 	var ch CommonHeader
 	if err := binary.Read(bytes.NewReader(hdrBuf[:]), binary.LittleEndian, &ch); err != nil {
@@ -145,8 +145,10 @@ func readAndValidatePacket(r io.ReaderAt, offset, fileSize int64, checkMD5 bool)
 
 	// Read the body at its offset.
 	body := make([]byte, bodyLen)
-	if _, err := r.ReadAt(body, bodyOffset); err != nil {
-		return CommonHeader{}, nil, fmt.Errorf("failed to read body: %w", err)
+	if bodyLen > 0 {
+		if _, err := r.ReadAt(body, bodyOffset); err != nil {
+			return CommonHeader{}, nil, fmt.Errorf("%w: failed to read body: %w", errIO, err)
+		}
 	}
 
 	if checkMD5 {

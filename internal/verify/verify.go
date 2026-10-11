@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/flags"
 	"github.com/desertwitch/par2cron/internal/logging"
 	"github.com/desertwitch/par2cron/internal/schema"
@@ -463,14 +464,17 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 		_ = bun.Close()
 		unlock()
 
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("context error: %w", err)
+		if !errors.Is(err, bundle.ErrDataCorrupt) {
+			logger := prog.verificationLogger(ctx, nil, bundlePath)
+			logger.Error("Failed to read bundle manifest (will retry next run)", "error", err)
+
+			return nil, schema.ErrNonFatal
 		}
 
 		meta := NewJobMeta(schema.NewJobMeta(bundlePath, nil, true))
 
 		logger := prog.verificationLogger(ctx, meta, bundlePath)
-		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
+		logger.Warn("Bundle manifest is corrupted (resetting manifest)", "error", err)
 
 		return meta, nil
 	}
@@ -552,12 +556,12 @@ func (prog *Service) loadBundleManifest(ctx context.Context, meta *JobMeta) (*sc
 		_ = bun.Close()
 		unlock()
 
-		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("context error: %w", err)
+		if !errors.Is(err, bundle.ErrDataCorrupt) {
+			return nil, fmt.Errorf("failed to read: %w", err)
 		}
 
 		logger := prog.verificationLogger(ctx, meta, bundlePath)
-		logger.Warn("Failed to read par2cron manifest (resetting manifest)", "error", err)
+		logger.Warn("Bundle manifest is corrupted (resetting manifest)", "error", err)
 
 		return nil, nil //nolint:nilnil
 	}

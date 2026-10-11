@@ -13,12 +13,12 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 
 # --- Check build prerequisites ---
 MISSING=""
-for tool in git autoconf automake make g++ unzip; do
+for tool in git cmake make g++ unzip; do
     command -v "$tool" > /dev/null 2>&1 || MISSING="$MISSING $tool"
 done
 if [ -n "$MISSING" ]; then
     echo "::error::Missing required build tools:$MISSING"
-    echo "On Debian/Ubuntu: sudo apt-get install -y build-essential autoconf automake"
+    echo "On Debian/Ubuntu: sudo apt-get install -y build-essential cmake"
     exit 1
 fi
 
@@ -40,26 +40,53 @@ fi
 PAR2_COMMIT=$(git -C "$SRC_DIR" rev-parse --short HEAD)
 echo "Building par2cmdline at commit $PAR2_COMMIT..."
 
-pushd "$SRC_DIR" > /dev/null
-if [ -x ./automake.sh ]; then
-    ./automake.sh
-else
-    autoreconf -fiv
-fi
-./configure
-make -j"$(nproc 2>/dev/null || echo 2)"
+JOBS="$(nproc 2>/dev/null || echo 2)"
 
-if [ "$RUN_PAR2_SELFTEST" = "1" ]; then
-    echo "Running par2cmdline's own test suite..."
-    if ! make check; then
-        echo "::error::par2cmdline 'make check' failed."
-        popd > /dev/null
-        exit 1
+if [ -f "$SRC_DIR/CMakeLists.txt" ]; then
+    # CMake build (par2cmdline master since the switch away from autotools).
+    BUILD_DIR="$SRC_DIR/build-cmake"
+    PAR2_TESTS=OFF
+    [ "$RUN_PAR2_SELFTEST" = "1" ] && PAR2_TESTS=ON
+
+    cmake -S "$SRC_DIR" -B "$BUILD_DIR" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DPAR2_BUILD_TESTS="$PAR2_TESTS" \
+        -DPAR2_INSTALL=OFF
+    cmake --build "$BUILD_DIR" -j"$JOBS"
+
+    if [ "$RUN_PAR2_SELFTEST" = "1" ]; then
+        echo "Running par2cmdline's own test suite..."
+        if ! ctest --test-dir "$BUILD_DIR" --output-on-failure -j"$JOBS"; then
+            echo "::error::par2cmdline 'ctest' failed."
+            exit 1
+        fi
     fi
-fi
-popd > /dev/null
 
-PAR2="$SRC_DIR/par2"
+    PAR2="$BUILD_DIR/par2"
+else
+    # Autotools build (older refs, e.g. when PAR2_REF points at a release tag).
+    pushd "$SRC_DIR" > /dev/null
+    if [ -x ./automake.sh ]; then
+        ./automake.sh
+    else
+        autoreconf -fiv
+    fi
+    ./configure
+    make -j"$JOBS"
+
+    if [ "$RUN_PAR2_SELFTEST" = "1" ]; then
+        echo "Running par2cmdline's own test suite..."
+        if ! make check; then
+            echo "::error::par2cmdline 'make check' failed."
+            popd > /dev/null
+            exit 1
+        fi
+    fi
+    popd > /dev/null
+
+    PAR2="$SRC_DIR/par2"
+fi
+
 if [ ! -x "$PAR2" ]; then
     echo "::error::Build finished but no par2 binary at $PAR2"
     exit 1

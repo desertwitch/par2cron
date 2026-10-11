@@ -3,6 +3,7 @@ package bundle
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -19,13 +20,15 @@ func Scan(ctx context.Context, r io.ReaderAt, size int64, checkMD5 bool) ([]File
 	const bufSize = 16 * 1024
 	buf := make([]byte, bufSize)
 
+	ctxReader := &contextReaderAt{ctx, r}
+
 loop:
 	for offset := int64(0); offset+commonHeaderSize <= size; {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, fmt.Errorf("context error: %w", err)
 		}
 
-		ch, body, err := readAndValidatePacket(r, offset, size, checkMD5)
+		ch, body, err := readAndValidatePacket(ctxReader, offset, size, checkMD5)
 		if err == nil {
 			switch ch.PacketType {
 			case PacketTypeIndex:
@@ -57,16 +60,26 @@ loop:
 					continue
 				}
 			}
+		} else if errors.Is(err, errIO) {
+			// We do not want a transient I/O error to result in skipped
+			// packets so we surface it instead of just skipping it here.
+			return nil, nil, fmt.Errorf("failed to read packet: %w", err)
 		}
 
 		// Invalid packet, scan forward for next magic sequence.
-		found, err := findNextMagic(ctx, r, offset+1, size, buf)
+		found, err := findNextMagic(ctx, ctxReader, offset+1, size, buf)
 		if err != nil {
-			if err := ctx.Err(); err != nil {
-				return nil, nil, fmt.Errorf("context error: %w", err)
+			// This covers read-produced [io.EOF] (= unexpected EOF, shrunk)
+			if errors.Is(err, errIO) {
+				return nil, nil, fmt.Errorf("failed to find next packet: %w", err)
+			}
+			// This covers return-produced [io.EOF] (= expected EOF, actual)
+			if errors.Is(err, io.EOF) {
+				break // No more magic sequences found.
 			}
 
-			break // No more magic sequences found.
+			// This must be a non-IO error such as a context cancellation.
+			return nil, nil, fmt.Errorf("failed to find next packet: %w", err)
 		}
 
 		offset = found
@@ -89,7 +102,7 @@ func findNextMagic(ctx context.Context, r io.ReaderAt, from, fileSize int64, buf
 		readLen := min(int64(len(buf)), fileSize-off)
 		n, err := r.ReadAt(buf[:readLen], off)
 		if n == 0 && err != nil {
-			return 0, fmt.Errorf("failed to io: %w", err)
+			return 0, fmt.Errorf("%w: failed to read: %w", errIO, err)
 		}
 
 		// Search for magic in the chunk.
@@ -99,7 +112,7 @@ func findNextMagic(ctx context.Context, r io.ReaderAt, from, fileSize int64, buf
 
 		// Advance, but back up by len(Magic)-1 so we don't miss
 		// a magic sequence that straddles the buffer boundary.
-		off += int64(n) - magicLen + 1
+		off += max(int64(n)-magicLen+1, 1)
 	}
 
 	return 0, io.EOF
