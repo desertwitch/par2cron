@@ -9,15 +9,28 @@ import (
 	"github.com/spf13/afero"
 )
 
+type benchCase struct {
+	name     string
+	numFiles int
+	fileSize int
+}
+
+var benchCases = []benchCase{
+	{"1x1KB", 1, 1 << 10},
+	{"5x64KB", 5, 64 << 10},
+	{"10x1MB", 10, 1 << 20},
+}
+
 func seedFiles(fsys afero.Fs, n, size int) []FileInput {
 	files := make([]FileInput, n)
 	buf := make([]byte, size)
+
+	_ = fsys.MkdirAll("/src", 0o755)
 
 	for i := range n {
 		_, _ = rand.Read(buf)
 
 		path := fmt.Sprintf("/src/file_%d.par2", i)
-		_ = fsys.MkdirAll("/src", 0o755)
 		_ = afero.WriteFile(fsys, path, buf, 0o644)
 
 		files[i] = FileInput{
@@ -40,33 +53,32 @@ func packTestBundle(b *testing.B, fsys afero.Fs, path string, numFiles, fileSize
 	_, _ = rand.Read(rid[:])
 
 	if err := Pack(b.Context(), fsys, path, rid, mi, files); err != nil {
-		panic(err)
+		b.Fatal(err)
 	}
 
 	return manifest
 }
 
 func Benchmark_Pack(b *testing.B) {
-	for _, tc := range []struct {
-		name     string
-		numFiles int
-		fileSize int
-	}{
-		{"1x1KB", 1, 1 << 10},
-		{"5x64KB", 5, 64 << 10},
-		{"10x1MB", 10, 1 << 20},
-	} {
+	for _, tc := range benchCases {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
 			files := seedFiles(fsys, tc.numFiles, tc.fileSize)
 			mi := ManifestInput{Name: "test.manifest", Bytes: []byte("manifest")}
+
 			var rid [16]byte
 			_, _ = rand.Read(rid[:])
 
-			b.ResetTimer()
-			for i := range b.N {
-				path := fmt.Sprintf("/bench_%d.p2c.par2", i)
+			const path = "/bench.p2c.par2"
+
+			b.SetBytes(int64(tc.numFiles * tc.fileSize))
+			for b.Loop() {
 				if err := Pack(b.Context(), fsys, path, rid, mi, files); err != nil {
+					b.Fatal(err)
+				}
+
+				// Pack refuses to overwrite, and keeping every bundle in memory skews long runs.
+				if err := fsys.Remove(path); err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -75,21 +87,12 @@ func Benchmark_Pack(b *testing.B) {
 }
 
 func Benchmark_Open(b *testing.B) {
-	for _, tc := range []struct {
-		name     string
-		numFiles int
-		fileSize int
-	}{
-		{"1x1KB", 1, 1 << 10},
-		{"5x64KB", 5, 64 << 10},
-		{"10x1MB", 10, 1 << 20},
-	} {
+	for _, tc := range benchCases {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
 			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
 
-			b.ResetTimer()
-			for range b.N {
+			for b.Loop() {
 				bnd, err := Open(b.Context(), fsys, "/bench.p2c.par2")
 				if err != nil {
 					b.Fatal(err)
@@ -100,18 +103,13 @@ func Benchmark_Open(b *testing.B) {
 	}
 }
 
+// Benchmark_Update runs on the real filesystem, as MemMapFs moves the whole
+// file tail in memory on every write at an offset (making it scale with the
+// bundled data, which a real file does not). Includes the fsync of Update.
 func Benchmark_Update(b *testing.B) {
-	for _, tc := range []struct {
-		name     string
-		numFiles int
-		fileSize int
-	}{
-		{"1x1KB", 1, 1 << 10},
-		{"5x64KB", 5, 64 << 10},
-		{"10x1MB", 10, 1 << 20},
-	} {
+	for _, tc := range benchCases {
 		b.Run(tc.name, func(b *testing.B) {
-			fsys := afero.NewMemMapFs()
+			fsys := afero.NewBasePathFs(afero.NewOsFs(), b.TempDir())
 			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
 			newManifest := []byte(`{"files":["a.txt","b.txt","c.txt"],"updated":"2025-06-01T00:00:00Z"}`)
 
@@ -121,8 +119,7 @@ func Benchmark_Update(b *testing.B) {
 			}
 			defer bnd.Close()
 
-			b.ResetTimer()
-			for range b.N {
+			for b.Loop() {
 				if err := bnd.Update(newManifest); err != nil {
 					b.Fatal(err)
 				}
@@ -132,6 +129,8 @@ func Benchmark_Update(b *testing.B) {
 }
 
 func Benchmark_Validate(b *testing.B) {
+	const numFiles, fileSize = 5, 64 << 10
+
 	for _, strict := range []bool{false, true} {
 		label := "Lenient"
 		if strict {
@@ -139,7 +138,7 @@ func Benchmark_Validate(b *testing.B) {
 		}
 		b.Run(label, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
-			packTestBundle(b, fsys, "/bench.p2c.par2", 5, 64<<10)
+			packTestBundle(b, fsys, "/bench.p2c.par2", numFiles, fileSize)
 
 			bnd, err := Open(b.Context(), fsys, "/bench.p2c.par2")
 			if err != nil {
@@ -147,8 +146,10 @@ func Benchmark_Validate(b *testing.B) {
 			}
 			defer bnd.Close()
 
-			b.ResetTimer()
-			for range b.N {
+			if strict {
+				b.SetBytes(numFiles * fileSize) // Only strict reads the data.
+			}
+			for b.Loop() {
 				if err := bnd.Validate(b.Context(), strict); err != nil {
 					b.Fatal(err)
 				}
@@ -158,14 +159,7 @@ func Benchmark_Validate(b *testing.B) {
 }
 
 func Benchmark_Scan(b *testing.B) {
-	for _, tc := range []struct {
-		name     string
-		numFiles int
-		fileSize int
-	}{
-		{"5x64KB", 5, 64 << 10},
-		{"10x1MB", 10, 1 << 20},
-	} {
+	for _, tc := range benchCases {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
 			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
@@ -186,11 +180,14 @@ func Benchmark_Scan(b *testing.B) {
 				b.Skip("MemMapFs file does not implement io.ReaderAt")
 			}
 
-			b.ResetTimer()
-			for range b.N {
-				files, manifest, _ := Scan(b.Context(), ra, fi.Size(), true)
-				if manifest == nil || len(files) == 0 {
-					b.Fatal("scan returned no results")
+			b.SetBytes(fi.Size())
+			for b.Loop() {
+				files, manifest, err := Scan(b.Context(), ra, fi.Size(), true)
+				if err != nil {
+					b.Fatal(err)
+				}
+				if manifest == nil || len(files) != tc.numFiles {
+					b.Fatalf("scan returned %d files (want %d), manifest: %v", len(files), tc.numFiles, manifest != nil)
 				}
 			}
 		})
@@ -198,14 +195,7 @@ func Benchmark_Scan(b *testing.B) {
 }
 
 func Benchmark_Unpack(b *testing.B) {
-	for _, tc := range []struct {
-		name     string
-		numFiles int
-		fileSize int
-	}{
-		{"5x64KB", 5, 64 << 10},
-		{"10x1MB", 10, 1 << 20},
-	} {
+	for _, tc := range benchCases {
 		b.Run(tc.name, func(b *testing.B) {
 			fsys := afero.NewMemMapFs()
 			packTestBundle(b, fsys, "/bench.p2c.par2", tc.numFiles, tc.fileSize)
@@ -216,17 +206,25 @@ func Benchmark_Unpack(b *testing.B) {
 			}
 			defer bnd.Close()
 
-			b.ResetTimer()
-			for i := range b.N {
-				destDir := fmt.Sprintf("/out/%d", i)
-				_ = fsys.MkdirAll(destDir, 0o755)
+			const destDir = "/out"
+
+			b.SetBytes(int64(tc.numFiles * tc.fileSize))
+			for b.Loop() {
+				if err := fsys.MkdirAll(destDir, 0o755); err != nil {
+					b.Fatal(err)
+				}
 
 				paths, err := bnd.Unpack(b.Context(), fsys, destDir, true)
 				if err != nil {
 					b.Fatal(err)
 				}
-				if len(paths) == 0 {
-					b.Fatal("unpack returned no paths")
+				if len(paths) != tc.numFiles+1 { // Files plus the manifest.
+					b.Fatalf("unpack returned %d paths (want %d)", len(paths), tc.numFiles+1)
+				}
+
+				// Unpack refuses to overwrite, and keeping every output in memory skews long runs.
+				if err := fsys.RemoveAll(destDir); err != nil {
+					b.Fatal(err)
 				}
 			}
 		})
