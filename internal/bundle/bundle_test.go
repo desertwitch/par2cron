@@ -488,9 +488,10 @@ func Test_Open_ScanReadFails_Error(t *testing.T) {
 
 	_, err := Open(t.Context(), fs, fixture.bundlePath)
 
+	require.ErrorIs(t, err, errIO)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "failed to scan")
 	require.ErrorContains(t, err, "read boom")
-	require.NotErrorIs(t, err, ErrDataCorrupt)
 	require.True(t, closed)
 }
 

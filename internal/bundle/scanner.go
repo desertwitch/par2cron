@@ -20,13 +20,15 @@ func Scan(ctx context.Context, r io.ReaderAt, size int64, checkMD5 bool) ([]File
 	const bufSize = 16 * 1024
 	buf := make([]byte, bufSize)
 
+	ctxReader := &contextReaderAt{ctx, r}
+
 loop:
 	for offset := int64(0); offset+commonHeaderSize <= size; {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, fmt.Errorf("context error: %w", err)
 		}
 
-		ch, body, err := readAndValidatePacket(r, offset, size, checkMD5)
+		ch, body, err := readAndValidatePacket(ctxReader, offset, size, checkMD5)
 		if err == nil {
 			switch ch.PacketType {
 			case PacketTypeIndex:
@@ -65,7 +67,7 @@ loop:
 		}
 
 		// Invalid packet, scan forward for next magic sequence.
-		found, err := findNextMagic(ctx, r, offset+1, size, buf)
+		found, err := findNextMagic(ctx, ctxReader, offset+1, size, buf)
 		if err != nil {
 			// This covers read-produced [io.EOF] (= unexpected EOF, shrunk)
 			if errors.Is(err, errIO) {

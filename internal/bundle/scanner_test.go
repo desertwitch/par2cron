@@ -143,6 +143,7 @@ func Test_Scan_SearchReadFails_Error(t *testing.T) {
 
 	files, manifest, err := Scan(t.Context(), r, int64(len(raw)), true)
 
+	require.ErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "failed to find next packet")
 	require.ErrorContains(t, err, "read boom")
 	require.Nil(t, files)
@@ -175,6 +176,7 @@ func Test_Scan_DataShorterThanSizeDuringSearch_Error(t *testing.T) {
 	_, _, err := Scan(t.Context(), bytes.NewReader(raw), int64(len(raw))+1024, true)
 
 	require.ErrorIs(t, err, errIO)
+	require.ErrorIs(t, err, io.EOF)
 	require.ErrorContains(t, err, "failed to find next packet")
 }
 
@@ -230,6 +232,7 @@ func Test_findNextMagic_ReadError_Error(t *testing.T) {
 	buf := make([]byte, 16*1024)
 	_, err := findNextMagic(t.Context(), failingReaderAt{err: errors.New("read boom")}, 0, commonHeaderSize, buf)
 
+	require.ErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "failed to read")
 	require.ErrorContains(t, err, "read boom")
 }

@@ -545,7 +545,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	if err != nil {
 		logger := prog.repairLogger(ctx, job, nil)
 		logger.Warn("Failed to create backup file manager "+
-			"(repairing without attribute restoring and backup file handling)", "error", err)
+			"(repairing without backup file handling and attribute restoring)", "error", err)
 	}
 
 	var needsRestore bool
