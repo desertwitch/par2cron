@@ -78,6 +78,7 @@ loop:
 				break // No more magic sequences found.
 			}
 
+			// This must be a non-IO error such as a context cancellation.
 			return nil, nil, fmt.Errorf("failed to find next packet: %w", err)
 		}
 

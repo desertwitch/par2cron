@@ -104,6 +104,42 @@ func Test_Scan_ContextCancelled_Error(t *testing.T) {
 	require.ErrorContains(t, err, "context error")
 }
 
+// cancelOnReadAt cancels a context on its first read, after which it still
+// returns the data (so the in-flight read succeeds, the next check fails).
+type cancelOnReadAt struct {
+	data   []byte
+	cancel context.CancelFunc
+}
+
+func (r cancelOnReadAt) ReadAt(p []byte, off int64) (int, error) {
+	r.cancel()
+
+	return bytes.NewReader(r.data).ReadAt(p, off)
+}
+
+// Expectation: Scan should surface a non-I/O search error (cancellation) instead of stopping silently.
+func Test_Scan_SearchContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	raw := append([]byte("junk!"), readBundleBytes(t, fixture.fs, fixture.bundlePath)...)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	// The junk header at offset 0 is read (and invalid) while the context gets
+	// cancelled, so the search for the next packet is the first to observe it.
+	r := cancelOnReadAt{data: raw, cancel: cancel}
+
+	files, manifest, err := Scan(ctx, r, int64(len(raw)), true)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorContains(t, err, "failed to find next packet")
+	require.NotErrorIs(t, err, errIO)
+	require.Nil(t, files)
+	require.Nil(t, manifest)
+}
+
 // Expectation: Scan should surface an I/O error while reading a packet instead of skipping past the packet.
 func Test_Scan_PacketReadFails_Error(t *testing.T) {
 	t.Parallel()
