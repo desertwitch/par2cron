@@ -61,8 +61,9 @@ func Test_Bundle_Unpack_PathTraversal_Error(t *testing.T) {
 	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
-	require.ErrorContains(t, err, "escapes destination directory")
+	require.ErrorContains(t, err, "invalid path")
 	require.NotContains(t, paths, "/etc/passwd")
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 }
 
 // Expectation: Unpack should reject manifest names that traverse outside the destination directory.
@@ -77,14 +78,15 @@ func Test_Bundle_Unpack_ManifestPathTraversal_Error(t *testing.T) {
 	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
 	require.Error(t, err)
-	require.ErrorContains(t, err, "escapes destination directory")
+	require.ErrorContains(t, err, "invalid path")
 	for _, p := range paths {
 		require.NotContains(t, p, "manifest.json")
 	}
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 }
 
 // Expectation: Unpack should continue extracting remaining entries after a path traversal rejection.
-func Test_Bundle_Unpack_PathTraversalContinuesOthers(t *testing.T) {
+func Test_Bundle_Unpack_PathTraversalContinuesOthers_Error(t *testing.T) {
 	t.Parallel()
 
 	b, fixture := openTestBundle(t)
@@ -95,8 +97,19 @@ func Test_Bundle_Unpack_PathTraversalContinuesOthers(t *testing.T) {
 
 	paths, err := b.Unpack(t.Context(), fixture.fs, "/out", true)
 
-	require.Error(t, err)
-	require.NotEmpty(t, paths, "valid entries should still be extracted")
+	require.ErrorContains(t, err, "invalid path")
+	require.NotErrorIs(t, err, ErrDataCorrupt)
+
+	// All other entries plus the manifest, but nothing for the rejected one.
+	require.Len(t, paths, len(b.Index.Entries))
+	require.NotContains(t, paths, "escape")
+	for _, e := range b.Index.Entries[1:] {
+		require.Contains(t, paths, filepath.Join("/out", e.Name))
+	}
+
+	exists, err := afero.Exists(fixture.fs, "/escape")
+	require.NoError(t, err)
+	require.False(t, exists)
 }
 
 // Expectation: Unpack should return all extracted paths on success.
@@ -225,6 +238,7 @@ func Test_Bundle_ExtractEntry_HashMismatch_Error(t *testing.T) {
 	err = b.ExtractEntry(t.Context(), b.Index.Entries[0], &buf)
 
 	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotErrorIs(t, err, errIO)
 	require.NotEmpty(t, buf.Bytes())
 }
 
@@ -241,7 +255,8 @@ func Test_Bundle_ExtractEntry_WriterError_Error(t *testing.T) {
 
 	err := b.ExtractEntry(t.Context(), entry, w)
 
-	require.ErrorContains(t, err, "failed to io")
+	require.ErrorIs(t, err, errIO)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "writer boom")
 	require.NotEmpty(t, w.buf.Bytes())
 }
@@ -282,7 +297,8 @@ func Test_Bundle_ExtractManifest_HashMismatch_Error(t *testing.T) {
 	err = b.ExtractManifest(t.Context(), &buf)
 
 	require.ErrorIs(t, err, ErrDataCorrupt)
-	require.ErrorContains(t, err, "failed to validate")
+	require.NotErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "checksum mismatch")
 	require.NotEmpty(t, buf.Bytes())
 	require.NotEqual(t, fixture.manifest.Bytes, buf.Bytes())
 }
@@ -299,7 +315,8 @@ func Test_Bundle_ExtractManifest_WriterError_Error(t *testing.T) {
 
 	err := b.ExtractManifest(t.Context(), w)
 
-	require.ErrorContains(t, err, "failed to io")
+	require.ErrorIs(t, err, errIO)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "writer boom")
 	require.NotEmpty(t, w.buf.Bytes())
 }
@@ -466,52 +483,59 @@ func Test_extractToFile_CloseFails_Error(t *testing.T) {
 	require.False(t, exists)
 }
 
-// Expectation: safePath should accept simple relative names.
-func Test_safePath_Valid(t *testing.T) {
+// Expectation: jailedJoinPath should accept names that stay inside the
+// directory, reject names that escape it or resolve to it.
+func Test_jailedJoinPath(t *testing.T) {
 	t.Parallel()
 
-	path, err := safePath("/dest", "subdir/file.txt")
+	tests := []struct {
+		name    string
+		dir     string
+		input   string
+		want    string // Expected path, if no error.
+		wantErr string // Expected error substring, empty if none.
+	}{
+		// Valid names.
+		{name: "simple file", dir: "/dest", input: "file.txt", want: "/dest/file.txt"},
+		{name: "subdirectory", dir: "/dest", input: "sub/file.txt", want: "/dest/sub/file.txt"},
+		{name: "nested subdirectory", dir: "/dest", input: "a/b/c/file.txt", want: "/dest/a/b/c/file.txt"},
+		{name: "leading dots in name", dir: "/dest", input: "..foo", want: "/dest/..foo"},
+		{name: "hidden file", dir: "/dest", input: ".hidden", want: "/dest/.hidden"},
+		{name: "traversal staying inside", dir: "/dest", input: "a/../file.txt", want: "/dest/file.txt"},
+		{name: "leading dot segment", dir: "/dest", input: "./a", want: "/dest/a"},
+		{name: "duplicate separators", dir: "/dest", input: "a//b", want: "/dest/a/b"},
+		{name: "dir with trailing separator", dir: "/dest/", input: "file.txt", want: "/dest/file.txt"},
 
-	require.NoError(t, err)
-	require.Equal(t, filepath.Join("/dest", "subdir/file.txt"), path)
-}
+		// Names that are not local.
+		{name: "empty", dir: "/dest", input: "", wantErr: "not a local path"},
+		{name: "absolute", dir: "/dest", input: "/etc/passwd", wantErr: "not a local path"},
+		{name: "exact parent", dir: "/dest", input: "..", wantErr: "not a local path"},
+		{name: "parent file", dir: "/dest", input: "../x", wantErr: "not a local path"},
+		{name: "nested escape", dir: "/dest", input: "a/../../x", wantErr: "not a local path"},
+		{name: "escape and return", dir: "/dest", input: "../dest/file.txt", wantErr: "not a local path"},
 
-// Expectation: safePath should accept misleading relative names.
-func Test_safePath_MisleadingName_Valid(t *testing.T) {
-	t.Parallel()
+		// Names resolving to the directory itself.
+		{name: "dot", dir: "/dest", input: ".", wantErr: "resolves to destination directory"},
+		{name: "dot with separator", dir: "/dest", input: "./", wantErr: "resolves to destination directory"},
+		{name: "subdir and back", dir: "/dest", input: "a/..", wantErr: "resolves to destination directory"},
+		{name: "dot with dir trailing separator", dir: "/dest/", input: ".", wantErr: "resolves to destination directory"},
+	}
 
-	path, err := safePath("/dest", "subdir/..file.txt")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	require.NoError(t, err)
-	require.Equal(t, filepath.Join("/dest", "subdir/..file.txt"), path)
-}
+			got, err := jailedJoinPath(tt.dir, tt.input)
 
-// Expectation: safePath should reject parent traversal.
-func Test_safePath_ParentTraversal_Error(t *testing.T) {
-	t.Parallel()
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				require.Empty(t, got)
 
-	_, err := safePath("/dest", "../outside.txt")
+				return
+			}
 
-	require.Error(t, err)
-	require.ErrorContains(t, err, "escapes destination directory")
-}
-
-// Expectation: safePath should reject parent-directory traversal.
-func Test_safePath_DotDot_Error(t *testing.T) {
-	t.Parallel()
-
-	_, err := safePath("/dest", "../outside")
-
-	require.Error(t, err)
-	require.ErrorContains(t, err, "escapes destination directory")
-}
-
-// Expectation: safePath should reject an exact parent-directory relative path ("..").
-func Test_safePath_ExactDotDot_Error(t *testing.T) {
-	t.Parallel()
-
-	_, err := safePath("/dest", "..")
-
-	require.Error(t, err)
-	require.ErrorContains(t, err, "escapes destination directory")
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }

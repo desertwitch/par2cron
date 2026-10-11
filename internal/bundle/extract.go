@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/spf13/afero"
 )
@@ -21,10 +20,12 @@ func (b *Bundle) Unpack(ctx context.Context, fsys afero.Fs, destDir string, stri
 	var errs []error
 	var extractedPaths []string
 
-	for _, e := range b.Index.Entries {
-		path, err := safePath(destDir, e.Name)
+	for i, e := range b.Index.Entries {
+		path, err := jailedJoinPath(destDir, e.Name)
 		if err != nil {
-			errs = append(errs, err)
+			errs = append(errs,
+				fmt.Errorf("file data %d (%q) at offset %d: %w",
+					i, e.Name, e.DataOffset, err))
 
 			continue
 		}
@@ -32,22 +33,28 @@ func (b *Bundle) Unpack(ctx context.Context, fsys afero.Fs, destDir string, stri
 			return b.ExtractEntry(ctx, e, w)
 		}, strict)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%q: %w", e.Name, err))
+			errs = append(errs,
+				fmt.Errorf("file data %d (%q) at offset %d: %w",
+					i, e.Name, e.DataOffset, err))
 		}
 		if err == nil || (!strict && errors.Is(err, ErrDataCorrupt)) {
 			extractedPaths = append(extractedPaths, path)
 		}
 	}
 
-	path, err := safePath(destDir, b.Index.ManifestName)
+	path, err := jailedJoinPath(destDir, b.Index.ManifestName)
 	if err != nil {
-		errs = append(errs, err)
+		errs = append(errs,
+			fmt.Errorf("manifest data at offset %d: %w",
+				b.Index.ManifestDataOffset, err))
 	} else {
 		err := extractToFile(fsys, path, func(w io.Writer) error {
 			return b.ExtractManifest(ctx, w)
 		}, strict)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("manifest: %w", err))
+			errs = append(errs,
+				fmt.Errorf("manifest data at offset %d: %w",
+					b.Index.ManifestDataOffset, err))
 		}
 		if err == nil || (!strict && errors.Is(err, ErrDataCorrupt)) {
 			extractedPaths = append(extractedPaths, path)
@@ -68,11 +75,11 @@ func (b *Bundle) ExtractEntry(ctx context.Context, e IndexEntry, w io.Writer) er
 
 	hash, err := dataHashReader(io.TeeReader(sr, w))
 	if err != nil {
-		return fmt.Errorf("failed to io: %w", err)
+		return fmt.Errorf("failed to extract: %w", err)
 	}
 
 	if hash != expectedHash {
-		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
+		return fmt.Errorf("%w: checksum mismatch", ErrDataCorrupt)
 	}
 
 	return nil
@@ -89,11 +96,11 @@ func (b *Bundle) ExtractManifest(ctx context.Context, w io.Writer) error {
 
 	hash, err := dataHashReader(io.TeeReader(sr, w))
 	if err != nil {
-		return fmt.Errorf("failed to io: %w", err)
+		return fmt.Errorf("failed to extract: %w", err)
 	}
 
 	if hash != expectedHash {
-		return fmt.Errorf("failed to validate: %w", ErrDataCorrupt)
+		return fmt.Errorf("%w: checksum mismatch", ErrDataCorrupt)
 	}
 
 	return nil
@@ -133,15 +140,15 @@ func extractToFile(fsys afero.Fs, path string, extract func(io.Writer) error, st
 	return nil
 }
 
-func safePath(destDir, name string) (string, error) {
-	rel, err := filepath.Rel(destDir, filepath.Join(destDir, name))
-	if err != nil {
-		return "", fmt.Errorf("invalid path %q: %w", name, err)
+func jailedJoinPath(dir, name string) (string, error) {
+	if !filepath.IsLocal(name) {
+		return "", fmt.Errorf("invalid path %q: not a local path", name)
 	}
 
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("invalid path %q: escapes destination directory", name)
+	joined := filepath.Join(dir, name)
+	if joined == filepath.Clean(dir) {
+		return "", fmt.Errorf("invalid path %q: resolves to destination directory", name)
 	}
 
-	return filepath.Join(destDir, rel), nil
+	return joined, nil
 }

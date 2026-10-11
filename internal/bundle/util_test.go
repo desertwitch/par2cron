@@ -212,7 +212,8 @@ func Test_dataHashReader_IO_Error(t *testing.T) {
 
 	_, err := dataHashReader(errReader{err: errors.New("read boom")})
 
-	require.ErrorContains(t, err, "failed to io")
+	require.ErrorIs(t, err, errIO)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "read boom")
 }
 

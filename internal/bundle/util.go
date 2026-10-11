@@ -90,7 +90,7 @@ func dataHashReader(r io.Reader) ([32]byte, error) {
 	h := sha256.New()
 	if _, err := io.Copy(h, r); err != nil {
 		return [32]byte{},
-			fmt.Errorf("failed to io: %w", err)
+			fmt.Errorf("%w: %w", errIO, err)
 	}
 
 	var sum [32]byte
