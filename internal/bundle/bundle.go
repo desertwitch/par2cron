@@ -119,7 +119,7 @@ func Open(ctx context.Context, fsys afero.Fs, bundlePath string) (*Bundle, error
 		}
 
 		b.Index = reconstructIndex(manifest, files)
-		b.OpenError = fmt.Errorf("index reconstructed: %w", err)
+		b.OpenError = fmt.Errorf("%w: index reconstructed: %w", ErrDataCorrupt, err)
 	}
 
 	return b, nil
@@ -165,7 +165,10 @@ func (b *Bundle) ManifestName() string {
 // Validate checks the bundle's integrity by validating the index, all file
 // packets, and the manifest in sequence. If strict is true, manifest and file
 // data is additionally verified against their SHA256 hashes, which requires
-// reading the full data streams and may be slower for large bundles.
+// reading the full data streams and may be slower for large bundles. It stops
+// at the first failure; the returned error keeps the classification of the
+// failing step (see ValidateIndex, ValidateFiles and ValidateManifest), so
+// errors.Is(err, ErrDataCorrupt) reports whether the bundle itself is damaged.
 func (b *Bundle) Validate(ctx context.Context, strict bool) error {
 	if err := b.ValidateIndex(); err != nil {
 		return fmt.Errorf("index: %w", err)
@@ -184,10 +187,11 @@ func (b *Bundle) Validate(ctx context.Context, strict bool) error {
 
 // ValidateIndex reports whether the index packet was read cleanly from disk. It
 // returns nil if the index was parsed and validated normally, or an error
-// describing why reconstruction from a scan was necessary. Beware it only
-// returns this as long as Update() has not written that reconstructed index
-// back to the bundle file, restoring it to one functionally correct state. If
-// you need to determine if a bundle was ever rebuilt, use IsRebuilt() instead.
+// wrapping ErrDataCorrupt that describes why reconstruction from a scan was
+// necessary. Beware it only returns this as long as Update() has not written
+// that reconstructed index back to the bundle file, restoring the structure to
+// a functionally correct state. If you need to determine if a bundle was ever
+// rebuilt, use IsRebuilt() instead.
 func (b *Bundle) ValidateIndex() error {
 	return b.OpenError
 }
@@ -196,8 +200,23 @@ func (b *Bundle) ValidateIndex() error {
 // file packet at the expected offset. If strict is true, it additionally checks
 // each file stream's data against its SHA256 hash to detect corruption, which
 // requires reading the full data stream and may be slower for large bundles.
-func (b *Bundle) ValidateFiles(ctx context.Context, strict bool) error {
+// A returned error wraps ErrDataCorrupt if the bundle is damaged (invalid or
+// misplaced packet, checksum mismatch). Read failures are returned without it,
+// as they may be transient, and so are context cancellations.
+func (b *Bundle) ValidateFiles(ctx context.Context, strict bool) (retErr error) {
 	f := &contextReaderAt{ctx, b.f}
+
+	defer func() {
+		if retErr != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(retErr, ctxErr) {
+				return
+			}
+			if !errors.Is(retErr, errIO) && !errors.Is(retErr, ErrDataCorrupt) {
+				// errIO is tagged, and everything else is data corruption.
+				retErr = fmt.Errorf("%w: %w", ErrDataCorrupt, retErr)
+			}
+		}
+	}()
 
 	for i, entry := range b.Index.Entries {
 		ch, _, err := readAndValidatePacket(f, int64(entry.PacketOffset), b.size, true) //nolint:gosec
@@ -209,14 +228,8 @@ func (b *Bundle) ValidateFiles(ctx context.Context, strict bool) error {
 		}
 
 		if strict {
-			sr := io.NewSectionReader(f, int64(entry.DataOffset), int64(entry.DataLength)) //nolint:gosec
-
-			hash, err := dataHashReader(sr)
-			if err != nil {
-				return fmt.Errorf("file data %d (%q) at offset %d: hash error: %w", i, entry.Name, entry.DataOffset, err)
-			}
-			if hash != entry.DataSHA256 {
-				return fmt.Errorf("file data %d (%q) at offset %d: %w: hash mismatch", i, entry.Name, entry.DataOffset, ErrDataCorrupt)
+			if err := b.ExtractEntry(ctx, entry, io.Discard); err != nil {
+				return fmt.Errorf("file data %d (%q) at offset %d: %w", i, entry.Name, entry.DataOffset, err)
 			}
 		}
 	}
@@ -227,9 +240,24 @@ func (b *Bundle) ValidateFiles(ctx context.Context, strict bool) error {
 // ValidateManifest verifies that the manifest packet is present and well-formed
 // at the expected offset. If strict is true, it additionally checks the
 // manifest data against its SHA256 hash to detect corruption, which requires
-// reading the full data stream and may be slower for large bundles.
-func (b *Bundle) ValidateManifest(ctx context.Context, strict bool) error {
+// reading the full data stream and may be slower for large bundles. A returned
+// error wraps ErrDataCorrupt if the bundle is damaged (invalid or misplaced
+// packet, checksum mismatch). Read failures are returned without it, as they
+// may be transient, and so are context cancellations.
+func (b *Bundle) ValidateManifest(ctx context.Context, strict bool) (retErr error) {
 	f := &contextReaderAt{ctx, b.f}
+
+	defer func() {
+		if retErr != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(retErr, ctxErr) {
+				return
+			}
+			if !errors.Is(retErr, errIO) && !errors.Is(retErr, ErrDataCorrupt) {
+				// errIO is tagged, and everything else is data corruption.
+				retErr = fmt.Errorf("%w: %w", ErrDataCorrupt, retErr)
+			}
+		}
+	}()
 
 	ch, _, err := readAndValidatePacket(f, int64(b.Index.ManifestPacketOffset), b.size, true) //nolint:gosec
 	if err != nil {
@@ -240,14 +268,8 @@ func (b *Bundle) ValidateManifest(ctx context.Context, strict bool) error {
 	}
 
 	if strict {
-		sr := io.NewSectionReader(f, int64(b.Index.ManifestDataOffset), int64(b.Index.ManifestDataLength)) //nolint:gosec
-
-		hash, err := dataHashReader(sr)
-		if err != nil {
-			return fmt.Errorf("manifest data at offset %d: hash error: %w", b.Index.ManifestDataOffset, err)
-		}
-		if hash != b.Index.ManifestDataSHA256 {
-			return fmt.Errorf("manifest data at offset %d: %w: hash mismatch", b.Index.ManifestDataOffset, ErrDataCorrupt)
+		if err := b.ExtractManifest(ctx, io.Discard); err != nil {
+			return fmt.Errorf("manifest data at offset %d: %w", b.Index.ManifestDataOffset, err)
 		}
 	}
 

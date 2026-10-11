@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -392,6 +393,7 @@ func Test_Open_ReconstructsIndex_Success(t *testing.T) {
 		require.NoError(t, b.Close())
 	})
 
+	require.ErrorIs(t, b.OpenError, ErrDataCorrupt)
 	require.ErrorContains(t, b.OpenError, "index reconstructed")
 	require.NotZero(t, b.Index.Flags&FlagIndexRebuilt)
 	require.Len(t, b.Index.Entries, len(fixture.files))
@@ -687,6 +689,8 @@ func Test_Bundle_ValidateFiles_ReadPacketFails_Error(t *testing.T) {
 
 	err := b.ValidateFiles(t.Context(), false)
 
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "file packet 0")
 	require.ErrorContains(t, err, "remaining file cannot fit another packet")
 }
@@ -711,7 +715,8 @@ func Test_Bundle_ValidateFiles_DataHashReadFails_Error(t *testing.T) {
 
 	err := b.ValidateFiles(t.Context(), true)
 
-	require.ErrorContains(t, err, "hash error")
+	require.ErrorIs(t, err, errIO)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "read boom")
 }
 
@@ -734,8 +739,14 @@ func Test_Bundle_ValidateFiles_StrictHashMismatch_Error(t *testing.T) {
 		require.NoError(t, b.Close())
 	})
 
+	// Strict mode
+	err = b.ValidateFiles(t.Context(), true)
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "checksum mismatch")
+
+	// Non-strict mode
 	require.NoError(t, b.ValidateFiles(t.Context(), false))
-	require.ErrorContains(t, b.ValidateFiles(t.Context(), true), "hash mismatch")
 }
 
 // Expectation: ValidateFiles should reject entries that point at a non-file packet.
@@ -747,7 +758,24 @@ func Test_Bundle_ValidateFiles_WrongPacketType_Error(t *testing.T) {
 
 	err := b.ValidateFiles(t.Context(), false)
 
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "expected file type")
+}
+
+// Expectation: ValidateFiles should return a cancellation as such, not as data corruption.
+func Test_Bundle_ValidateFiles_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := b.ValidateFiles(ctx, true)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 }
 
 // Expectation: ValidateManifest should detect strict manifest hash mismatches.
@@ -781,6 +809,8 @@ func Test_Bundle_ValidateManifest_WrongPacketType_Error(t *testing.T) {
 
 	err := b.ValidateManifest(t.Context(), false)
 
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "expected manifest type")
 }
 
@@ -803,7 +833,8 @@ func Test_Bundle_ValidateManifest_DataHashReadFails_Error(t *testing.T) {
 
 	err := b.ValidateManifest(t.Context(), true)
 
-	require.ErrorContains(t, err, "hash error")
+	require.ErrorIs(t, err, errIO)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 	require.ErrorContains(t, err, "read boom")
 }
 
@@ -819,9 +850,9 @@ func Test_Bundle_ValidateManifest_HashMismatch_Error(t *testing.T) {
 
 	err := b.ValidateManifest(t.Context(), true)
 
-	require.ErrorContains(t, err, "manifest data at offset")
-	require.ErrorContains(t, err, "hash mismatch")
 	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotErrorIs(t, err, errIO)
+	require.ErrorContains(t, err, "checksum mismatch")
 }
 
 // Expectation: ValidateManifest should surface packet-read failures from the indexed manifest packet offset.
@@ -833,8 +864,25 @@ func Test_Bundle_ValidateManifest_ReadPacketFails_Error(t *testing.T) {
 
 	err := b.ValidateManifest(t.Context(), false)
 
+	require.ErrorIs(t, err, ErrDataCorrupt)
+	require.NotErrorIs(t, err, errIO)
 	require.ErrorContains(t, err, "manifest packet at offset")
 	require.ErrorContains(t, err, "remaining file cannot fit another packet")
+}
+
+// Expectation: ValidateManifest should return a cancellation as such, not as data corruption.
+func Test_Bundle_ValidateManifest_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	err := b.ValidateManifest(ctx, true)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotErrorIs(t, err, ErrDataCorrupt)
 }
 
 // Expectation: MarshalJSON should serialize OpenError as its error string instead of an empty object.
