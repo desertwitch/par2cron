@@ -94,6 +94,39 @@ func Test_Pack_SortsEntriesByName_Success(t *testing.T) {
 	require.Equal(t, []string{"file.par2", "file.vol00+01.par2", "file.vol01+02.par2"}, got)
 }
 
+// Expectation: Pack should sort entries case-folded (index files before volumes
+// regardless of case), with a bytewise tie-break for names differing only in case.
+func Test_Pack_SortsEntriesCaseFolded_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	names := []string{"file.vol01+02.par2", "file.VOL00+01.PAR2", "file.par2", "file.PAR2"}
+
+	inputs := make([]FileInput, 0, len(names))
+	for _, name := range names {
+		require.NoError(t, afero.WriteFile(fs, "/src/"+name, []byte(name), 0o644))
+		inputs = append(inputs, FileInput{Name: name, Path: "/src/" + name})
+	}
+
+	require.NoError(t, Pack(t.Context(), fs, "/file.p2c.par2", testRecoverySetID, ManifestInput{
+		Name:  "manifest.json",
+		Bytes: []byte(`{}`),
+	}, inputs))
+
+	b, err := Open(t.Context(), fs, "/file.p2c.par2")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, b.Close()) })
+
+	got := make([]string, 0, len(b.Entries()))
+	for i, e := range b.Entries() {
+		got = append(got, e.Name)
+		if i > 0 {
+			require.Greater(t, e.DataOffset, b.Entries()[i-1].DataOffset)
+		}
+	}
+	require.Equal(t, []string{"file.PAR2", "file.par2", "file.VOL00+01.PAR2", "file.vol01+02.par2"}, got)
+}
+
 // Expectation: Pack should reject a manifest whose body exceeds the maximum packet body size.
 func Test_Pack_ManifestTooLarge_Error(t *testing.T) {
 	t.Parallel()
