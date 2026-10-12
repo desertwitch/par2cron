@@ -2759,6 +2759,116 @@ func Test_Service_createCombined_AlreadyExists_Success(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 }
 
+// Expectation: The function should not run par2 (or bundle) when an orphan volume exists.
+func Test_Service_createCombined_OrphanVolumeExists_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol07+08"+schema.Par2Extension, []byte("orphan"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	called := 0
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, _ []string, _ string, _ io.Writer, _ io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		asBundle:     true,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createCombined(t.Context(), job, files)
+	require.NoError(t, err)
+	require.Zero(t, called)
+	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+
+	exists, err := afero.Exists(fs, "/data/folder/test.vol07+08"+schema.Par2Extension)
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	exists, err = afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.NoError(t, err)
+	require.False(t, exists)
+}
+
+// Expectation: The function should return an error when the existence check fails.
+func Test_Service_createCombined_ExistenceCheckFails_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/file.txt", []byte("content"), 0o644))
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "/data/folder"}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	called := 0
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, _ []string, _ string, _ io.Writer, _ io.Writer) error {
+			called++
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createCombined(t.Context(), job, files)
+	require.ErrorContains(t, err, "failed to check existence")
+	require.Zero(t, called)
+}
+
 // Expectation: The function should succeed when both directories succeed.
 func Test_Service_createNested_Success(t *testing.T) {
 	t.Parallel()
@@ -3062,6 +3172,120 @@ func Test_Service_createNested_AlreadyExists_Success(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 }
 
+// Expectation: The function should skip only the subjob whose folder has an orphan volume.
+func Test_Service_createNested_OrphanVolumeExists_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub1", 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/sub2", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub1/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub2/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub1/sub1.vol07+08"+schema.Par2Extension, []byte("orphan"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub1/file.txt", Name: "file.txt"},
+		{Path: "/data/folder/sub2/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/data/folder/sub2/sub2" + schema.Par2Extension}, called)
+	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+
+	exists, err := afero.Exists(fs, "/data/folder/sub1/sub1.vol07+08"+schema.Par2Extension)
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
+// Expectation: The function should fail only the subjob whose existence check fails.
+func Test_Service_createNested_ExistenceCheckFails_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder/bad", 0o755))
+	require.NoError(t, baseFs.MkdirAll("/data/folder/good", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/bad/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/folder/good/file.txt", []byte("content"), 0o644))
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "/data/folder/bad"}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/bad/file.txt", Name: "file.txt"},
+		{Path: "/data/folder/good/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.ErrorContains(t, err, "1/2 subjobs failed")
+	require.ErrorContains(t, err, "/data/folder/bad/bad"+schema.Par2Extension+": failed to check existence")
+	require.Equal(t, []string{"/data/folder/good/good" + schema.Par2Extension}, called)
+	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+}
+
 // Expectation: The function should respect cancellation and return the correct error.
 func Test_Service_createNested_CtxCancel_Error(t *testing.T) {
 	t.Parallel()
@@ -3253,6 +3477,119 @@ func Test_Service_createIndividual_AlreadyExists_Success(t *testing.T) {
 	err := prog.createIndividual(t.Context(), job, files)
 	require.NoError(t, err)
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+}
+
+// Expectation: The function should skip only the subjob whose file has an orphan volume.
+func Test_Service_createIndividual_OrphanVolumeExists_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file1.txt", []byte("content1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file2.txt", []byte("content2"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file1.txt.vol07+08"+schema.Par2Extension, []byte("orphan"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFileMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file1.txt", Name: "file1.txt"},
+		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
+	}
+
+	err := prog.createIndividual(t.Context(), job, files)
+	require.NoError(t, err)
+	require.Equal(t, []string{"/data/folder/file2.txt" + schema.Par2Extension}, called)
+	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+
+	exists, err := afero.Exists(fs, "/data/folder/file1.txt.vol07+08"+schema.Par2Extension)
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
+// Expectation: The function should fail only the subjob whose existence check fails.
+func Test_Service_createIndividual_ExistenceCheckFails_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/bad", 0o755))
+	require.NoError(t, baseFs.MkdirAll("/data/good", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/bad/file1.txt", []byte("content1"), 0o644))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/good/file2.txt", []byte("content2"), 0o644))
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "/data/bad"}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data",
+		markerPath:   "/data/_par2cron",
+		par2Mode:     schema.CreateFileMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/bad/file1.txt", Name: "file1.txt"},
+		{Path: "/data/good/file2.txt", Name: "file2.txt"},
+	}
+
+	err := prog.createIndividual(t.Context(), job, files)
+	require.ErrorContains(t, err, "1/2 subjobs failed")
+	require.ErrorContains(t, err, "/data/bad/file1.txt"+schema.Par2Extension+": failed to check existence")
+	require.Equal(t, []string{"/data/good/file2.txt" + schema.Par2Extension}, called)
+	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
 }
 
 // Expectation: The function should respect cancellation and return the correct error.

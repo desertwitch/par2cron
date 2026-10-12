@@ -557,6 +557,84 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:      true,
 		},
 		{
+			name:         "plain par2 name detects orphan volume",
+			existingFile: "/data/folder/test.vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects orphan alt volume",
+			existingFile: "/data/folder/test.vol00-01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects hidden orphan volume",
+			existingFile: "/data/folder/.test.vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "hidden par2 name detects orphan volume",
+			existingFile: "/data/folder/test.vol00+01" + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects uppercase orphan volume",
+			existingFile: "/data/folder/test.VOL00+01" + strings.ToUpper(schema.Par2Extension),
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects mixed case existing",
+			existingFile: "/data/folder/test.Par2",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects mixed case bundle existing",
+			existingFile: "/data/folder/test.P2C.par2",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects mixed case hidden bundle existing",
+			existingFile: "/data/folder/.test.P2c.Par2",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "different base orphan volume does not match",
+			existingFile: "/data/folder/TEST.vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "bundle-named volume does not match",
+			existingFile: "/data/folder/test" + schema.BundleExtension + ".vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "dotted sibling does not match",
+			existingFile: "/data/folder/test.backup" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "leftover manifest does not match",
+			existingFile: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "leftover lock does not match",
+			existingFile: "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
 			name:         "no par2 exists",
 			existingFile: "",
 			par2Name:     "test" + schema.Par2Extension,
@@ -622,4 +700,29 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Expectation: The function should return an error when the directory cannot be read.
+func Test_Service_par2AlreadyExists_ReadDirFails_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "/data/folder"}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir: "/data/folder",
+		par2Name:   "test" + schema.Par2Extension,
+		par2Path:   "/data/folder/test" + schema.Par2Extension,
+	}
+
+	exists, err := prog.par2AlreadyExists(t.Context(), job)
+	require.ErrorContains(t, err, "failed to read directory")
+	require.False(t, exists)
 }
