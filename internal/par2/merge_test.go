@@ -601,6 +601,48 @@ func Test_groupSetsByID_NilMainPacketSubsequent_Success(t *testing.T) {
 	require.NotNil(t, result[Hash(sID)].mainPacket)
 }
 
+// Expectation: groupSetsByID should not replace a unicode name with an ASCII name, in any list or order.
+func Test_groupSetsByID_KeepsUnicodeName_Success(t *testing.T) {
+	t.Parallel()
+
+	uniFP := FilePacket{FileID: Hash(idA), Name: "\u00e4.txt", FromUnicode: true}
+	asciiFP := FilePacket{FileID: Hash(idA), Name: "a.txt"}
+
+	lists := map[string]struct {
+		set func(fp FilePacket) Set
+		get func(ms *mergedSet) map[Hash]FilePacket
+	}{
+		"recovery": {
+			set: func(fp FilePacket) Set { return Set{SetID: Hash(sID), RecoverySet: []FilePacket{fp}} },
+			get: func(ms *mergedSet) map[Hash]FilePacket { return ms.recoveryFiles },
+		},
+		"non-recovery": {
+			set: func(fp FilePacket) Set { return Set{SetID: Hash(sID), NonRecoverySet: []FilePacket{fp}} },
+			get: func(ms *mergedSet) map[Hash]FilePacket { return ms.nonRecoveryFiles },
+		},
+		"stray": {
+			set: func(fp FilePacket) Set { return Set{SetID: Hash(sID), StrayPackets: []FilePacket{fp}} },
+			get: func(ms *mergedSet) map[Hash]FilePacket { return ms.strayFiles },
+		},
+	}
+
+	for name, list := range lists {
+		for _, order := range [][]FilePacket{{uniFP, asciiFP}, {asciiFP, uniFP}} {
+			files := []File{
+				{Sets: []Set{list.set(order[0])}},
+				{Sets: []Set{list.set(order[1])}},
+			}
+
+			result, err := groupSetsByID(files)
+			require.NoError(t, err)
+
+			got := list.get(result[Hash(sID)])
+			require.Len(t, got, 1, name)
+			require.Equal(t, uniFP, got[Hash(idA)], "%s: first=%q", name, order[0].Name)
+		}
+	}
+}
+
 // Expectation: buildSetOrder should return empty for empty files.
 func Test_buildSetOrder_EmptyFiles_Success(t *testing.T) {
 	t.Parallel()
@@ -1136,6 +1178,108 @@ func Test_resolveUnlisted_PrioritizesRecoveryOverNonRecovery_Success(t *testing.
 	require.Empty(t, ms.nonRecoveryFiles)
 	require.Empty(t, ms.strayFiles)
 	require.Empty(t, ms.missingRecovery)
-	// missingNonRecovery for idA should remain since it was resolved as recovery
-	require.Len(t, ms.missingNonRecovery, 1)
+	// The file was found, so it must not remain missing as non-recovery file
+	require.Empty(t, ms.missingNonRecovery)
+}
+
+// Expectation: resolveUnlisted should remove a found file from both missing lists, whichever list it was found in.
+func Test_resolveUnlisted_FoundFileRemovedFromBothMissing_Success(t *testing.T) {
+	t.Parallel()
+
+	for _, inRecovery := range []bool{true, false} {
+		ms := &mergedSet{
+			recoveryFiles:    make(map[Hash]FilePacket),
+			nonRecoveryFiles: make(map[Hash]FilePacket),
+			strayFiles:       make(map[Hash]FilePacket),
+			missingRecovery: map[Hash]struct{}{
+				Hash(idA): {},
+			},
+			missingNonRecovery: map[Hash]struct{}{
+				Hash(idA): {}, // Same ID in both missing lists
+			},
+		}
+
+		fp := FilePacket{FileID: Hash(idA), Name: "a.txt"}
+		if inRecovery {
+			ms.recoveryFiles[Hash(idA)] = fp
+		} else {
+			ms.nonRecoveryFiles[Hash(idA)] = fp
+		}
+
+		ms.resolveUnlisted()
+
+		require.Empty(t, ms.missingRecovery, "inRecovery=%v", inRecovery)
+		require.Empty(t, ms.missingNonRecovery, "inRecovery=%v", inRecovery)
+	}
+}
+
+// Expectation: resolveUnlisted should take the unicode name from a stray that is already in recovery files.
+func Test_resolveUnlisted_StrayUnicodeNameToRecovery_Success(t *testing.T) {
+	t.Parallel()
+
+	ms := &mergedSet{
+		recoveryFiles: map[Hash]FilePacket{
+			Hash(idA): {FileID: Hash(idA), Name: "a.txt"},
+		},
+		nonRecoveryFiles: make(map[Hash]FilePacket),
+		strayFiles: map[Hash]FilePacket{
+			Hash(idA): {FileID: Hash(idA), Name: "\u00e4.txt", FromUnicode: true},
+		},
+		missingRecovery:    make(map[Hash]struct{}),
+		missingNonRecovery: make(map[Hash]struct{}),
+	}
+
+	ms.resolveUnlisted()
+
+	require.Empty(t, ms.strayFiles)
+	require.Len(t, ms.recoveryFiles, 1)
+	require.Equal(t, "\u00e4.txt", ms.recoveryFiles[Hash(idA)].Name)
+	require.True(t, ms.recoveryFiles[Hash(idA)].FromUnicode)
+}
+
+// Expectation: resolveUnlisted should take the unicode name from a stray that is already in non-recovery files.
+func Test_resolveUnlisted_StrayUnicodeNameToNonRecovery_Success(t *testing.T) {
+	t.Parallel()
+
+	ms := &mergedSet{
+		recoveryFiles: make(map[Hash]FilePacket),
+		nonRecoveryFiles: map[Hash]FilePacket{
+			Hash(idA): {FileID: Hash(idA), Name: "a.txt"},
+		},
+		strayFiles: map[Hash]FilePacket{
+			Hash(idA): {FileID: Hash(idA), Name: "\u00e4.txt", FromUnicode: true},
+		},
+		missingRecovery:    make(map[Hash]struct{}),
+		missingNonRecovery: make(map[Hash]struct{}),
+	}
+
+	ms.resolveUnlisted()
+
+	require.Empty(t, ms.strayFiles)
+	require.Len(t, ms.nonRecoveryFiles, 1)
+	require.Equal(t, "\u00e4.txt", ms.nonRecoveryFiles[Hash(idA)].Name)
+	require.True(t, ms.nonRecoveryFiles[Hash(idA)].FromUnicode)
+}
+
+// Expectation: resolveUnlisted should not replace a unicode name in recovery files with an ASCII stray.
+func Test_resolveUnlisted_KeepsRecoveryUnicodeName_Success(t *testing.T) {
+	t.Parallel()
+
+	ms := &mergedSet{
+		recoveryFiles: map[Hash]FilePacket{
+			Hash(idA): {FileID: Hash(idA), Name: "\u00e4.txt", FromUnicode: true},
+		},
+		nonRecoveryFiles: make(map[Hash]FilePacket),
+		strayFiles: map[Hash]FilePacket{
+			Hash(idA): {FileID: Hash(idA), Name: "a.txt"},
+		},
+		missingRecovery:    make(map[Hash]struct{}),
+		missingNonRecovery: make(map[Hash]struct{}),
+	}
+
+	ms.resolveUnlisted()
+
+	require.Empty(t, ms.strayFiles)
+	require.Equal(t, "\u00e4.txt", ms.recoveryFiles[Hash(idA)].Name)
+	require.True(t, ms.recoveryFiles[Hash(idA)].FromUnicode)
 }
