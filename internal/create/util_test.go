@@ -173,6 +173,51 @@ func Test_Service_cleanupAfterFailure_DoesNotRemoveSamePrefixUnrelatedPar2_Succe
 	require.True(t, exists)
 }
 
+// Expectation: Cleanup should not remove PAR2 sets whose root differs only in case.
+func Test_Service_cleanupAfterFailure_DoesNotRemoveOtherRootCase_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("idx"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.VOL00+01"+strings.ToUpper(schema.Par2Extension), []byte("vol"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST.vol00+01"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/Test"+schema.BundleExtension+schema.Par2Extension, []byte("other"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	prog.cleanupAfterFailure(t.Context(), job)
+
+	for _, tt := range []struct {
+		path   string
+		exists bool
+	}{
+		{"/data/folder/test" + schema.Par2Extension, false},
+		{"/data/folder/test.VOL00+01" + strings.ToUpper(schema.Par2Extension), false},
+		{"/data/folder/TEST" + schema.Par2Extension, true},
+		{"/data/folder/TEST.vol00+01" + schema.Par2Extension, true},
+		{"/data/folder/Test" + schema.BundleExtension + schema.Par2Extension, true},
+	} {
+		exists, _ := afero.Exists(fs, tt.path)
+		require.Equal(t, tt.exists, exists, tt.path)
+	}
+}
+
 // Expectation: Cleanup should remove bundle output when the job itself is a bundle.
 func Test_Service_cleanupAfterFailure_BundleJob_RemovesBundle_Success(t *testing.T) {
 	t.Parallel()
