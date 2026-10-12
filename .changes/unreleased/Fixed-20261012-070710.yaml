@@ -1,0 +1,6 @@
+kind: Fixed
+body: stricter unicode packet parsing to align with par2cmdline
+time: 2026-10-12T07:07:10.080446471+02:00
+custom:
+    Issue: ""
+    PR: "100"
