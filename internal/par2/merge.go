@@ -71,13 +71,13 @@ func groupSetsByID(files []File) (map[Hash]*mergedSet, error) {
 
 			// Merge all files
 			for _, fp := range set.RecoverySet {
-				ms.recoveryFiles[fp.FileID] = fp
+				putPreferUnicode(ms.recoveryFiles, fp)
 			}
 			for _, fp := range set.NonRecoverySet {
-				ms.nonRecoveryFiles[fp.FileID] = fp
+				putPreferUnicode(ms.nonRecoveryFiles, fp)
 			}
 			for _, fp := range set.StrayPackets {
-				ms.strayFiles[fp.FileID] = fp
+				putPreferUnicode(ms.strayFiles, fp)
 			}
 
 			// Collect missing IDs
@@ -170,13 +170,26 @@ func buildMergedSets(order []Hash, mergedSets map[Hash]*mergedSet) []Set {
 // resolveUnlisted attempts to resolve missing files from stray packets,
 // and removes strays/missing that are already in recovery/non-recovery lists.
 func (ms *mergedSet) resolveUnlisted() {
-	// Remove strays/missing that are already in recovery or non-recovery lists
+	// - Remove strays/missing that are already in recovery or non-recovery lists,
+	//   but keep a unicode name if only the stray copy carries one.
+	// - A found file is removed from both missing lists, in case a (malformed)
+	//   main packet lists its ID as both recovery and non-recovery file.
 	for id := range ms.recoveryFiles {
+		if stray, found := ms.strayFiles[id]; found && stray.FromUnicode && !ms.recoveryFiles[id].FromUnicode {
+			ms.recoveryFiles[id] = stray // Take the stray's unicode name over the existing ASCII name.
+		}
+
 		delete(ms.strayFiles, id)
 		delete(ms.missingRecovery, id)
+		delete(ms.missingNonRecovery, id)
 	}
 	for id := range ms.nonRecoveryFiles {
+		if stray, found := ms.strayFiles[id]; found && stray.FromUnicode && !ms.nonRecoveryFiles[id].FromUnicode {
+			ms.nonRecoveryFiles[id] = stray // Take the stray's unicode name over the existing ASCII name.
+		}
+
 		delete(ms.strayFiles, id)
+		delete(ms.missingRecovery, id)
 		delete(ms.missingNonRecovery, id)
 	}
 
@@ -184,8 +197,10 @@ func (ms *mergedSet) resolveUnlisted() {
 	for id := range ms.missingRecovery {
 		if fp, found := ms.strayFiles[id]; found {
 			ms.recoveryFiles[id] = fp
+
 			delete(ms.strayFiles, id)
 			delete(ms.missingRecovery, id)
+			delete(ms.missingNonRecovery, id)
 		}
 	}
 
@@ -193,8 +208,20 @@ func (ms *mergedSet) resolveUnlisted() {
 	for id := range ms.missingNonRecovery {
 		if fp, found := ms.strayFiles[id]; found {
 			ms.nonRecoveryFiles[id] = fp
+
 			delete(ms.strayFiles, id)
+			delete(ms.missingRecovery, id)
 			delete(ms.missingNonRecovery, id)
 		}
 	}
+}
+
+// putPreferUnicode stores a [FilePacket] in the map by its file ID, unless
+// that would replace a name from a unicode packet with one from an ASCII one.
+func putPreferUnicode(m map[Hash]FilePacket, fp FilePacket) {
+	if prev, exists := m[fp.FileID]; exists && prev.FromUnicode && !fp.FromUnicode {
+		return // Keep the name from the unicode packet.
+	}
+
+	m[fp.FileID] = fp
 }

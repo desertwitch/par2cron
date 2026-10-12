@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"sync"
+	"unicode"
 	"unicode/utf16"
 )
 
@@ -406,7 +407,7 @@ func readNextPacket(r io.Reader, avail int64, checkMD5 bool) (any, error) {
 	case bytes.Equal(header.packetType[:], unicodeDescType):
 		return parseUnicodeDescriptionBody(header.setID, bodyBytes)
 	default:
-		return nil, errSkipPacket
+		return nil, errUnhandledPacket
 	}
 }
 
@@ -664,14 +665,12 @@ func parseUnicodeDescriptionBody(setID Hash, body []byte) (*UnicodePacket, error
 	// - Unicode name: variable (null-padded to multiple of 4)
 
 	if len(body) < HashSize+4 {
-		// We are not so strict with the unicode packets, and just skip it.
-		return nil, errSkipPacket
+		return nil, fmt.Errorf("%w: unicode packet body too short", errInvalidPacket)
 	}
 
 	decodedName, err := decodeUTF16LE(body[HashSize:])
 	if err != nil {
-		// We are not so strict with the unicode packets, and just skip it.
-		return nil, errSkipPacket
+		return nil, fmt.Errorf("%w: unicode packet failed decode: %w", errInvalidPacket, err)
 	}
 
 	return &UnicodePacket{
@@ -699,19 +698,40 @@ func decodeUTF16LE(b []byte) (string, error) {
 		u16[i] = binary.LittleEndian.Uint16(b[i*2:])
 	}
 
-	for i, v := range u16 {
-		if v == 0 {
-			u16 = u16[:i]
-
-			break
-		}
+	// Trim only the trailing zero padding.
+	for len(u16) > 0 && u16[len(u16)-1] == 0 {
+		u16 = u16[:len(u16)-1]
 	}
-
 	if len(u16) == 0 {
 		return "", fmt.Errorf("%w: nothing left after trimming nulls", errInvalidUnicode)
 	}
 
-	runes := utf16.Decode(u16)
+	// Reject what par2cmdline rejects (embedded zeros, unpaired surrogates),
+	// so that both fall back to the name of the file description packet.
+	runes := make([]rune, 0, len(u16))
+	for i := 0; i < len(u16); i++ {
+		r := rune(u16[i])
+
+		switch {
+		case r == 0:
+			return "", fmt.Errorf("%w: embedded null", errInvalidUnicode)
+
+		case utf16.IsSurrogate(r):
+			if i+1 == len(u16) {
+				return "", fmt.Errorf("%w: unpaired surrogate", errInvalidUnicode)
+			}
+			r = utf16.DecodeRune(r, rune(u16[i+1]))
+			if r == unicode.ReplacementChar {
+				return "", fmt.Errorf("%w: unpaired surrogate", errInvalidUnicode)
+			}
+			i++
+
+		default:
+			// Any other unit is a whole character.
+		}
+
+		runes = append(runes, r)
+	}
 
 	return string(runes), nil
 }

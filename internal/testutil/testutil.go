@@ -166,8 +166,9 @@ func CreateExitError(t *testing.T, ctx context.Context, code int) error {
 
 // MockPar2Handler is a mock implementation of schema.Par2Handler.
 type MockPar2Handler struct {
-	ParseFunc     func(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error)
-	ParseFileFunc func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error)
+	ParseFunc        func(r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error)
+	ParseFileFunc    func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error)
+	ParseFileSetFunc func(fsys afero.Fs, paths []string, panicAsErr bool) (*par2.FileSet, error)
 }
 
 func (m *MockPar2Handler) Parse(_ context.Context, r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error) {
@@ -181,6 +182,14 @@ func (m *MockPar2Handler) Parse(_ context.Context, r io.ReadSeeker, checkMD5 boo
 func (m *MockPar2Handler) ParseFile(_ context.Context, fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
 	if m.ParseFileFunc != nil {
 		return m.ParseFileFunc(fsys, path, panicAsErr)
+	}
+
+	return nil, errors.New("not implemented")
+}
+
+func (m *MockPar2Handler) ParseFileSet(_ context.Context, fsys afero.Fs, paths []string, panicAsErr bool) (*par2.FileSet, error) {
+	if m.ParseFileSetFunc != nil {
+		return m.ParseFileSetFunc(fsys, paths, panicAsErr)
 	}
 
 	return nil, errors.New("not implemented")

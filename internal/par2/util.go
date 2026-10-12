@@ -137,7 +137,7 @@ func ParseFile(ctx context.Context, fsys afero.Fs, path string, panicAsErr bool)
 
 	sets, err := Parse(ctx, f, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse PAR2: %w", err)
+		return nil, fmt.Errorf("failed to parse PAR2 file: %w", err)
 	}
 
 	return &File{
@@ -146,45 +146,38 @@ func ParseFile(ctx context.Context, fsys afero.Fs, path string, panicAsErr bool)
 	}, nil
 }
 
-/*
-// ParseFileSet parses an index PAR2 file and all related volume files.
-// It ignores files which cannot be parsed, unless no files can be parsed.
-// In case no files can be parsed, [errFileCorrupted] is returned instead.
+// ParseFileSet parses a slice of given non-duplicate PAR2 paths, typically
+// containing an index file and several volume files belonging to the same set.
+//
+// Paths that fail to parse are skipped, and their errors are recorded in
+// [FileSet.Errors] (nil if all paths parsed). An error is returned only if
+// all paths fail, on context cancellation, on a panic (with panicAsErr), or
+// when the parsed files conflict (e.g. differing main packets of one set).
+// An empty paths slice returns an empty [FileSet] without error.
 //
 // panicAsErr controls if a panic should be returned as [ParserPanicError].
 // Beware the PAR2-specific packet and error handling as described in [Parse].
-func ParseFileSet(ctx context.Context, fsys afero.Fs, indexFile string, panicAsErr bool) (*FileSet, error) {
+func ParseFileSet(ctx context.Context, fsys afero.Fs, paths []string, panicAsErr bool) (*FileSet, error) {
 	files := []File{}
+	errs := []error{}
+	errsByPath := make(map[string]error)
 
-	indexData, err := ParseFile(ctx, fsys, indexFile, panicAsErr)
-	if err != nil {
-		if pe, ok := errors.AsType[*ParserPanicError](err); ok {
-			return nil, pe // Do not swallow panics.
-		}
-	} else {
-		files = append(files, *indexData)
-	}
-
-	// !! This function should be reworked not to glob + be case insensitive.
-	basePath := strings.TrimSuffix(indexFile, ".par2")
-	pattern := basePath + "*.par2"
-
-	matches, err := afero.Glob(fsys, pattern)
-	if err != nil {
-		return nil, fmt.Errorf("failed to glob: %w", err)
-	}
-	// !! This function should be reworked not to glob + be case insensitive.
-
-	for _, match := range matches {
-		if match == indexFile {
-			continue
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("context error: %w", err)
 		}
 
-		parsed, err := ParseFile(fsys, match, panicAsErr)
+		parsed, err := ParseFile(ctx, fsys, path, panicAsErr)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+				return nil, fmt.Errorf("context error: %w", err)
+			}
 			if pe, ok := errors.AsType[*ParserPanicError](err); ok {
 				return nil, pe // Do not swallow panics.
 			}
+
+			errs = append(errs, fmt.Errorf("%s: %w", path, err))
+			errsByPath[path] = err
 
 			continue
 		}
@@ -192,8 +185,9 @@ func ParseFileSet(ctx context.Context, fsys afero.Fs, indexFile string, panicAsE
 		files = append(files, *parsed)
 	}
 
-	if len(files) == 0 {
-		return nil, fmt.Errorf("%w: no parseable files", errFileCorrupted)
+	if len(files) == 0 && len(errs) > 0 {
+		return nil, fmt.Errorf("all paths failed to parse: %w",
+			errors.Join(errs...))
 	}
 
 	merged, err := mergeFiles(files)
@@ -201,8 +195,13 @@ func ParseFileSet(ctx context.Context, fsys afero.Fs, indexFile string, panicAsE
 		return nil, fmt.Errorf("failed to merge files: %w", err)
 	}
 
+	merged.Paths = slices.Clone(paths)
+	if len(errs) > 0 {
+		merged.Errors = errsByPath
+	}
+
 	return merged, nil
-} */
+}
 
 // sortFilePackets sorts a slice of [FilePacket] by filename, ties by ID.
 func sortFilePackets(list []FilePacket) {

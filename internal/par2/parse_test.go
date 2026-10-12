@@ -894,6 +894,34 @@ func Test_Parse_ConflictingMainPackets_Error(t *testing.T) {
 	require.Nil(t, sets)
 }
 
+// Expectation: Parse should not trust the length of an undecodable unicode packet
+// without MD5 verification, but rescan it, finding the packets that it covers.
+func Test_Parse_InvalidUnicodePacket_NoMD5_RescansCoveredPackets_Success(t *testing.T) {
+	t.Parallel()
+
+	main := buildMainPacket(4096, [][16]byte{idA}, nil)
+	file := buildFileDescPacket("a.txt", 100, idA, setIDOf(main))
+
+	// A lone low surrogate as name, with a length claiming to also cover the
+	// following packets, which a skip by the (unverified) length would lose.
+	body := make([]byte, HashSize+4)
+	copy(body, idA[:])
+	binary.LittleEndian.PutUint16(body[HashSize:], 0xDE00)
+	uniPacket := buildPacket(unicodeDescType, body, setIDOf(main))
+	binary.LittleEndian.PutUint64(uniPacket[8:16], uint64(len(uniPacket)+len(main)+len(file)))
+
+	data := slices.Concat(uniPacket, main, file)
+
+	sets, err := Parse(t.Context(), bytes.NewReader(data), false)
+
+	require.NoError(t, err)
+	require.Len(t, sets, 1)
+	require.NotNil(t, sets[0].MainPacket)
+	require.Len(t, sets[0].RecoverySet, 1)
+	require.Equal(t, "a.txt", sets[0].RecoverySet[0].Name)
+	require.False(t, sets[0].RecoverySet[0].FromUnicode)
+}
+
 // Expectation: Parse should return error when too many sets are encountered.
 func Test_Parse_TooManySets_Error(t *testing.T) {
 	t.Parallel()
@@ -2142,13 +2170,14 @@ func Test_parseFileDescriptionBody_FilenameSpecialChars_Success(t *testing.T) {
 }
 
 // Expectation: parseUnicodeDescriptionBody should fail on body too short.
-func Test_parseUnicodeDescriptionBody_BodyTooShort_Success(t *testing.T) {
+func Test_parseUnicodeDescriptionBody_BodyTooShort_Error(t *testing.T) {
 	t.Parallel()
 
 	shortBody := make([]byte, 16) // Less than HashSize+4 (20)
 
 	_, err := parseUnicodeDescriptionBody(Hash{}, shortBody)
-	require.ErrorIs(t, err, errSkipPacket)
+	require.ErrorIs(t, err, errInvalidPacket)
+	require.NotErrorIs(t, err, errSkipPacket)
 }
 
 // Expectation: parseUnicodeDescriptionBody should handle valid UTF-16LE.
@@ -2187,8 +2216,8 @@ func Test_parseUnicodeDescriptionBody_Emoji_Success(t *testing.T) {
 	require.Equal(t, name, packet.Name)
 }
 
-// Expectation: parseUnicodeDescriptionBody should skip packet on decodeUTF16LE error (odd bytes).
-func Test_parseUnicodeDescriptionBody_DecodeError_OddBytes_Success(t *testing.T) {
+// Expectation: parseUnicodeDescriptionBody should fail packet on decodeUTF16LE error (odd bytes).
+func Test_parseUnicodeDescriptionBody_DecodeError_OddBytes_Error(t *testing.T) {
 	t.Parallel()
 
 	// Create body with odd number of UTF-16 bytes (will cause decodeUTF16LE to fail)
@@ -2197,11 +2226,12 @@ func Test_parseUnicodeDescriptionBody_DecodeError_OddBytes_Success(t *testing.T)
 	copy(body[16:], []byte{0x41, 0x00, 0x42, 0x00, 0x43}) // Odd byte count
 
 	_, err := parseUnicodeDescriptionBody(Hash{}, body)
-	require.ErrorIs(t, err, errSkipPacket)
+	require.ErrorIs(t, err, errInvalidPacket)
+	require.NotErrorIs(t, err, errSkipPacket)
 }
 
-// Expectation: parseUnicodeDescriptionBody should skip packet on decodeUTF16LE error (all nulls).
-func Test_parseUnicodeDescriptionBody_DecodeError_AllNulls_Success(t *testing.T) {
+// Expectation: parseUnicodeDescriptionBody should fail packet on decodeUTF16LE error (all nulls).
+func Test_parseUnicodeDescriptionBody_DecodeError_AllNulls_Error(t *testing.T) {
 	t.Parallel()
 
 	// Create body with all-null UTF-16 data (will cause decodeUTF16LE to fail)
@@ -2210,7 +2240,8 @@ func Test_parseUnicodeDescriptionBody_DecodeError_AllNulls_Success(t *testing.T)
 	// Rest is zeros (all nulls)
 
 	_, err := parseUnicodeDescriptionBody(Hash{}, body)
-	require.ErrorIs(t, err, errSkipPacket)
+	require.ErrorIs(t, err, errInvalidPacket)
+	require.NotErrorIs(t, err, errSkipPacket)
 }
 
 // Expectation: decodeUTF16LE should fail on filename too long.
@@ -2279,6 +2310,83 @@ func Test_decodeUTF16LE_SurrogatePairs_Success(t *testing.T) {
 	result, err := decodeUTF16LE(data)
 	require.NoError(t, err)
 	require.Equal(t, name, result)
+}
+
+// Expectation: decodeUTF16LE should reject a zero unit inside the name instead of truncating at it.
+func Test_decodeUTF16LE_EmbeddedNull_Error(t *testing.T) {
+	t.Parallel()
+
+	// "A", null, "B", then padding
+	data := []byte{0x41, 0x00, 0x00, 0x00, 0x42, 0x00, 0x00, 0x00}
+
+	result, err := decodeUTF16LE(data)
+	require.ErrorIs(t, err, errInvalidUnicode)
+	require.ErrorContains(t, err, "embedded null")
+	require.Empty(t, result)
+}
+
+// Expectation: decodeUTF16LE should reject unpaired surrogates instead of replacing them.
+func Test_decodeUTF16LE_UnpairedSurrogate_Error(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		units []uint16
+	}{
+		{name: "high surrogate followed by a normal unit", units: []uint16{0xD83D, 0x0041}},
+		{name: "high surrogate at the end", units: []uint16{0x0041, 0xD83D}},
+		{name: "high surrogate followed by a high surrogate", units: []uint16{0xD83D, 0xD83D, 0xDE00}},
+		{name: "low surrogate on its own", units: []uint16{0xDE00, 0x0041}},
+		{name: "low surrogate at the end", units: []uint16{0x0041, 0xDE00}},
+		{name: "pair in reverse order", units: []uint16{0xDE00, 0xD83D}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := make([]byte, len(tt.units)*2+2) // Plus a zero padding unit.
+			for i, v := range tt.units {
+				binary.LittleEndian.PutUint16(data[i*2:], v)
+			}
+
+			result, err := decodeUTF16LE(data)
+			require.ErrorIs(t, err, errInvalidUnicode)
+			require.ErrorContains(t, err, "unpaired surrogate")
+			require.Empty(t, result)
+		})
+	}
+}
+
+// Expectation: decodeUTF16LE should keep a genuine U+FFFD in the name, it is not an unpaired surrogate.
+func Test_decodeUTF16LE_ReplacementCharacter_Success(t *testing.T) {
+	t.Parallel()
+
+	// "A", U+FFFD, "B", then padding
+	data := []byte{0x41, 0x00, 0xFD, 0xFF, 0x42, 0x00, 0x00, 0x00}
+
+	result, err := decodeUTF16LE(data)
+	require.NoError(t, err)
+	require.Equal(t, "A\uFFFDB", result)
+}
+
+// Expectation: decodeUTF16LE should decode mixed names and trim any amount of trailing zero padding.
+func Test_decodeUTF16LE_MixedNameWithPadding_Success(t *testing.T) {
+	t.Parallel()
+
+	name := "Ünïcödé 中文 🎉.par2"
+	u16 := utf16.Encode([]rune(name))
+
+	for padding := range 4 {
+		data := make([]byte, (len(u16)+padding)*2)
+		for i, v := range u16 {
+			binary.LittleEndian.PutUint16(data[i*2:], v)
+		}
+
+		result, err := decodeUTF16LE(data)
+		require.NoError(t, err, "padding %d", padding)
+		require.Equal(t, name, result, "padding %d", padding)
+	}
 }
 
 // ============================================================================

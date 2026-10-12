@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"slices"
 	"strings"
 	"testing"
@@ -594,7 +595,6 @@ func Test_ParseFile_CorrectFilename_Success(t *testing.T) {
 	require.Equal(t, "myfile.par2", f.Name)
 }
 
-/*
 // Expectation: ParseFileSet should parse index and volume files.
 func Test_ParseFileSet_Success(t *testing.T) {
 	t.Parallel()
@@ -611,7 +611,7 @@ func Test_ParseFileSet_Success(t *testing.T) {
 	volData := slices.Concat(mainPacket, fileB)
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
 
-	result, err := ParseFileSet(fs, "/archive.par2", false)
+	result, err := ParseFileSet(t.Context(), fs, []string{"/archive.par2", "/archive.vol00+01.par2"}, false)
 	require.NoError(t, err)
 
 	require.NotNil(t, result)
@@ -620,18 +620,7 @@ func Test_ParseFileSet_Success(t *testing.T) {
 	require.Len(t, result.SetsMerged[0].RecoverySet, 2)
 }
 
-// Expectation: ParseFileSet should fail when no files can be parsed.
-func Test_ParseFileSet_NoParseableFiles_Error(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-
-	_, err := ParseFileSet(fs, "/notexist.par2", false)
-	require.Error(t, err)
-	require.ErrorIs(t, err, errFileCorrupted)
-}
-
-// Expectation: ParseFileSet should return empty unparsable files.
+// Expectation: ParseFileSet should treat a file without any valid packets as parsed (without sets), not as failed.
 func Test_ParseFileSet_SomeUnparseableFiles_Success(t *testing.T) {
 	t.Parallel()
 
@@ -645,12 +634,13 @@ func Test_ParseFileSet_SomeUnparseableFiles_Success(t *testing.T) {
 
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", []byte("garbage"), 0o644))
 
-	result, err := ParseFileSet(fs, "/archive.par2", false)
+	result, err := ParseFileSet(t.Context(), fs, []string{"/archive.par2", "/archive.vol00+01.par2"}, false)
 	require.NoError(t, err)
 
 	require.NotNil(t, result)
 	require.Len(t, result.Files, 2)
 	require.Empty(t, result.Files[1].Sets)
+	require.Nil(t, result.Errors)
 }
 
 // Expectation: ParseFileSet should handle only volume files existing.
@@ -665,30 +655,12 @@ func Test_ParseFileSet_NoIndexButVolumeFiles_Success(t *testing.T) {
 
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
 
-	result, err := ParseFileSet(fs, "/archive.par2", false)
+	result, err := ParseFileSet(t.Context(), fs, []string{"/archive.vol00+01.par2"}, false)
 	require.NoError(t, err)
 
 	require.NotNil(t, result)
 	require.Len(t, result.Files, 1)
 	require.NotEmpty(t, result.SetsMerged)
-}
-
-// Expectation: ParseFileSet should not include index file twice.
-func Test_ParseFileSet_NoDuplicateIndex_Success(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewMemMapFs()
-
-	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
-	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
-	indexData := slices.Concat(mainPacket, fileA)
-
-	require.NoError(t, afero.WriteFile(fs, "/archive.par2", indexData, 0o644))
-
-	result, err := ParseFileSet(fs, "/archive.par2", false)
-	require.NoError(t, err)
-	require.NotNil(t, result)
-	require.Len(t, result.Files, 1)
 }
 
 // Expectation: ParseFileSet should merge multiple volume files.
@@ -711,7 +683,7 @@ func Test_ParseFileSet_MergesMultipleVolumes_Success(t *testing.T) {
 	vol2Data := slices.Concat(mainPacket, fileC)
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol01+02.par2", vol2Data, 0o644))
 
-	result, err := ParseFileSet(fs, "/archive.par2", false)
+	result, err := ParseFileSet(t.Context(), fs, []string{"/archive.par2", "/archive.vol00+01.par2", "/archive.vol01+02.par2"}, false)
 	require.NoError(t, err)
 
 	require.NotNil(t, result)
@@ -734,7 +706,7 @@ func Test_ParseFileSet_ConflictingMainPackets_Error(t *testing.T) {
 	require.NoError(t, afero.WriteFile(fs, "/archive.par2", mainPacket1, 0o644))
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", mainPacket2, 0o644))
 
-	_, err := ParseFileSet(fs, "/archive.par2", false)
+	_, err := ParseFileSet(t.Context(), fs, []string{"/archive.par2", "/archive.vol00+01.par2"}, false)
 	require.ErrorIs(t, err, errUnresolvableConflict)
 }
 
@@ -751,13 +723,238 @@ func Test_ParseFileSet_EmptyIndexValidVolumes_Success(t *testing.T) {
 	volData := slices.Concat(mainPacket, fileA)
 	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", volData, 0o644))
 
-	result, err := ParseFileSet(fs, "/archive.par2", false)
+	result, err := ParseFileSet(t.Context(), fs, []string{"/archive.par2", "/archive.vol00+01.par2"}, false)
 	require.NoError(t, err)
 
 	require.NotNil(t, result)
 	require.Len(t, result.Files, 2)
 	require.NotEmpty(t, result.SetsMerged)
-} */
+}
+
+// Expectation: ParseFileSet should return the result of the parseable paths and record the errors of the others.
+func Test_ParseFileSet_PartialFailure_RecordsErrors_Success(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	fileA := buildFileDescPacket("a.txt", 100, idA, setIDOf(mainPacket))
+	require.NoError(t, afero.WriteFile(fsys, "/archive.par2", slices.Concat(mainPacket, fileA), 0o644))
+
+	result, err := ParseFileSet(t.Context(), fsys, []string{"/archive.par2", "/archive.vol00+01.par2"}, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Files, 1)
+	require.Len(t, result.SetsMerged, 1)
+	require.Len(t, result.SetsMerged[0].RecoverySet, 1)
+
+	require.Len(t, result.Errors, 1)
+	require.ErrorIs(t, result.Errors["/archive.vol00+01.par2"], fs.ErrNotExist)
+
+	require.Equal(t, []string{"/archive.par2", "/archive.vol00+01.par2"}, result.Paths)
+}
+
+// Expectation: ParseFileSet should not set Errors when all paths parse.
+func Test_ParseFileSet_NoFailures_NilErrors_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", mainPacket, 0o644))
+
+	result, err := ParseFileSet(t.Context(), fs, []string{"/archive.par2"}, false)
+
+	require.NoError(t, err)
+	require.Nil(t, result.Errors)
+}
+
+// Expectation: ParseFileSet should return an empty result without error when given no paths.
+func Test_ParseFileSet_NoPaths_Success(t *testing.T) {
+	t.Parallel()
+
+	result, err := ParseFileSet(t.Context(), afero.NewMemMapFs(), nil, false)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Empty(t, result.Files)
+	require.Empty(t, result.SetsMerged)
+	require.Nil(t, result.Errors)
+}
+
+// Expectation: ParseFileSet should keep the reasons when all paths fail to parse.
+func Test_ParseFileSet_AllFailed_KeepsReasons_Error(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewMemMapFs()
+
+	result, err := ParseFileSet(t.Context(), fsys, []string{"/archive.par2"}, false)
+
+	require.ErrorContains(t, err, "all paths failed to parse")
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	require.Nil(t, result)
+}
+
+// Expectation: ParseFileSet should return a context error for an already cancelled context,
+// instead of recording the paths as failed.
+func Test_ParseFileSet_ContextCancelledBeforeStart_Error(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	// The path does not exist, so opening it would fail with a non-context error.
+	result, err := ParseFileSet(ctx, afero.NewMemMapFs(), []string{"/archive.par2"}, false)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotErrorIs(t, err, fs.ErrNotExist)
+	require.Nil(t, result)
+}
+
+// cancelOnOpenFs cancels a context once the given path is opened.
+type cancelOnOpenFs struct {
+	afero.Fs
+
+	path   string
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnOpenFs) Open(name string) (afero.File, error) {
+	if name == c.path {
+		c.cancel()
+	}
+
+	return c.Fs.Open(name)
+}
+
+// Expectation: ParseFileSet should stop on a cancellation between paths instead of returning a partial result.
+func Test_ParseFileSet_ContextCancelled_Error(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	require.NoError(t, afero.WriteFile(base, "/archive.par2", mainPacket, 0o644))
+	require.NoError(t, afero.WriteFile(base, "/archive.vol00+01.par2", mainPacket, 0o644))
+
+	// The first path parses fine, the context is cancelled while opening the second.
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	fs := &cancelOnOpenFs{Fs: base, path: "/archive.vol00+01.par2", cancel: cancel}
+
+	result, err := ParseFileSet(ctx, fs, []string{"/archive.par2", "/archive.vol00+01.par2"}, false)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, result)
+}
+
+// panicOnReadFs returns files which panic when read from the given path.
+type panicOnReadFs struct {
+	afero.Fs
+
+	path string
+}
+
+type panicOnReadFile struct {
+	afero.File
+}
+
+func (p *panicOnReadFile) Read([]byte) (int, error) {
+	panic("read panic")
+}
+
+func (p *panicOnReadFs) Open(name string) (afero.File, error) {
+	f, err := p.Fs.Open(name)
+	if err != nil || name != p.path {
+		return f, err
+	}
+
+	return &panicOnReadFile{File: f}, nil
+}
+
+// Expectation: ParseFileSet should return a parser panic instead of recording it as a failed path.
+func Test_ParseFileSet_ParserPanic_Error(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	require.NoError(t, afero.WriteFile(base, "/archive.par2", mainPacket, 0o644))
+	require.NoError(t, afero.WriteFile(base, "/archive.vol00+01.par2", mainPacket, 0o644))
+
+	// The first path parses fine, the second panics while being read.
+	fsys := &panicOnReadFs{Fs: base, path: "/archive.vol00+01.par2"}
+
+	result, err := ParseFileSet(t.Context(), fsys, []string{"/archive.par2", "/archive.vol00+01.par2"}, true)
+
+	var pe *ParserPanicError
+	require.ErrorAs(t, err, &pe)
+	require.Equal(t, "read panic", pe.Value)
+	require.Nil(t, result)
+}
+
+// Expectation: ParseFileSet should keep a name from a unicode packet over the plain one from another
+// file, whatever the order of the paths (e.g. an index which has lost its unicode packet).
+func Test_ParseFileSet_KeepsUnicodeName_Success(t *testing.T) {
+	t.Parallel()
+
+	const unicodeName = "\u00dcn\u00efc\u00f6d\u00e9.txt"
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	setID := setIDOf(mainPacket)
+	fileA := buildFileDescPacket("plain.txt", 100, idA, setID)
+	uniA := buildUnicodePacket(unicodeName, idA, setID)
+
+	for _, paths := range [][]string{
+		{"/archive.par2", "/archive.vol00+01.par2"},
+		{"/archive.vol00+01.par2", "/archive.par2"},
+	} {
+		fs := afero.NewMemMapFs()
+		require.NoError(t, afero.WriteFile(fs, "/archive.par2", slices.Concat(mainPacket, fileA), 0o644))
+		require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", slices.Concat(mainPacket, fileA, uniA), 0o644))
+
+		result, err := ParseFileSet(t.Context(), fs, paths, false)
+		require.NoError(t, err)
+
+		require.Len(t, result.SetsMerged, 1)
+		require.Len(t, result.SetsMerged[0].RecoverySet, 1)
+		require.Equal(t, unicodeName, result.SetsMerged[0].RecoverySet[0].Name, "paths %v", paths)
+		require.True(t, result.SetsMerged[0].RecoverySet[0].FromUnicode, "paths %v", paths)
+	}
+}
+
+// Expectation: ParseFileSet should keep a unicode name only found in a file without main packet.
+func Test_ParseFileSet_KeepsUnicodeNameFromStray_Success(t *testing.T) {
+	t.Parallel()
+
+	const unicodeName = "\u00dcn\u00efc\u00f6d\u00e9.txt"
+
+	mainPacket := buildMainPacket(4096, [][16]byte{idA}, nil)
+	setID := setIDOf(mainPacket)
+	fileA := buildFileDescPacket("plain.txt", 100, idA, setID)
+	uniA := buildUnicodePacket(unicodeName, idA, setID)
+
+	for _, paths := range [][]string{
+		{"/archive.par2", "/archive.vol00+01.par2"},
+		{"/archive.vol00+01.par2", "/archive.par2"},
+	} {
+		fs := afero.NewMemMapFs()
+		// Index has the main packet, but lost its unicode packet.
+		require.NoError(t, afero.WriteFile(fs, "/archive.par2", slices.Concat(mainPacket, fileA), 0o644))
+		// Volume lost its main packet, so its file packet is a stray.
+		require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", slices.Concat(fileA, uniA), 0o644))
+
+		result, err := ParseFileSet(t.Context(), fs, paths, false)
+		require.NoError(t, err)
+
+		require.Len(t, result.SetsMerged, 1)
+		require.Empty(t, result.SetsMerged[0].StrayPackets, "paths %v", paths)
+		require.Len(t, result.SetsMerged[0].RecoverySet, 1)
+		require.Equal(t, unicodeName, result.SetsMerged[0].RecoverySet[0].Name, "paths %v", paths)
+		require.True(t, result.SetsMerged[0].RecoverySet[0].FromUnicode, "paths %v", paths)
+	}
+}
 
 // Expectation: sortFilePackets should sort by name first.
 func Test_sortFilePackets_SortByName_Success(t *testing.T) {
