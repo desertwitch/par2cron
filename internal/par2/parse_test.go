@@ -2170,7 +2170,7 @@ func Test_parseFileDescriptionBody_FilenameSpecialChars_Success(t *testing.T) {
 }
 
 // Expectation: parseUnicodeDescriptionBody should fail on body too short.
-func Test_parseUnicodeDescriptionBody_BodyTooShort_Success(t *testing.T) {
+func Test_parseUnicodeDescriptionBody_BodyTooShort_Error(t *testing.T) {
 	t.Parallel()
 
 	shortBody := make([]byte, 16) // Less than HashSize+4 (20)
@@ -2216,8 +2216,8 @@ func Test_parseUnicodeDescriptionBody_Emoji_Success(t *testing.T) {
 	require.Equal(t, name, packet.Name)
 }
 
-// Expectation: parseUnicodeDescriptionBody should skip packet on decodeUTF16LE error (odd bytes).
-func Test_parseUnicodeDescriptionBody_DecodeError_OddBytes_Success(t *testing.T) {
+// Expectation: parseUnicodeDescriptionBody should fail packet on decodeUTF16LE error (odd bytes).
+func Test_parseUnicodeDescriptionBody_DecodeError_OddBytes_Error(t *testing.T) {
 	t.Parallel()
 
 	// Create body with odd number of UTF-16 bytes (will cause decodeUTF16LE to fail)
@@ -2230,8 +2230,8 @@ func Test_parseUnicodeDescriptionBody_DecodeError_OddBytes_Success(t *testing.T)
 	require.NotErrorIs(t, err, errSkipPacket)
 }
 
-// Expectation: parseUnicodeDescriptionBody should skip packet on decodeUTF16LE error (all nulls).
-func Test_parseUnicodeDescriptionBody_DecodeError_AllNulls_Success(t *testing.T) {
+// Expectation: parseUnicodeDescriptionBody should fail packet on decodeUTF16LE error (all nulls).
+func Test_parseUnicodeDescriptionBody_DecodeError_AllNulls_Error(t *testing.T) {
 	t.Parallel()
 
 	// Create body with all-null UTF-16 data (will cause decodeUTF16LE to fail)
