@@ -1061,6 +1061,35 @@ func Test_Parse_ContextCancelledDuringRecovery_Error(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+// Expectation: Parse should return sets in the order their first main, file or unicode packet appears in the stream.
+func Test_Parse_SetOrder_FirstAppearance_Success(t *testing.T) {
+	t.Parallel()
+
+	m1 := buildMainPacket(4096, [][16]byte{idA}, nil)
+	m2 := buildMainPacket(4096, [][16]byte{idB}, nil)
+	m3 := buildMainPacket(4096, [][16]byte{idC}, nil)
+	s1, s2, s3 := setIDOf(m1), setIDOf(m2), setIDOf(m3)
+
+	data := slices.Concat(
+		buildUnicodePacket("c.txt", idC, s3), // Set 3 first appears by its unicode packet,
+		[]byte("PAR2\x00PKTgarbage-garbage-garbage-garbage-garbage-garbage-garbage-garbage"),
+		buildFileDescPacket("a.txt", 1, idA, s1), // set 1 by its file packet (after damage),
+		m2,                                       // and set 2 by its main packet.
+		m1,
+		m3,
+		buildFileDescPacket("c.txt", 1, idC, s3), // Later packets do not change the order.
+	)
+
+	sets, err := Parse(t.Context(), bytes.NewReader(data), true)
+	require.NoError(t, err)
+
+	got := make([]Hash, 0, len(sets))
+	for _, s := range sets {
+		got = append(got, s.SetID)
+	}
+	require.Equal(t, []Hash{s3, s1, s2}, got)
+}
+
 // Expectation: setGrouper.Insert should return error for unknown packet type.
 func Test_setGrouper_Insert_UnknownPacketType_Error(t *testing.T) {
 	t.Parallel()
@@ -1235,6 +1264,27 @@ func Test_setGrouper_Insert_UnicodePacket_Success(t *testing.T) {
 
 	require.Len(t, grouper.groups, 1)
 	require.Contains(t, grouper.groups[Hash(sID)].unfilteredUnicode, Hash(idA))
+}
+
+// Expectation: setGrouper.Insert should record the order in which sets are first seen, regardless of packet type.
+func Test_setGrouper_Insert_RecordsFirstAppearanceOrder_Success(t *testing.T) {
+	t.Parallel()
+
+	grouper := newSetGrouper()
+
+	require.NoError(t, grouper.Insert(&UnicodePacket{SetID: Hash(idC), FileID: Hash(idA), Name: "c.txt"}))
+	require.NoError(t, grouper.Insert(&FilePacket{SetID: Hash(idA), FileID: Hash(idA), Name: "a.txt"}))
+	require.NoError(t, grouper.Insert(&MainPacket{SetID: Hash(idB)}))
+	require.NoError(t, grouper.Insert(&MainPacket{SetID: Hash(idC)})) // Already seen.
+	require.NoError(t, grouper.Insert(&MainPacket{SetID: Hash(idA)})) // Already seen.
+
+	require.Equal(t, []Hash{Hash(idC), Hash(idA), Hash(idB)}, grouper.order)
+
+	sets := grouper.Sets()
+	require.Len(t, sets, 3)
+	require.Equal(t, Hash(idC), sets[0].SetID)
+	require.Equal(t, Hash(idA), sets[1].SetID)
+	require.Equal(t, Hash(idB), sets[2].SetID)
 }
 
 // Expectation: setGrouper.Sets should apply unicode override only once.

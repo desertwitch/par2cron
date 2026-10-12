@@ -956,6 +956,49 @@ func Test_ParseFileSet_KeepsUnicodeNameFromStray_Success(t *testing.T) {
 	}
 }
 
+// Expectation: ParseFileSet should keep the files in path order (skipping failed paths), and merge
+// the sets in order of first appearance across the files, each file's own set order preserved.
+func Test_ParseFileSet_SetOrder_Success(t *testing.T) {
+	t.Parallel()
+
+	m1 := buildMainPacket(4096, [][16]byte{idA}, nil)
+	m2 := buildMainPacket(4096, [][16]byte{idB}, nil)
+	m3 := buildMainPacket(4096, [][16]byte{idC}, nil)
+	s1, s2, s3 := setIDOf(m1), setIDOf(m2), setIDOf(m3)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/archive.par2", m2, 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/archive.vol00+01.par2", slices.Concat(m1, m2, m3), 0o644))
+
+	for _, paths := range [][]string{
+		{"/archive.par2", "/archive.vol00+01.par2"},
+		{"/archive.par2", "/missing.vol00+01.par2", "/archive.vol00+01.par2"}, // Failed paths are skipped.
+	} {
+		result, err := ParseFileSet(t.Context(), fs, paths, false)
+		require.NoError(t, err)
+
+		require.Len(t, result.Files, 2, "paths %v", paths)
+		require.Equal(t, "archive.par2", result.Files[0].Name, "paths %v", paths)
+		require.Equal(t, "archive.vol00+01.par2", result.Files[1].Name, "paths %v", paths)
+
+		got := make([]Hash, 0, len(result.SetsMerged))
+		for _, s := range result.SetsMerged {
+			got = append(got, s.SetID)
+		}
+		require.Equal(t, []Hash{s2, s1, s3}, got, "paths %v", paths)
+	}
+
+	// The other way around, the volume's order comes first.
+	result, err := ParseFileSet(t.Context(), fs, []string{"/archive.vol00+01.par2", "/archive.par2"}, false)
+	require.NoError(t, err)
+
+	got := make([]Hash, 0, len(result.SetsMerged))
+	for _, s := range result.SetsMerged {
+		got = append(got, s.SetID)
+	}
+	require.Equal(t, []Hash{s1, s2, s3}, got)
+}
+
 // Expectation: sortFilePackets should sort by name first.
 func Test_sortFilePackets_SortByName_Success(t *testing.T) {
 	t.Parallel()
