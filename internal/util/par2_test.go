@@ -511,6 +511,60 @@ func Test_ParsePar2Set_BundleMultipleIndexes_ParsesBundle_Success(t *testing.T) 
 	require.Equal(t, sets, all)
 }
 
+// Expectation: An empty bundle should return no best set and no sets, without merging other files.
+func Test_ParsePar2Set_BundleEmpty_NoMerge_Error(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string][]bundle.IndexEntry{
+		"no entries":         nil,
+		"index without sets": {{Name: "file.par2", DataLength: 10}},
+	}
+
+	for name, entries := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			parsedBundle := false
+			par2er := psIndexOnly(t) // Fails the test on a merge.
+			par2er.ParseFunc = func(_ io.ReadSeeker, _ bool) ([]par2.Set, error) {
+				return nil, nil // Embedded index without any sets.
+			}
+			par2er.ParseFileFunc = func(_ afero.Fs, path string, _ bool) (*par2.File, error) {
+				parsedBundle = true
+				require.Equal(t, "/data/file.p2c.par2", path)
+
+				return &par2.File{}, nil // Bundle without any sets.
+			}
+			par2er.ParseFileSetFunc = func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+				require.Fail(t, "should not start merging files")
+
+				return nil, errors.New("unexpected call")
+			}
+			bundler := &testutil.MockBundleHandler{
+				OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+					return &testutil.MockBundle{
+						EntriesFunc: func() []bundle.IndexEntry {
+							return entries
+						},
+						ExtractEntryFunc: func(_ bundle.IndexEntry, w io.Writer) error {
+							_, err := w.Write([]byte("index data"))
+
+							return err
+						},
+					}, nil
+				},
+			}
+
+			best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.p2c.par2", "/data", par2er, bundler)
+
+			require.ErrorIs(t, err, ErrNoCompleteSet)
+			require.True(t, parsedBundle)
+			require.Nil(t, best)
+			require.Empty(t, all)
+		})
+	}
+}
+
 // Expectation: isFatalParseErr should only report cancellations of the given context and parser panics.
 func Test_isFatalParseErr_Success(t *testing.T) {
 	t.Parallel()
