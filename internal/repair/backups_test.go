@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"syscall"
 	"testing"
@@ -32,7 +33,7 @@ func bmNewManager(t *testing.T, fs afero.Fs, dir string, names ...string) (*back
 	_ = ls.LogLevel.Set("debug")
 
 	par2Path := dir + "/test" + schema.Par2Extension
-	job := &Job{workingDir: dir, par2Path: par2Path}
+	job := &Job{workingDir: dir, par2Name: filepath.Base(par2Path), par2Path: par2Path}
 
 	man, err := newBackupManager(t.Context(), job, fs, mockPar2Files(t, par2Path, names...), &testutil.MockBundleHandler{}, logging.NewLogger(ls))
 	require.NoError(t, err)
@@ -82,6 +83,7 @@ func bmForeignGID(t *testing.T) uint32 {
 func bmBundleJob(dir string) (*Job, *logging.Logger) {
 	job := &Job{
 		workingDir: dir,
+		par2Name:   "test" + schema.BundleExtension + schema.Par2Extension,
 		par2Path:   dir + "/test" + schema.BundleExtension + schema.Par2Extension,
 		isBundle:   true,
 	}
@@ -118,7 +120,7 @@ func bmRecoverySets(names ...string) []par2.Set {
 		recoverySet = append(recoverySet, par2.FilePacket{Name: name})
 	}
 
-	return []par2.Set{{RecoverySet: recoverySet}}
+	return []par2.Set{{MainPacket: &par2.MainPacket{}, RecoverySet: recoverySet}}
 }
 
 // Expectation: The constructor should record the protected files of the PAR2 recovery set.
@@ -180,13 +182,13 @@ func Test_newBackupManager_MultipleSets_Success(t *testing.T) {
 	par2er := &testutil.MockPar2Handler{
 		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
 			return &par2.File{Sets: []par2.Set{
-				{RecoverySet: []par2.FilePacket{{Name: "a.txt"}}},
-				{RecoverySet: []par2.FilePacket{{Name: "b.txt"}}},
+				{MainPacket: &par2.MainPacket{}, RecoverySet: []par2.FilePacket{{Name: "a.txt"}}},
+				{MainPacket: &par2.MainPacket{}, RecoverySet: []par2.FilePacket{{Name: "b.txt"}}},
 			}}, nil
 		},
 	}
 	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
-	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
+	job := &Job{workingDir: dir, par2Name: "test" + schema.Par2Extension, par2Path: dir + "/test" + schema.Par2Extension}
 
 	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, log)
 
@@ -206,13 +208,14 @@ func Test_newBackupManager_NonRecoverySet_Ignored(t *testing.T) {
 	par2er := &testutil.MockPar2Handler{
 		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
 			return &par2.File{Sets: []par2.Set{{
+				MainPacket:     &par2.MainPacket{},
 				RecoverySet:    []par2.FilePacket{{Name: "a.txt"}},
 				NonRecoverySet: []par2.FilePacket{{Name: "b.txt"}},
 			}}}, nil
 		},
 	}
 	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
-	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
+	job := &Job{workingDir: dir, par2Name: "test" + schema.Par2Extension, par2Path: dir + "/test" + schema.Par2Extension}
 
 	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, log)
 
@@ -232,13 +235,17 @@ func Test_newBackupManager_ParseError_Error(t *testing.T) {
 		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
 			return nil, errors.New("simulated parse failure")
 		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return nil, errors.New("simulated parse failure")
+		},
 	}
 	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
-	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
+	job := &Job{workingDir: dir, par2Name: "test" + schema.Par2Extension, par2Path: dir + "/test" + schema.Par2Extension}
 
 	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, log)
 
 	require.ErrorContains(t, err, "failed to parse par2")
+	require.ErrorContains(t, err, "simulated parse failure")
 	require.Nil(t, man)
 }
 
@@ -517,6 +524,36 @@ func Test_newBackupManager_Bundle_EmptySets_Fallback(t *testing.T) {
 	require.Contains(t, man.snapshot, dir+"/a.txt")
 }
 
+// Expectation: The constructor should use incomplete PAR2 sets for backup handling, rather than failing.
+func Test_newBackupManager_IncompleteSets_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
+	_ = ls.LogLevel.Set("debug")
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			// Without its main packet, the set is incomplete.
+			return &par2.File{Sets: []par2.Set{{RecoverySet: []par2.FilePacket{{Name: "a.txt"}}}}}, nil
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return nil, errors.New("simulated merge failure")
+		},
+	}
+	job := &Job{workingDir: dir, par2Name: "test" + schema.Par2Extension, par2Path: dir + "/test" + schema.Par2Extension}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, logging.NewLogger(ls))
+
+	require.NoError(t, err)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
+	require.Contains(t, logBuf.String(), "Using incomplete PAR2 sets for backup handling")
+}
+
 // Expectation: The constructor should return an error when neither the bundled index nor the bundle file can be parsed.
 func Test_newBackupManager_Bundle_FallbackError_Error(t *testing.T) {
 	t.Parallel()
@@ -551,7 +588,7 @@ func Test_newBackupManager_NotBundle_BundlerUnused(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
 
-	job := &Job{workingDir: dir, par2Path: dir + "/test" + schema.Par2Extension}
+	job := &Job{workingDir: dir, par2Name: "test" + schema.Par2Extension, par2Path: dir + "/test" + schema.Par2Extension}
 	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
 
 	bundler := &testutil.MockBundleHandler{

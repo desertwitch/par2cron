@@ -616,6 +616,56 @@ func Test_MockPar2Handler_ParseFile_NoFunc_Error(t *testing.T) {
 	require.Contains(t, err.Error(), "not implemented")
 }
 
+// Expectation: The mock par2 handler should call the provided ParseFileSet function with the given arguments.
+func Test_MockPar2Handler_ParseFileSet_WithFunc_Success(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	handler := &MockPar2Handler{
+		ParseFileSetFunc: func(fsys afero.Fs, paths []string, panicAsErr bool) (*par2.FileSet, error) {
+			called = true
+			require.Equal(t, []string{"/data/test.par2", "/data/test.vol0+1.par2"}, paths)
+			require.True(t, panicAsErr)
+
+			return &par2.FileSet{}, nil
+		},
+	}
+
+	result, err := handler.ParseFileSet(t.Context(), afero.NewMemMapFs(), []string{"/data/test.par2", "/data/test.vol0+1.par2"}, true)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, called)
+}
+
+// Expectation: The mock par2 handler should return the error from the ParseFileSet function.
+func Test_MockPar2Handler_ParseFileSet_WithFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	expectedErr := errors.New("parse error")
+	handler := &MockPar2Handler{
+		ParseFileSetFunc: func(fsys afero.Fs, paths []string, panicAsErr bool) (*par2.FileSet, error) {
+			return nil, expectedErr
+		},
+	}
+
+	_, err := handler.ParseFileSet(t.Context(), afero.NewMemMapFs(), []string{"/data/test.par2"}, true)
+
+	require.ErrorIs(t, err, expectedErr)
+}
+
+// Expectation: The mock par2 handler should return an error when no ParseFileSet function is provided.
+func Test_MockPar2Handler_ParseFileSet_NoFunc_Error(t *testing.T) {
+	t.Parallel()
+
+	handler := &MockPar2Handler{}
+
+	_, err := handler.ParseFileSet(t.Context(), afero.NewMemMapFs(), []string{"/data/test.par2"}, true)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not implemented")
+}
+
 // Expectation: The mock bundle handler should call the provided Open function.
 func Test_MockBundleHandler_Open_WithFunc_Success(t *testing.T) {
 	t.Parallel()

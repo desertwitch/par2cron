@@ -58,7 +58,7 @@ func mockPar2Files(t *testing.T, wantPath string, names ...string) *testutil.Moc
 
 			return &par2.File{
 				Name: filepath.Base(path),
-				Sets: []par2.Set{{RecoverySet: recoverySet}},
+				Sets: []par2.Set{{MainPacket: &par2.MainPacket{}, RecoverySet: recoverySet}},
 			}, nil
 		},
 	}
@@ -3192,6 +3192,9 @@ func Test_Service_runRepair_BackupManagerError_Success(t *testing.T) {
 
 	par2er := &testutil.MockPar2Handler{
 		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return nil, errors.New("simulated parse failure")
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
 			return nil, errors.New("simulated parse failure")
 		},
 	}

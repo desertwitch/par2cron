@@ -22,6 +22,7 @@ type CommandRunner interface {
 type Par2Handler interface {
 	Parse(ctx context.Context, r io.ReadSeeker, checkMD5 bool) ([]par2.Set, error)
 	ParseFile(ctx context.Context, fsys afero.Fs, path string, panicAsErr bool) (p *par2.File, e error)
+	ParseFileSet(ctx context.Context, fsys afero.Fs, paths []string, panicAsErr bool) (*par2.FileSet, error)
 }
 
 type BundleHandler interface {

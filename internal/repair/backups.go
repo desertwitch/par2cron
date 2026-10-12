@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/logging"
-	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
@@ -38,22 +37,12 @@ type backupManager struct {
 func newBackupManager(ctx context.Context, job *Job, fsys afero.Fs, par2er schema.Par2Handler, bundler schema.BundleHandler, log *logging.Logger) (*backupManager, error) {
 	log = log.With("component", "backupManager")
 
-	var sets []par2.Set
-	if job.isBundle {
-		s, err := util.ParseBundlePar2Index(ctx, fsys, job.par2Path, par2er, bundler)
-		if err == nil {
-			sets = s
-		} else {
-			log.Debug("Failed to parse PAR2 bundle", "error", err)
-		}
-	}
-	if len(sets) == 0 {
-		f, err := par2er.ParseFile(ctx, fsys, job.par2Path, true)
-		if err == nil {
-			sets = f.Sets
-		} else {
+	_, sets, err := util.ParsePar2Set(ctx, fsys, job.par2Name, job.workingDir, par2er, bundler)
+	if err != nil {
+		if len(sets) == 0 {
 			return nil, fmt.Errorf("failed to parse par2: %w", err)
 		}
+		log.Debug("Using incomplete PAR2 sets for backup handling", "error", err)
 	}
 
 	man := &backupManager{log: log, fsys: fsys}

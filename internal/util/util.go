@@ -50,6 +50,10 @@ func (h *Par2Handler) ParseFile(ctx context.Context, fsys afero.Fs, path string,
 	return par2.ParseFile(ctx, fsys, path, panicAsErr) //nolint:wrapcheck
 }
 
+func (h *Par2Handler) ParseFileSet(ctx context.Context, fsys afero.Fs, paths []string, panicAsErr bool) (*par2.FileSet, error) {
+	return par2.ParseFileSet(ctx, fsys, paths, panicAsErr) //nolint:wrapcheck
+}
+
 type ResultTracker struct {
 	Selected int
 	Success  int
