@@ -1,0 +1,6 @@
+kind: Fixed
+body: check existence before bundling operations
+time: 2026-10-13T00:16:50.373716522+02:00
+custom:
+    Issue: ""
+    PR: "101"

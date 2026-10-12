@@ -162,6 +162,107 @@ func Test_Service_processMode_Unpack_Success(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Job completed with success")
 }
 
+// Expectation: A pack job for an already existing bundle should be counted as skipped.
+func Test_Service_processMode_Pack_BundleExists_Skipped(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("oldbundle"), 0o644))
+
+	mf := &schema.Manifest{Name: "test" + schema.Par2Extension}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: [16]byte{1}}},
+				},
+			}, nil
+		},
+	}
+
+	var packCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
+
+	results, err := prog.Pack(t.Context(), []string{"/data"}, Options{})
+	require.NoError(t, err)
+	require.False(t, packCalled)
+	require.Equal(t, 1, results.Selected)
+	require.Equal(t, 0, results.Success)
+	require.Equal(t, 1, results.Skipped)
+	require.Equal(t, 0, results.Error)
+
+	require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
+}
+
+// Expectation: An unpack job next to already existing PAR2 files should be counted as skipped.
+func Test_Service_processMode_Unpack_Par2Exists_Skipped(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/test.vol07+08"+schema.Par2Extension, []byte("orphan"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var openCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return &testutil.MockBundle{
+				UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+					return nil, nil
+				},
+				CloseFunc: func() error {
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	results, err := prog.Unpack(t.Context(), []string{"/data"}, Options{})
+	require.NoError(t, err)
+	require.False(t, openCalled)
+	require.Equal(t, 1, results.Selected)
+	require.Equal(t, 0, results.Success)
+	require.Equal(t, 1, results.Skipped)
+	require.Equal(t, 0, results.Error)
+
+	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+}
+
 // Expectation: Multiple root directories should be processed.
 func Test_Service_processMode_MultiRoot_Success(t *testing.T) {
 	t.Parallel()
@@ -1095,6 +1196,174 @@ func Test_Service_packBundle_NilManifest_Success(t *testing.T) {
 	require.True(t, bundleExists)
 }
 
+// Expectation: The function should skip without packing when a same-named bundle already exists.
+func Test_Service_packBundle_BundleExists_Skip(t *testing.T) {
+	t.Parallel()
+
+	for _, existing := range []string{
+		"test" + schema.BundleExtension + schema.Par2Extension,
+		"test" + strings.ToUpper(schema.BundleExtension+schema.Par2Extension),
+		"test.P2c.Par2",
+	} {
+		t.Run(existing, func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewMemMapFs()
+			require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/"+existing, []byte("oldbundle"), 0o644))
+
+			var logBuf testutil.SafeBuffer
+			ls := logging.Options{
+				Logout: &logBuf,
+				Stdout: io.Discard,
+				Stderr: io.Discard,
+			}
+			_ = ls.LogLevel.Set("info")
+
+			par2er := &testutil.MockPar2Handler{
+				ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+					return &par2.File{
+						Sets: []par2.Set{
+							{MainPacket: &par2.MainPacket{SetID: [16]byte{1}}},
+						},
+					}, nil
+				},
+			}
+
+			var packCalled bool
+			bndlr := &testutil.MockBundleHandler{
+				PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+					packCalled = true
+					require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+					return nil
+				},
+			}
+
+			prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
+
+			job := NewJob("/data/folder/test"+schema.Par2Extension, Options{}, nil, false)
+
+			err := prog.packBundle(t.Context(), job)
+			require.ErrorIs(t, err, schema.ErrSilentSkip)
+			require.False(t, packCalled)
+			require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
+
+			// Existing bundle and loose files should be left untouched.
+			data, err := afero.ReadFile(fs, "/data/folder/"+existing)
+			require.NoError(t, err)
+			require.Equal(t, []byte("oldbundle"), data)
+
+			for _, name := range []string{"test" + schema.Par2Extension, "test.vol00+01" + schema.Par2Extension} {
+				exists, err := afero.Exists(fs, "/data/folder/"+name)
+				require.NoError(t, err)
+				require.True(t, exists, name)
+			}
+		})
+	}
+}
+
+// Expectation: The function should pack when only bundles of other roots exist.
+func Test_Service_packBundle_OtherRootBundleExists_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST"+schema.BundleExtension+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.backup"+schema.BundleExtension+schema.Par2Extension, []byte("other"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: [16]byte{1}}},
+				},
+			}, nil
+		},
+	}
+
+	var packCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
+
+	job := NewJob("/data/folder/test"+schema.Par2Extension, Options{}, nil, false)
+
+	require.NoError(t, prog.packBundle(t.Context(), job))
+	require.True(t, packCalled)
+
+	exists, err := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
+// Expectation: The function should return an error when the existence check fails.
+func Test_Service_packBundle_ExistenceCheckFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("par2index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.vol00+01"+schema.Par2Extension, []byte("vol1"), 0o644))
+	fs = &testutil.FailingOpenFs{Fs: fs, FailPattern: "/data/folder"}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(fsys afero.Fs, path string, panicAsErr bool) (*par2.File, error) {
+			return &par2.File{
+				Sets: []par2.Set{
+					{MainPacket: &par2.MainPacket{SetID: [16]byte{1}}},
+				},
+			}, nil
+		},
+	}
+
+	var packCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
+			require.NoError(t, afero.WriteFile(fsys, bundlePath, []byte("bundledata"), 0o644))
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
+
+	job := NewJob("/data/folder/test"+schema.Par2Extension, Options{}, nil, false)
+
+	err := prog.packBundle(t.Context(), job)
+	require.ErrorContains(t, err, "failed to check existence")
+	require.NotErrorIs(t, err, schema.ErrSilentSkip)
+	require.False(t, packCalled)
+}
+
 // Expectation: The function should return an error when no bundleable files are found.
 func Test_Service_packBundle_NoFilesFound_Error(t *testing.T) {
 	t.Parallel()
@@ -1758,6 +2027,156 @@ func Test_Service_unpackBundle_Success(t *testing.T) {
 	require.False(t, bundleExists)
 }
 
+// Expectation: The function should skip without unpacking when same-named PAR2 files already exist.
+func Test_Service_unpackBundle_Par2Exists_Skip(t *testing.T) {
+	t.Parallel()
+
+	for _, existing := range []string{
+		"test" + schema.Par2Extension,
+		"test" + strings.ToUpper(schema.Par2Extension),
+		"test.vol07+08" + schema.Par2Extension,
+		"test.VOL07-08.Par2",
+	} {
+		t.Run(existing, func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewMemMapFs()
+			require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/"+existing, []byte("existing"), 0o644))
+
+			var logBuf testutil.SafeBuffer
+			ls := logging.Options{
+				Logout: &logBuf,
+				Stdout: io.Discard,
+				Stderr: io.Discard,
+			}
+			_ = ls.LogLevel.Set("info")
+
+			var openCalled bool
+			bndlr := &testutil.MockBundleHandler{
+				OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+					openCalled = true
+
+					return &testutil.MockBundle{
+						UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+							return nil, nil
+						},
+						CloseFunc: func() error {
+							return nil
+						},
+					}, nil
+				},
+			}
+
+			prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+			job := NewJob("/data/folder/test"+schema.BundleExtension+schema.Par2Extension, Options{}, nil, true)
+
+			err := prog.unpackBundle(t.Context(), job)
+			require.ErrorIs(t, err, schema.ErrSilentSkip)
+			require.False(t, openCalled)
+			require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+
+			// Existing file and bundle should be left untouched.
+			data, err := afero.ReadFile(fs, "/data/folder/"+existing)
+			require.NoError(t, err)
+			require.Equal(t, []byte("existing"), data)
+
+			exists, err := afero.Exists(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension)
+			require.NoError(t, err)
+			require.True(t, exists)
+		})
+	}
+}
+
+// Expectation: The function should unpack when only other bundles or other roots' files exist.
+func Test_Service_unpackBundle_OtherFilesExist_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+strings.ToUpper(schema.BundleExtension)+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST.vol00+01"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.backup"+schema.Par2Extension, []byte("other"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var openCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return &testutil.MockBundle{
+				UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+					return nil, nil
+				},
+				CloseFunc: func() error {
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	job := NewJob("/data/folder/test"+schema.BundleExtension+schema.Par2Extension, Options{}, nil, true)
+
+	require.NoError(t, prog.unpackBundle(t.Context(), job))
+	require.True(t, openCalled)
+}
+
+// Expectation: The function should return an error when the existence check fails.
+func Test_Service_unpackBundle_ExistenceCheckFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.BundleExtension+schema.Par2Extension, []byte("bundledata"), 0o644))
+	fs = &testutil.FailingOpenFs{Fs: fs, FailPattern: "/data/folder"}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var openCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return &testutil.MockBundle{
+				UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+					return nil, nil
+				},
+				CloseFunc: func() error {
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	job := NewJob("/data/folder/test"+schema.BundleExtension+schema.Par2Extension, Options{}, nil, true)
+
+	err := prog.unpackBundle(t.Context(), job)
+	require.ErrorContains(t, err, "failed to check existence")
+	require.NotErrorIs(t, err, schema.ErrSilentSkip)
+	require.False(t, openCalled)
+}
+
 // Expectation: The function should return an error when opening the bundle fails.
 func Test_Service_unpackBundle_OpenFails_Error(t *testing.T) {
 	t.Parallel()
@@ -1880,13 +2299,14 @@ func Test_Service_unpackBundle_CorruptNoForce_Error(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 
 	corruptFile := "/data/folder/test" + schema.Par2Extension
-	require.NoError(t, afero.WriteFile(fs, corruptFile, []byte("corrupt"), 0o644))
 
 	createdLock := corruptFile + schema.LockExtension
 	require.NoError(t, afero.WriteFile(fs, createdLock, []byte("data"), 0o644))
 
 	mockBundle := &testutil.MockBundle{
 		UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+			require.NoError(t, afero.WriteFile(fsys, corruptFile, []byte("corrupt"), 0o644))
+
 			return []string{corruptFile}, errors.Join(bundle.ErrDataCorrupt)
 		},
 		CloseFunc: func() error {
@@ -1931,10 +2351,11 @@ func Test_Service_unpackBundle_CorruptWithForce_Success(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 
 	corruptFile := "/data/folder/test" + schema.Par2Extension
-	require.NoError(t, afero.WriteFile(fs, corruptFile, []byte("corrupt"), 0o644))
 
 	mockBundle := &testutil.MockBundle{
 		UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+			require.NoError(t, afero.WriteFile(fsys, corruptFile, []byte("corrupt"), 0o644))
+
 			return []string{corruptFile}, errors.Join(bundle.ErrDataCorrupt)
 		},
 		CloseFunc: func() error {
@@ -1976,13 +2397,14 @@ func Test_Service_unpackBundle_NonCorruptError_Error(t *testing.T) {
 	_ = ls.LogLevel.Set("info")
 
 	unpackedFile := "/data/folder/test" + schema.Par2Extension
-	require.NoError(t, afero.WriteFile(fs, unpackedFile, []byte("data"), 0o644))
 
 	createdLock := unpackedFile + schema.LockExtension
 	require.NoError(t, afero.WriteFile(fs, createdLock, []byte("data"), 0o644))
 
 	mockBundle := &testutil.MockBundle{
 		UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+			require.NoError(t, afero.WriteFile(fsys, unpackedFile, []byte("data"), 0o644))
+
 			return []string{unpackedFile}, errors.New("I/O error")
 		},
 		CloseFunc: func() error {

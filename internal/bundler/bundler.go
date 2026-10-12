@@ -220,6 +220,8 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 		if err := rf(ctx, job); err == nil {
 			logger.Info("Job completed with success")
 			results.Success++
+		} else if errors.Is(err, schema.ErrSilentSkip) {
+			results.Skipped++
 		} else {
 			logger.Error("Job failure (skipping)", "error", err)
 			errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, err))
@@ -371,6 +373,15 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
+	if path, exists, err := prog.existingSetMember(job, true); err != nil {
+		return fmt.Errorf("failed to check existence: %w", err)
+	} else if exists {
+		logger := prog.bundleLogger(ctx, job, path)
+		logger.Warn("Same-named bundle already exists in folder (not overwriting)")
+
+		return fmt.Errorf("%w: bundle already exists", schema.ErrSilentSkip)
+	}
+
 	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
 	if err != nil {
 		return fmt.Errorf("failed to find files to bundle: %w", err)
@@ -492,6 +503,15 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	}
 	defer unlock()
 
+	if path, exists, err := prog.existingSetMember(job, false); err != nil {
+		return fmt.Errorf("failed to check existence: %w", err)
+	} else if exists {
+		logger := prog.bundleLogger(ctx, job, path)
+		logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
+
+		return fmt.Errorf("%w: par2 files already exist", schema.ErrSilentSkip)
+	}
+
 	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)
 	if err != nil {
 		return fmt.Errorf("failed to open bundle: %w", err)
@@ -556,4 +576,31 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	}
 
 	return nil
+}
+
+// existingSetMember returns the path of the first entry in the job's working
+// directory that is a member of the job's PAR2 set (see [util.IsPar2SetMember])
+// and is a bundle (wantBundle is true) or not a bundle (wantBundle is false).
+// This is used to not pack over an existing bundle, and to not unpack next to
+// existing PAR2 files (e.g. orphaned volumes, which would be mixed into the set).
+func (prog *Service) existingSetMember(job *Job, wantBundle bool) (string, bool, error) {
+	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+
+		if !util.IsPar2SetMember(job.par2Name, name) {
+			continue
+		}
+		if util.IsPar2Bundle(name) != wantBundle {
+			continue
+		}
+
+		return filepath.Join(job.workingDir, name), true, nil
+	}
+
+	return "", false, nil
 }
