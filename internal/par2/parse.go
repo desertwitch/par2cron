@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
 	"unicode"
 	"unicode/utf16"
 )
@@ -411,23 +410,12 @@ func readNextPacket(r io.Reader, avail int64, checkMD5 bool) (any, error) {
 	}
 }
 
-// Use a pool for the seek buffers, avoids continuous allocations.
-var scanBufPool = sync.Pool{
-	New: func() any {
-		b := make([]byte, recoverBufferSize)
-
-		return &b
-	},
-}
-
 // seekToNextPacket tries to find the next [packetMagic] sequence and advances
 // the reader to its start. If none is found, it returns the wrapped [io.EOF]
 // (or [io.ErrUnexpectedEOF]) of the reader; it returns [io.ErrNoProgress] on
 // a stalled reader, and any other read, seek or context error as is.
 func seekToNextPacket(ctx context.Context, r io.ReadSeeker) error {
-	bp := scanBufPool.Get().(*[]byte) //nolint:forcetypeassert
-	defer scanBufPool.Put(bp)
-	buf := *bp
+	buf := make([]byte, recoverBufferSize)
 
 	magicLen := len(packetMagic)
 	readerStalls := 0
