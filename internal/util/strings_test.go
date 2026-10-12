@@ -152,7 +152,10 @@ func Test_IsPar2SetMember_Table(t *testing.T) {
 		{"index->bundle", "test.par2", "test.p2c.par2", true},
 		{"index->volume", "test.par2", "test.vol00+01.par2", true},
 		{"index->alt volume", "test.par2", "test.vol00-01.par2", true},
-		{"index->volume uppercase", "test.PAR2", "TEST.VOL00+01.PAR2", true},
+		{"index->volume uppercase extension", "test.PAR2", "test.VOL00+01.PAR2", true},
+		{"index->index uppercase extension", "test.par2", "test.PAR2", true},
+		{"index->bundle uppercase extension", "test.par2", "test.P2C.PAR2", true},
+		{"index->volume mixed case extension", "test.par2", "test.Vol00+01.Par2", true},
 		{"index->wrong p2c volume", "test.par2", "test.p2c.vol10+20.par2", false},
 
 		// bundle anchor should map to same root set
@@ -160,6 +163,17 @@ func Test_IsPar2SetMember_Table(t *testing.T) {
 		{"bundle->index", "test.p2c.par2", "test.par2", true},
 		{"bundle->volume", "test.p2c.par2", "test.vol10+20.par2", true},
 		{"bundle->wrong p2c volume", "test.p2c.par2", "test.p2c.vol10+20.par2", false},
+		{"uppercase bundle->volume", "test.P2C.PAR2", "test.vol10+20.par2", true},
+		{"uppercase bundle->wrong p2c volume", "test.P2C.par2", "test.p2c.vol10+20.par2", false},
+
+		// root is matched case-sensitively (like par2cmdline)
+		{"index->index uppercase root", "test.par2", "TEST.par2", false},
+		{"index->index mixed case root", "test.par2", "Test.par2", false},
+		{"index->bundle uppercase root", "test.par2", "TEST.p2c.par2", false},
+		{"index->volume uppercase root", "test.par2", "TEST.vol00+01.par2", false},
+		{"uppercase root->lowercase root", "TEST.par2", "test.par2", false},
+		{"uppercase root->uppercase root volume", "TEST.par2", "TEST.vol00+01.par2", true},
+		{"bundle->volume uppercase root", "test.p2c.par2", "TEST.vol10+20.par2", false},
 
 		// dotted roots
 		{"dotted index", "test.backup.par2", "test.backup.par2", true},
@@ -177,6 +191,8 @@ func Test_IsPar2SetMember_Table(t *testing.T) {
 		{"vol non-digit rhs", "test.par2", "test.vol01+ab.par2", false},
 		{"wrong extension", "test.par2", "test.vol00+01.txt", false},
 		{"empty candidate", "test.par2", "", false},
+		{"root with dot only", "test.par2", "test.", false},
+		{"root without extension", "test.par2", "test", false},
 
 		// dirs in inputs should not affect basename matching
 		{"par2Name dir with .vol segment", "/data/.vol01/test.par2", "test.par2", true},
@@ -213,6 +229,11 @@ func Test_isVolumeNameForRoot_Table(t *testing.T) {
 		{"basic minus", "test.vol00-01.par2", "test", '-', true},
 		{"large numbers minus", "test.vol999-100.par2", "test", '-', true},
 		{"dotted root minus", "test.backup.vol05-10.par2", "test.backup", '-', true},
+
+		// empty root (extension only, as used by IsPar2SetMember)
+		{"empty root plus", ".vol00+01.par2", "", '+', true},
+		{"empty root minus", ".vol00-01.par2", "", '-', true},
+		{"empty root no volume", ".par2", "", '+', false},
 
 		// separator mismatch
 		{"plus name minus sep", "test.vol00+01.par2", "test", '-', false},

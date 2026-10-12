@@ -40,7 +40,8 @@ func IsPar2Bundle(path string) bool {
 }
 
 // IsPar2SetMember reports whether candidate is a canonical member of the same
-// PAR2 set as par2Name, using case-insensitive basename matching.
+// PAR2 set as par2Name. Like par2cmdline, the root name must match exactly
+// (case-sensitive), while the extensions are matched case-insensitively.
 //
 // Canonical members are:
 //   - <root>.par2
@@ -49,9 +50,9 @@ func IsPar2Bundle(path string) bool {
 //
 // If par2Name is a bundle (<root>.p2c.par2), matching is normalized to <root>.
 func IsPar2SetMember(par2Name, candidate string) bool {
-	base := strings.ToLower(TrimSuffixFold(filepath.Base(par2Name), schema.Par2Extension))
-	root := strings.TrimSuffix(base, schema.BundleExtension)
-	name := strings.ToLower(filepath.Base(candidate))
+	base := TrimSuffixFold(filepath.Base(par2Name), schema.Par2Extension)
+	root := TrimSuffixFold(base, schema.BundleExtension)
+	name := filepath.Base(candidate)
 
 	if root == "" || root == "." || root == ".." {
 		return false
@@ -60,14 +61,22 @@ func IsPar2SetMember(par2Name, candidate string) bool {
 		return false
 	}
 
-	if name == root+schema.Par2Extension { // file.par2
+	// The root must match exactly, only what follows it is case-insensitive.
+	if !strings.HasPrefix(name, root+".") {
+		return false
+	}
+
+	// e.g. ".par2", ".p2c.par2", ".vol0+1.par2"
+	ext := strings.ToLower(name[len(root):])
+
+	if ext == schema.Par2Extension { // file.par2
 		return true
 	}
-	if name == root+schema.BundleExtension+schema.Par2Extension { // file.p2c.par2
+	if ext == schema.BundleExtension+schema.Par2Extension { // file.p2c.par2
 		return true
 	}
 
-	return isVolumeNameForRoot(name, root, '+') || isVolumeNameForRoot(name, root, '-')
+	return isVolumeNameForRoot(ext, "", '+') || isVolumeNameForRoot(ext, "", '-')
 }
 
 func isVolumeNameForRoot(name, root string, sep byte) bool {

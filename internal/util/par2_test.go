@@ -635,18 +635,22 @@ func Test_par2SetMemberPaths_ReadDirError_Success(t *testing.T) {
 	require.Equal(t, []string{"/missing/file.par2"}, paths)
 }
 
-// Expectation: par2SetMemberPaths should match members case-insensitively and skip non-members.
-func Test_par2SetMemberPaths_CaseInsensitive_Success(t *testing.T) {
+// Expectation: par2SetMemberPaths should match the root case-sensitively, the
+// extensions case-insensitively, and skip non-members.
+func Test_par2SetMemberPaths_RootCaseSensitive_Success(t *testing.T) {
 	t.Parallel()
 
 	fsys := afero.NewMemMapFs()
-	for _, name := range []string{"file.par2", "FILE.vol0+1.par2", "file.vol0+1.par2.bak", "other.par2"} {
+	for _, name := range []string{
+		"file.par2", "file.VOL0+1.PAR2", "FILE.par2", "FILE.vol0+1.par2",
+		"File.vol1+2.par2", "file.vol0+1.par2.bak", "other.par2",
+	} {
 		require.NoError(t, afero.WriteFile(fsys, "/data/"+name, nil, 0o644))
 	}
 
 	paths := par2SetMemberPaths(fsys, "/data", "file.par2", "/data/file.par2")
 
-	require.Equal(t, []string{"/data/file.par2", "/data/FILE.vol0+1.par2"}, paths)
+	require.Equal(t, []string{"/data/file.par2", "/data/file.VOL0+1.PAR2"}, paths)
 }
 
 // Expectation: The function should return an error for a non-bundle file.
