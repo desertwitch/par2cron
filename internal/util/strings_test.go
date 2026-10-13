@@ -233,7 +233,8 @@ func Test_isVolumeNameForRoot_Table(t *testing.T) {
 		// empty root (extension only, as used by IsPar2SetMember)
 		{"empty root plus", ".vol00+01.par2", "", '+', true},
 		{"empty root minus", ".vol00-01.par2", "", '-', true},
-		{"empty root no volume", ".par2", "", '+', false},
+		{"empty root no volume plus", ".par2", "", '+', false},
+		{"empty root no volume minus", ".par2", "", '-', false},
 
 		// separator mismatch
 		{"plus name minus sep", "test.vol00+01.par2", "test", '-', false},
