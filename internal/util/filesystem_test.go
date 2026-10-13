@@ -1109,6 +1109,28 @@ func Test_FindBundleableFiles_UpperCase_Success(t *testing.T) {
 	require.Contains(t, names, "test.vol01+02"+strings.ToUpper(schema.Par2Extension))
 }
 
+// Expectation: The function should only include files whose root matches case-sensitively.
+func Test_FindBundleableFiles_RootCaseSensitive_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.VOL00+01"+strings.ToUpper(schema.Par2Extension), []byte("vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST"+schema.Par2Extension, []byte("other index"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST.vol00+01"+schema.Par2Extension, []byte("other vol1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/Test.vol01+02"+schema.Par2Extension, []byte("other vol2"), 0o644))
+
+	files, err := FindBundleableFiles(fs, "test"+schema.Par2Extension, "/data/folder")
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(files))
+	for _, f := range files {
+		names = append(names, f.Name)
+	}
+	require.ElementsMatch(t, []string{"test" + schema.Par2Extension, "test.VOL00+01" + strings.ToUpper(schema.Par2Extension)}, names)
+}
+
 // Expectation: The function should not include files that do not match the base name prefix.
 func Test_FindBundleableFiles_IgnoresUnrelatedFiles_Success(t *testing.T) {
 	t.Parallel()

@@ -1,0 +1,6 @@
+kind: Fixed
+body: case-insensitive par2 root matching is now case-sensitive
+time: 2026-10-12T23:33:10.02887429+02:00
+custom:
+    Issue: ""
+    PR: "101"

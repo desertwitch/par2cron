@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -123,7 +124,10 @@ func findNextMagic(ctx context.Context, r io.ReaderAt, from, fileSize int64, buf
 // contain fewer or equal entries (so is generally safe to put at offset 0).
 func reconstructIndex(manifest *ManifestPacket, files []FilePacket) IndexPacket {
 	slices.SortFunc(files, func(a, b FilePacket) int {
-		return strings.Compare(a.Name, b.Name)
+		return cmp.Or(
+			strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+			strings.Compare(a.Name, b.Name), // Deterministic for names differing only in case.
+		)
 	})
 
 	entries := make([]IndexEntry, len(files))

@@ -76,38 +76,57 @@ func (prog *Service) considerRecursive(opts *Options) error {
 	return nil
 }
 
+// checkPar2Name returns an error if the given name of an index file to create
+// would itself be classified as a bundle or volume file (e.g. derived from a
+// folder named "x.p2c" or a file named "x.vol0+1"), as such a set could then
+// not be found again as an index file by the other commands.
+func checkPar2Name(par2Name string) error {
+	if util.IsPar2Bundle(par2Name) || util.IsPar2Volume(par2Name) {
+		return fmt.Errorf("%w: %q", errUnsupportedName, par2Name)
+	}
+
+	return nil
+}
+
+// par2AlreadyExists reports whether any member of the job's PAR2 set already
+// exists in the working directory, in either its plain or hidden variant. This
+// is checked with [util.IsPar2SetMember], so the root must match exactly, while
+// extensions are matched case-insensitively, and volumes without their index
+// file (orphans) are also considered as existing, to prevent them from being
+// mixed into a newly created set (or bundle), or being removed on its failure.
 func (prog *Service) par2AlreadyExists(ctx context.Context, job *Job) (bool, error) {
 	baseName := util.TrimSuffixFold(job.par2Name, schema.Par2Extension)
 	baseName = strings.TrimPrefix(baseName, ".")
 
-	candidates := []string{
-		// Lower-case variants
-		filepath.Join(job.workingDir, baseName+schema.Par2Extension),
-		filepath.Join(job.workingDir, "."+baseName+schema.Par2Extension),
-		filepath.Join(job.workingDir, baseName+schema.BundleExtension+schema.Par2Extension),
-		filepath.Join(job.workingDir, "."+baseName+schema.BundleExtension+schema.Par2Extension),
-
-		// Upper-case variants
-		filepath.Join(job.workingDir, baseName+strings.ToUpper(schema.Par2Extension)),
-		filepath.Join(job.workingDir, "."+baseName+strings.ToUpper(schema.Par2Extension)),
-		filepath.Join(job.workingDir, baseName+schema.BundleExtension+strings.ToUpper(schema.Par2Extension)),
-		filepath.Join(job.workingDir, "."+baseName+schema.BundleExtension+strings.ToUpper(schema.Par2Extension)),
+	anchors := []string{
+		baseName + schema.Par2Extension,       // Plain variant
+		"." + baseName + schema.Par2Extension, // Hidden variant
 	}
 
-	for _, path := range candidates {
-		if _, err := util.LstatIfPossible(prog.fsys, path); err == nil {
-			logger := prog.creationLogger(ctx, job, path)
+	entries, err := afero.ReadDir(prog.fsys, job.workingDir)
+	if err != nil {
+		return false, fmt.Errorf("failed to read directory: %w", err)
+	}
 
-			if job.markerPersist {
-				logger.Debug("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
-			} else {
-				logger.Warn("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
-			}
+	for _, entry := range entries {
+		name := entry.Name()
 
-			return true, nil
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return false, fmt.Errorf("failed to stat: %w", err)
+		if !slices.ContainsFunc(anchors, func(anchor string) bool {
+			return util.IsPar2SetMember(anchor, name)
+		}) {
+			continue
 		}
+
+		path := filepath.Join(job.workingDir, name)
+		logger := prog.creationLogger(ctx, job, path)
+
+		if job.markerPersist {
+			logger.Debug("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
+		} else {
+			logger.Warn("Same-named PAR2 already exists in folder (not overwriting)", "path", path)
+		}
+
+		return true, nil
 	}
 
 	return false, nil

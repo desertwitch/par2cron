@@ -369,6 +369,46 @@ func Test_reconstructIndex_SortsEntries_Success(t *testing.T) {
 	require.Equal(t, []string{"a.par2", "z.par2"}, []string{got.Entries[0].Name, got.Entries[1].Name})
 }
 
+// Expectation: reconstructIndex should sort entries case-folded (index files before
+// volumes regardless of case), with a bytewise tie-break for names differing only in case.
+func Test_reconstructIndex_SortsEntriesCaseFolded_Success(t *testing.T) {
+	t.Parallel()
+
+	manifest := &ManifestPacket{
+		CommonHeader: CommonHeader{RecoverySetID: testRecoverySetID},
+		DataLength:   10,
+		DataSHA256:   dataHash([]byte("manifest")),
+		NameLen:      uint64(len("manifest.json")),
+		Name:         "manifest.json",
+		packetOffset: 800,
+		dataOffset:   880,
+	}
+
+	names := []string{"file.vol01+02.par2", "file.VOL00+01.PAR2", "file.par2", "file.PAR2"}
+
+	files := make([]FilePacket, 0, len(names))
+	offset := uint64(100)
+	for _, name := range names {
+		files = append(files, FilePacket{
+			DataLength:   uint64(len(name)),
+			DataSHA256:   dataHash([]byte(name)),
+			NameLen:      uint64(len(name)),
+			Name:         name,
+			packetOffset: offset,
+			dataOffset:   offset + 80,
+		})
+		offset += 150
+	}
+
+	got := reconstructIndex(manifest, files)
+
+	gotNames := make([]string, 0, len(got.Entries))
+	for _, e := range got.Entries {
+		gotNames = append(gotNames, e.Name)
+	}
+	require.Equal(t, []string{"file.PAR2", "file.par2", "file.VOL00+01.PAR2", "file.vol01+02.par2"}, gotNames)
+}
+
 // Expectation: reconstructIndex should preserve manifest metadata even when no file packets are present.
 func Test_reconstructIndex_EmptyFiles_Success(t *testing.T) {
 	t.Parallel()

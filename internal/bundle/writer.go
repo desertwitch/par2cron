@@ -2,6 +2,7 @@ package bundle
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -60,7 +61,10 @@ func Pack(ctx context.Context, fsys afero.Fs, bundlePath string, recoverySetID [
 
 	// Deterministic ordering.
 	slices.SortFunc(files, func(a, b FileInput) int {
-		return strings.Compare(a.Name, b.Name)
+		return cmp.Or(
+			strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
+			strings.Compare(a.Name, b.Name), // Deterministic for names differing only in case.
+		)
 	})
 
 	// Compute index packet size.

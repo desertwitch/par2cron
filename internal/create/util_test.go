@@ -173,6 +173,51 @@ func Test_Service_cleanupAfterFailure_DoesNotRemoveSamePrefixUnrelatedPar2_Succe
 	require.True(t, exists)
 }
 
+// Expectation: Cleanup should not remove PAR2 sets whose root differs only in case.
+func Test_Service_cleanupAfterFailure_DoesNotRemoveOtherRootCase_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test"+schema.Par2Extension, []byte("idx"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/test.VOL00+01"+strings.ToUpper(schema.Par2Extension), []byte("vol"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/TEST.vol00+01"+schema.Par2Extension, []byte("other"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/Test"+schema.BundleExtension+schema.Par2Extension, []byte("other"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	prog.cleanupAfterFailure(t.Context(), job)
+
+	for _, tt := range []struct {
+		path   string
+		exists bool
+	}{
+		{"/data/folder/test" + schema.Par2Extension, false},
+		{"/data/folder/test.VOL00+01" + strings.ToUpper(schema.Par2Extension), false},
+		{"/data/folder/TEST" + schema.Par2Extension, true},
+		{"/data/folder/TEST.vol00+01" + schema.Par2Extension, true},
+		{"/data/folder/Test" + schema.BundleExtension + schema.Par2Extension, true},
+	} {
+		exists, _ := afero.Exists(fs, tt.path)
+		require.Equal(t, tt.exists, exists, tt.path)
+	}
+}
+
 // Expectation: Cleanup should remove bundle output when the job itself is a bundle.
 func Test_Service_cleanupAfterFailure_BundleJob_RemovesBundle_Success(t *testing.T) {
 	t.Parallel()
@@ -397,6 +442,39 @@ func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) 
 	require.NotContains(t, opts.Par2Args, "-R")
 }
 
+// Expectation: Names that would be classified as bundle or volume files should be rejected.
+func Test_checkPar2Name_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		valid bool
+	}{
+		{"test" + schema.Par2Extension, true},
+		{".test" + schema.Par2Extension, true},
+		{"test.backup" + schema.Par2Extension, true},
+		{"test.vol" + schema.Par2Extension, true},
+		{"test.p2c.txt" + schema.Par2Extension, true},
+		{"test" + schema.BundleExtension + schema.Par2Extension, false},
+		{".test.P2C" + schema.Par2Extension, false},
+		{"test.vol00+01" + schema.Par2Extension, false},
+		{"test.VOL00-01" + schema.Par2Extension, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := checkPar2Name(tt.name)
+			if tt.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, errUnsupportedName)
+			}
+		})
+	}
+}
+
 // Expectation: The function should detect existing PAR2 files in all naming variants.
 func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 	t.Parallel()
@@ -512,6 +590,84 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			expected:      true,
 		},
 		{
+			name:         "plain par2 name detects orphan volume",
+			existingFile: "/data/folder/test.vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects orphan alt volume",
+			existingFile: "/data/folder/test.vol00-01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects hidden orphan volume",
+			existingFile: "/data/folder/.test.vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "hidden par2 name detects orphan volume",
+			existingFile: "/data/folder/test.vol00+01" + schema.Par2Extension,
+			par2Name:     ".test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects uppercase orphan volume",
+			existingFile: "/data/folder/test.VOL00+01" + strings.ToUpper(schema.Par2Extension),
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects mixed case existing",
+			existingFile: "/data/folder/test.Par2",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects mixed case bundle existing",
+			existingFile: "/data/folder/test.P2C.par2",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "plain par2 name detects mixed case hidden bundle existing",
+			existingFile: "/data/folder/.test.P2c.Par2",
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     true,
+		},
+		{
+			name:         "different base orphan volume does not match",
+			existingFile: "/data/folder/TEST.vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "bundle-named volume does not match",
+			existingFile: "/data/folder/test" + schema.BundleExtension + ".vol00+01" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "dotted sibling does not match",
+			existingFile: "/data/folder/test.backup" + schema.Par2Extension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "leftover manifest does not match",
+			existingFile: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
+			name:         "leftover lock does not match",
+			existingFile: "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+			par2Name:     "test" + schema.Par2Extension,
+			expected:     false,
+		},
+		{
 			name:         "no par2 exists",
 			existingFile: "",
 			par2Name:     "test" + schema.Par2Extension,
@@ -577,4 +733,29 @@ func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Expectation: The function should return an error when the directory cannot be read.
+func Test_Service_par2AlreadyExists_ReadDirFails_Error(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data/folder", 0o755))
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "/data/folder"}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{Logout: &logBuf, Stdout: io.Discard, Stderr: io.Discard}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir: "/data/folder",
+		par2Name:   "test" + schema.Par2Extension,
+		par2Path:   "/data/folder/test" + schema.Par2Extension,
+	}
+
+	exists, err := prog.par2AlreadyExists(t.Context(), job)
+	require.ErrorContains(t, err, "failed to read directory")
+	require.False(t, exists)
 }

@@ -29,6 +29,8 @@ const (
 var (
 	errNoFilesToProtect  = errors.New("no files to protect")
 	errWrongModeArgument = errors.New("wrong mode for argument")
+	errInvalidName       = errors.New("invalid par2 name (must be a file name)")
+	errUnsupportedName   = errors.New("unsupported par2 name (bundle or volume name)")
 
 	// https://github.com/bmatcuk/doublestar/blob/master/utils.go#L153
 	globMetaReplacer = strings.NewReplacer("*", "\\*", "?", "\\?", "[", "\\[", "]", "\\]", "{", "\\{", "}", "\\}")
@@ -457,6 +459,10 @@ func (prog *Service) findElementsToProtect(ctx context.Context, job *Job) ([]sch
 }
 
 func (prog *Service) createCombined(ctx context.Context, job *Job, elements []schema.FsElement) error {
+	if err := checkPar2Name(job.par2Name); err != nil {
+		return fmt.Errorf("%s: %w", job.par2Path, err)
+	}
+
 	if exists, err := prog.par2AlreadyExists(ctx, job); err != nil {
 		return fmt.Errorf("failed to check existence: %w", err)
 	} else if exists {
@@ -499,6 +505,12 @@ func (prog *Service) createNested(ctx context.Context, job *Job, elements []sche
 
 		j := newNestedModeJob(*job, dir)
 
+		if err := checkPar2Name(j.par2Name); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", j.par2Path, err))
+
+			continue
+		}
+
 		if exists, err := prog.par2AlreadyExists(ctx, &j); err != nil {
 			errs = append(errs, fmt.Errorf("%s: failed to check existence: %w", j.par2Path, err))
 
@@ -538,6 +550,12 @@ func (prog *Service) createIndividual(ctx context.Context, job *Job, elements []
 
 		j := newFileModeJob(*job, f.Path)
 		je := []schema.FsElement{elements[i]}
+
+		if err := checkPar2Name(j.par2Name); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", j.par2Path, err))
+
+			continue
+		}
 
 		if exists, err := prog.par2AlreadyExists(ctx, &j); err != nil {
 			errs = append(errs, fmt.Errorf("%s: failed to check existence: %w", j.par2Path, err))
