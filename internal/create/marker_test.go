@@ -442,6 +442,98 @@ func Test_Service_parseMarkerContent_NameWithoutExtension_Success(t *testing.T) 
 	require.Equal(t, "custom"+schema.Par2Extension, *cfg.Par2Name)
 }
 
+// Expectation: The extension should be normalized to lower-case (as par2cmdline creates it), keeping the root as is.
+func Test_Service_parseMarkerContent_NameExtensionCase_Success(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"custom.PAR2": "custom" + schema.Par2Extension,
+		"custom.Par2": "custom" + schema.Par2Extension,
+		"Custom.par2": "Custom" + schema.Par2Extension,
+		"CUSTOM":      "CUSTOM" + schema.Par2Extension,
+	}
+
+	for name, expected := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewMemMapFs()
+			require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(`name: "`+name+`"`), 0o644))
+
+			ls := logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard}
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+			cfg := &MarkerConfig{
+				Par2Name: new("test" + schema.Par2Extension),
+				Par2Args: &[]string{"-r10"},
+				Par2Glob: new("*"),
+			}
+
+			require.NoError(t, prog.parseMarkerContent("/data/folder/_par2cron", cfg))
+			require.Equal(t, expected, *cfg.Par2Name)
+		})
+	}
+}
+
+// Expectation: A name that is not a plain file name in the marker's folder should be rejected.
+func Test_Service_parseMarkerContent_InvalidName_Error(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"", ".par2", ".PAR2", ".", "..", "...par2",
+		"sub/custom", "sub/custom.par2", "../custom", "/abs/custom", "custom/",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewMemMapFs()
+			require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(`name: "`+name+`"`), 0o644))
+
+			ls := logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard}
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+			cfg := &MarkerConfig{
+				Par2Name: new("test" + schema.Par2Extension),
+				Par2Args: &[]string{"-r10"},
+				Par2Glob: new("*"),
+			}
+
+			err := prog.parseMarkerContent("/data/folder/_par2cron", cfg)
+			require.ErrorIs(t, err, errInvalidName)
+			require.Equal(t, "test"+schema.Par2Extension, *cfg.Par2Name) // Unchanged.
+		})
+	}
+}
+
+// Expectation: Names with dots, spaces or a leading dot should still be accepted as is.
+func Test_Service_parseMarkerContent_ValidName_Success(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{".custom", "custom.backup", "my custom", "custom\\name", "..custom"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewMemMapFs()
+			require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+			require.NoError(t, afero.WriteFile(fs, "/data/folder/_par2cron", []byte(`name: '`+name+`'`), 0o644))
+
+			ls := logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard}
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+			cfg := &MarkerConfig{
+				Par2Name: new("test" + schema.Par2Extension),
+				Par2Args: &[]string{"-r10"},
+				Par2Glob: new("*"),
+			}
+
+			require.NoError(t, prog.parseMarkerContent("/data/folder/_par2cron", cfg))
+			require.Equal(t, name+schema.Par2Extension, *cfg.Par2Name)
+		})
+	}
+}
+
 // Expectation: The replacement should work according to expectation.
 func Test_Service_modifyOrAddArgument_ReplaceSpaceSeparated_Success(t *testing.T) {
 	t.Parallel()

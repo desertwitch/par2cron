@@ -2869,6 +2869,55 @@ func Test_Service_createCombined_ExistenceCheckFails_Error(t *testing.T) {
 	require.Zero(t, called)
 }
 
+// Expectation: The function should not run par2 for a name that would be classified as a bundle.
+func Test_Service_createCombined_UnsupportedName_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFolderMode,
+		par2Name:     "test" + schema.BundleExtension + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.BundleExtension + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/test" + schema.BundleExtension + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.BundleExtension + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.BundleExtension + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createCombined(t.Context(), job, files)
+	require.ErrorIs(t, err, errUnsupportedName)
+	require.Empty(t, called)
+}
+
 // Expectation: The function should succeed when both directories succeed.
 func Test_Service_createNested_Success(t *testing.T) {
 	t.Parallel()
@@ -3286,6 +3335,59 @@ func Test_Service_createNested_ExistenceCheckFails_Error(t *testing.T) {
 	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
 }
 
+// Expectation: The function should fail only the subjob whose folder name would be classified as a bundle.
+func Test_Service_createNested_UnsupportedName_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder/sub"+schema.BundleExtension, 0o755))
+	require.NoError(t, fs.MkdirAll("/data/folder/good", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/sub"+schema.BundleExtension+"/file.txt", []byte("content"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/good/file.txt", []byte("content"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub" + schema.BundleExtension + "/file.txt", Name: "file.txt"},
+		{Path: "/data/folder/good/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.ErrorContains(t, err, "1/2 subjobs failed")
+	require.ErrorIs(t, err, errUnsupportedName)
+	require.Equal(t, []string{"/data/folder/good/good" + schema.Par2Extension}, called)
+}
+
 // Expectation: The function should respect cancellation and return the correct error.
 func Test_Service_createNested_CtxCancel_Error(t *testing.T) {
 	t.Parallel()
@@ -3590,6 +3692,58 @@ func Test_Service_createIndividual_ExistenceCheckFails_Error(t *testing.T) {
 	require.ErrorContains(t, err, "/data/bad/file1.txt"+schema.Par2Extension+": failed to check existence")
 	require.Equal(t, []string{"/data/good/file2.txt" + schema.Par2Extension}, called)
 	require.Equal(t, 1, strings.Count(logBuf.String(), "Succeeded to create PAR2"))
+}
+
+// Expectation: The function should fail only the subjob whose file name would be classified as a volume.
+func Test_Service_createIndividual_UnsupportedName_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/folder", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file.vol00+01", []byte("content1"), 0o644))
+	require.NoError(t, afero.WriteFile(fs, "/data/folder/file2.txt", []byte("content2"), 0o644))
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateFileMode,
+		par2Name:     "test" + schema.Par2Extension,
+		par2Path:     "/data/folder/test" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/test" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "test" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/test" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/file.vol00+01", Name: "file.vol00+01"},
+		{Path: "/data/folder/file2.txt", Name: "file2.txt"},
+	}
+
+	err := prog.createIndividual(t.Context(), job, files)
+	require.ErrorContains(t, err, "1/2 subjobs failed")
+	require.ErrorIs(t, err, errUnsupportedName)
+	require.Equal(t, []string{"/data/folder/file2.txt" + schema.Par2Extension}, called)
 }
 
 // Expectation: The function should respect cancellation and return the correct error.

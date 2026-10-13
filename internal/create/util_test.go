@@ -442,6 +442,39 @@ func Test_Service_considerRecursive_FolderModeWithoutRArg_Success(t *testing.T) 
 	require.NotContains(t, opts.Par2Args, "-R")
 }
 
+// Expectation: Names that would be classified as bundle or volume files should be rejected.
+func Test_checkPar2Name_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		valid bool
+	}{
+		{"test" + schema.Par2Extension, true},
+		{".test" + schema.Par2Extension, true},
+		{"test.backup" + schema.Par2Extension, true},
+		{"test.vol" + schema.Par2Extension, true},
+		{"test.p2c.txt" + schema.Par2Extension, true},
+		{"test" + schema.BundleExtension + schema.Par2Extension, false},
+		{".test.P2C" + schema.Par2Extension, false},
+		{"test.vol00+01" + schema.Par2Extension, false},
+		{"test.VOL00-01" + schema.Par2Extension, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := checkPar2Name(tt.name)
+			if tt.valid {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, errUnsupportedName)
+			}
+		})
+	}
+}
+
 // Expectation: The function should detect existing PAR2 files in all naming variants.
 func Test_Service_par2AlreadyExists_Table(t *testing.T) {
 	t.Parallel()

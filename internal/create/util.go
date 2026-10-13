@@ -76,6 +76,18 @@ func (prog *Service) considerRecursive(opts *Options) error {
 	return nil
 }
 
+// checkPar2Name returns an error if the given name of an index file to create
+// would itself be classified as a bundle or volume file (e.g. derived from a
+// folder named "x.p2c" or a file named "x.vol0+1"), as such a set could then
+// not be found again as an index file by the other commands.
+func checkPar2Name(par2Name string) error {
+	if util.IsPar2Bundle(par2Name) || util.IsPar2Volume(par2Name) {
+		return fmt.Errorf("%w: %q", errUnsupportedName, par2Name)
+	}
+
+	return nil
+}
+
 // par2AlreadyExists reports whether any member of the job's PAR2 set already
 // exists in the working directory, in either its plain or hidden variant. This
 // is checked with [util.IsPar2SetMember], so the root must match exactly, while

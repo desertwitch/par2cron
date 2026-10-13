@@ -133,9 +133,14 @@ func (prog *Service) parseMarkerContent(markerPath string, cfg *MarkerConfig) er
 	}
 
 	if yamlConfig.Par2Name != nil {
-		name := *yamlConfig.Par2Name
-		if !util.EndsWithFold(name, schema.Par2Extension) {
-			name += schema.Par2Extension
+		// par2cmdline strips the extension case-insensitively, but always
+		// writes it lower-case, so normalize it to match the created files.
+		root := util.TrimSuffixFold(*yamlConfig.Par2Name, schema.Par2Extension)
+		name := root + schema.Par2Extension
+
+		// The name must be a plain file name in the marker's folder.
+		if root == "" || root == "." || root == ".." || filepath.Base(name) != name {
+			return fmt.Errorf("%w: %q", errInvalidName, *yamlConfig.Par2Name)
 		}
 
 		logger := prog.markerLogger(markerPath, "name", name)
