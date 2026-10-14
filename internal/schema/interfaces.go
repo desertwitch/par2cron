@@ -46,13 +46,14 @@ type Cache interface {
 	Set(key string, meta *JobMeta)
 }
 
-type Bundle interface {
+type Bundle interface { //nolint:interfacebloat
 	Close() error
 	Entries() []bundle.IndexEntry
 	ExtractEntry(ctx context.Context, e bundle.IndexEntry, w io.Writer) error
 	IsRebuilt() bool
 	Manifest(ctx context.Context) ([]byte, error)
 	ManifestName() string
+	RecoverySetID() [16]byte
 	Unpack(ctx context.Context, fsys afero.Fs, destDir string, strict bool) ([]string, error)
 	Update(manifest []byte) error
 	Validate(ctx context.Context, strict bool) error
