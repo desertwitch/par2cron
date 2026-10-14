@@ -932,10 +932,10 @@ func NewProgram(
 
 	return &Program{
 		CreationService:     create.NewService(fsys, log, r, b, p, c),
-		VerificationService: verify.NewService(fsys, log, r, b, c),
+		VerificationService: verify.NewService(fsys, log, r, b, p, c),
 		RepairService:       repair.NewService(fsys, log, r, b, p, c),
-		InfoService:         info.NewService(fsys, log, r, b, c),
-		ListService:         list.NewService(fsys, log, r, b, c),
+		InfoService:         info.NewService(fsys, log, r, b, p, c),
+		ListService:         list.NewService(fsys, log, r, b, p, c),
 		BundlerService:      bundler.NewService(fsys, log, b, p),
 		ToolService:         tool.NewService(fsys, log, b, p),
 

@@ -158,7 +158,7 @@ func Test_Service_openCache_NoCacheDir_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: ""}
 	prog.openCache(t.Context(), "/data", opts)
@@ -193,7 +193,7 @@ func Test_Service_openCache_WithCacheDir_LoadsCacheFromDisk_Success(t *testing.T
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	prog.openCache(t.Context(), "/data", opts)
@@ -225,7 +225,7 @@ func Test_Service_openCache_LoadError_LogsError_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	cache := prog.openCache(t.Context(), "/data", opts)
@@ -258,7 +258,7 @@ func Test_Service_openCache_LoadErrNotExist_NoLog_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	cache := prog.openCache(t.Context(), "/data", opts)
@@ -290,7 +290,7 @@ func Test_Service_saveCache_NoCacheDir_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := Options{CacheDir: ""}
 	prog.saveCache(t.Context(), cache, opts, "/data")
@@ -321,7 +321,7 @@ func Test_Service_saveCache_WithCacheDir_SavesCacheToDisk_Success(t *testing.T) 
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := Options{CacheDir: "/cache"}
 	prog.saveCache(t.Context(), cache, opts, "/data")
@@ -349,7 +349,7 @@ func Test_Service_saveCache_SaveError_LogsError_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	opts := Options{CacheDir: "/cache"}
 	prog.saveCache(t.Context(), cache, opts, "/data")
@@ -381,7 +381,7 @@ func Test_Service_Verify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -415,7 +415,7 @@ func Test_Service_Verify_MultiRoot_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data", "/data2"}, args)
 	require.NoError(t, err)
@@ -450,7 +450,7 @@ func Test_Service_Verify_DurationExceeded_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	require.NoError(t, args.MaxDuration.Set("1ms"))
@@ -488,7 +488,7 @@ func Test_Service_Verify_FileLocked_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -518,7 +518,7 @@ func Test_Service_Verify_Generic_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -548,7 +548,7 @@ func Test_Service_Verify_CorruptionDetected_Repairable_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -579,7 +579,7 @@ func Test_Service_Verify_CorruptionDetected_Unrepairable_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -620,7 +620,7 @@ func Test_Service_Verify_CorruptionDetected_Repairable_MaybeEdited_Error(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -661,7 +661,7 @@ func Test_Service_Verify_CorruptionDetected_Unrepairable_MaybeEdited_Error(t *te
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -696,7 +696,7 @@ func Test_Service_Verify_MultipleJobs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -734,7 +734,7 @@ func Test_Service_Verify_MultipleJobs_OneFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -775,7 +775,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -817,7 +817,7 @@ func Test_Service_Verify_MultipleJobs_EnumerationFails_NoOtherJobs_Error(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -858,7 +858,7 @@ func Test_Service_Verify_MultipleJobs_ErrorOrdering_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitUnrepairable)
@@ -881,7 +881,7 @@ func Test_Service_Verify_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
@@ -908,7 +908,7 @@ func Test_Service_Verify_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(ctx, []string{"/data"}, args)
@@ -950,7 +950,7 @@ func Test_Service_Verify_PrunesCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -999,7 +999,7 @@ func Test_Service_Verify_UpdatesCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1045,7 +1045,7 @@ func Test_Service_Verify_SavesCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1090,7 +1090,7 @@ func Test_Service_Verify_NoCacheDir_DoesNotSave_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: ""}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1123,7 +1123,7 @@ func Test_Service_Verify_LoadManifestReturnsNil_ProceedsWithNilManifest_Success(
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1170,7 +1170,7 @@ func Test_Service_Verify_LoadManifestReadError_ContinuesWithError_Error(t *testi
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -1218,7 +1218,7 @@ func Test_Service_Verify_WithoutCacheDir_NotLoadsCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: ""}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1263,7 +1263,7 @@ func Test_Service_Verify_WithCacheDir_LoadsCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.NoError(t, err)
@@ -1314,7 +1314,7 @@ func Test_Service_Verify_UnknownExitCode_CacheNotUpdated_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	args := Options{Par2Args: []string{"-v"}, CacheDir: "/cache"}
 	_, err := prog.Verify(t.Context(), []string{"/data"}, args)
 	require.ErrorIs(t, err, schema.ErrExitPartialFailure)
@@ -1338,7 +1338,7 @@ func Test_Service_Enumerate_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1364,7 +1364,7 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1397,7 +1397,7 @@ func Test_Service_Enumerate_NoManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1428,7 +1428,7 @@ func Test_Service_Enumerate_ReadManifestFailure_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1453,7 +1453,7 @@ func Test_Service_Enumerate_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1480,7 +1480,7 @@ func Test_Service_Enumerate_IgnoreFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1508,7 +1508,7 @@ func Test_Service_Enumerate_IgnoreAllFile_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1538,7 +1538,7 @@ func Test_Service_Enumerate_IgnoreAllFile_SkipsRecursive_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1564,7 +1564,7 @@ func Test_Service_Enumerate_IncludeExternal_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -1593,7 +1593,7 @@ func Test_Service_Enumerate_IncludeExternal_Unset_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -1629,7 +1629,7 @@ func Test_Service_Enumerate_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -1659,7 +1659,7 @@ func Test_Service_Enumerate_SkipNotCreated_InvalidManifest_Success(t *testing.T)
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -1693,7 +1693,7 @@ func Test_Service_Enumerate_NoSkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:       []string{"-v"},
@@ -1735,7 +1735,7 @@ func Test_Service_Enumerate_BothSkipOptions_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{
 		Par2Args:        []string{"-v"},
@@ -1767,7 +1767,7 @@ func Test_Service_Enumerate_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(ctx, "/data", args, &testutil.MockCache{})
@@ -1797,7 +1797,7 @@ func Test_Service_Enumerate_MisleadingDirectory_Skipped_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1842,7 +1842,7 @@ func Test_Service_Enumerate_Bundle_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1884,7 +1884,7 @@ func Test_Service_Enumerate_Bundle_ManifestCorrupted_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1926,7 +1926,7 @@ func Test_Service_Enumerate_Bundle_ManifestReadIOFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -1968,7 +1968,7 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2001,7 +2001,7 @@ func Test_Service_Enumerate_Bundle_OpenFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	_, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2044,7 +2044,7 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2084,7 +2084,7 @@ func Test_Service_Enumerate_Bundle_SkipNotCreated_InvalidManifest_Success(t *tes
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
@@ -2109,7 +2109,7 @@ func Test_Service_Enumerate_CacheHit_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:    "/data/test" + schema.Par2Extension,
@@ -2150,7 +2150,7 @@ func Test_Service_Enumerate_CacheHit_SkipNotCreated_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	cachedMeta := &schema.JobMeta{
 		Par2Path:    "/data/test" + schema.Par2Extension,
@@ -2191,7 +2191,7 @@ func Test_Service_Enumerate_CacheMiss_SetsCache_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	var setCalled bool
 	var setKey string
@@ -2255,7 +2255,7 @@ func Test_Service_Enumerate_Bundle_CacheHit_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
@@ -2299,7 +2299,7 @@ func Test_Service_Enumerate_Bundle_CacheHit_SkipNotCreated_Success(t *testing.T)
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}, SkipNotCreated: true}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
@@ -2356,7 +2356,7 @@ func Test_Service_Enumerate_Bundle_CacheMiss_SetsCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, cache)
@@ -2382,7 +2382,7 @@ func Test_Service_loadManifest_FileNotFound_ReturnsNilManifest_Success(t *testin
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2414,7 +2414,7 @@ func Test_Service_loadManifest_InvalidJSON_ReturnsNilManifest_Success(t *testing
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2451,7 +2451,7 @@ func Test_Service_loadManifest_ReadError_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2482,7 +2482,7 @@ func Test_Service_loadManifest_ValidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2528,7 +2528,7 @@ func Test_Service_loadBundleManifest_ManifestCorrupted_ReturnsNilManifest_Succes
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2575,7 +2575,7 @@ func Test_Service_loadBundleManifest_ManifestReadIOFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2623,7 +2623,7 @@ func Test_Service_loadBundleManifest_InvalidJSON_ReturnsNilManifest_Success(t *t
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2661,7 +2661,7 @@ func Test_Service_loadBundleManifest_OpenFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2713,7 +2713,7 @@ func Test_Service_loadBundleManifest_ValidManifest_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta := &JobMeta{
 		&schema.JobMeta{
@@ -2751,7 +2751,7 @@ func Test_Service_RunVerify_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -2789,7 +2789,7 @@ func Test_Service_RunVerify_HashFileFails_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -2835,7 +2835,7 @@ func Test_Service_RunVerify_CorrectArgs_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -2881,7 +2881,7 @@ func Test_Service_RunVerify_UpdatesVerificationFields_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	oldTime := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	job := &Job{
@@ -2944,7 +2944,7 @@ func Test_Service_RunVerify_KeepCreateManifest_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -2995,7 +2995,7 @@ func Test_Service_RunVerify_HashMismatch_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -3039,7 +3039,7 @@ func Test_Service_RunVerify_GenericError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -3078,7 +3078,7 @@ func Test_Service_RunVerify_ManifestWriteError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.SHA256 = "wronghash"
@@ -3139,7 +3139,7 @@ func Test_Service_RunVerify_Bundle_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.SHA256 = "abc123"
@@ -3215,7 +3215,7 @@ func Test_Service_RunVerify_Bundle_ManifestWriteError_Error(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
 	mf.SHA256 = "abc123"
@@ -3263,7 +3263,7 @@ func Test_Service_RunVerify_Success_ClearsMaybeEdited_UpdatesTimeLastHealthy_Suc
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3317,7 +3317,7 @@ func Test_Service_RunVerify_Repairable_NewerFile_SetsMaybeEdited_Success(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3364,7 +3364,7 @@ func Test_Service_RunVerify_Repairable_OlderFile_NotMaybeEdited_Success(t *testi
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3411,7 +3411,7 @@ func Test_Service_RunVerify_Repairable_OlderFile_ClearsPreviousMaybeEdited_Succe
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3458,7 +3458,7 @@ func Test_Service_RunVerify_Repairable_FallbackCreationTime_SetsMaybeEdited_Succ
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3504,7 +3504,7 @@ func Test_Service_RunVerify_Repairable_NoCreation_NotMaybeEdited_Success(t *test
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3550,7 +3550,7 @@ func Test_Service_RunVerify_Unrepairable_NewerFile_SetsMaybeEdited_Success(t *te
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3597,7 +3597,7 @@ func Test_Service_RunVerify_UnhandledExitCode_KeepsMaybeEditedFields_Error(t *te
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	job := &Job{
 		workingDir:   "/data",
@@ -3635,7 +3635,7 @@ func Test_Service_parseExitCode_CodeSuccess_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -3664,7 +3664,7 @@ func Test_Service_parseExitCode_CodeRepairPossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -3694,7 +3694,7 @@ func Test_Service_parseExitCode_CodeRepairImpossible_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -3724,7 +3724,7 @@ func Test_Service_parseExitCode_UnhandledCode_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	job := &Job{
 		manifest: &schema.Manifest{
 			Verification: &schema.VerificationManifest{},
@@ -3755,14 +3755,14 @@ func Test_Service_wasMaybeEdited_NoCreation_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: Without any reference time (neither creation nor verification) nothing should be considered edited.
@@ -3783,7 +3783,7 @@ func Test_Service_wasMaybeEdited_NoReferenceTime_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Elements: []schema.FsElement{{Name: "file.txt"}}}
@@ -3791,7 +3791,7 @@ func Test_Service_wasMaybeEdited_NoReferenceTime_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A protected file newer than the last successful verification should be considered edited.
@@ -3812,7 +3812,7 @@ func Test_Service_wasMaybeEdited_NewerThanSucceeded_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
@@ -3820,7 +3820,7 @@ func Test_Service_wasMaybeEdited_NewerThanSucceeded_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.True(t, prog.wasMaybeEdited(job))
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A protected file older than the last successful verification should not be considered edited.
@@ -3841,7 +3841,7 @@ func Test_Service_wasMaybeEdited_OlderThanSucceeded_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
@@ -3849,7 +3849,7 @@ func Test_Service_wasMaybeEdited_OlderThanSucceeded_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A protected file with exactly the reference time should not be considered edited.
@@ -3870,7 +3870,7 @@ func Test_Service_wasMaybeEdited_EqualToSucceeded_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
@@ -3878,7 +3878,7 @@ func Test_Service_wasMaybeEdited_EqualToSucceeded_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: The last successful verification time should take precedence over the creation time.
@@ -3900,7 +3900,7 @@ func Test_Service_wasMaybeEdited_PrefersSucceededOverCreation_Success(t *testing
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
@@ -3908,7 +3908,7 @@ func Test_Service_wasMaybeEdited_PrefersSucceededOverCreation_Success(t *testing
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A missing protected file should be ignored rather than considered edited.
@@ -3928,7 +3928,7 @@ func Test_Service_wasMaybeEdited_MissingElement_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "missing.txt"}}}
@@ -3936,7 +3936,7 @@ func Test_Service_wasMaybeEdited_MissingElement_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A missing protected file should not stop the check of the remaining protected files.
@@ -3957,7 +3957,7 @@ func Test_Service_wasMaybeEdited_MissingElementThenNewer_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{
@@ -3968,7 +3968,7 @@ func Test_Service_wasMaybeEdited_MissingElementThenNewer_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.True(t, prog.wasMaybeEdited(job))
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: Protected files in subfolders (deep globs) should be resolved relative to the working directory.
@@ -3990,7 +3990,7 @@ func Test_Service_wasMaybeEdited_NestedElement_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "sub/file.txt"}}}
@@ -3998,7 +3998,7 @@ func Test_Service_wasMaybeEdited_NestedElement_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.True(t, prog.wasMaybeEdited(job))
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A creation manifest without any elements should never be considered edited.
@@ -4019,7 +4019,7 @@ func Test_Service_wasMaybeEdited_NoElements_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour)}
@@ -4027,7 +4027,7 @@ func Test_Service_wasMaybeEdited_NoElements_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A directory element should be skipped, as directory mtimes reflect entry changes, not edits.
@@ -4048,7 +4048,7 @@ func Test_Service_wasMaybeEdited_DirectoryElement_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "sub", IsDir: true}}}
@@ -4056,7 +4056,7 @@ func Test_Service_wasMaybeEdited_DirectoryElement_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: An element with an empty name should be skipped rather than resolving to the working directory.
@@ -4077,7 +4077,7 @@ func Test_Service_wasMaybeEdited_EmptyElementName_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("debug")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	mf := schema.NewManifest("test" + schema.Par2Extension)
 	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: ""}}}
@@ -4085,7 +4085,7 @@ func Test_Service_wasMaybeEdited_EmptyElementName_Success(t *testing.T) {
 
 	job := &Job{workingDir: "/data", manifest: mf}
 
-	require.False(t, prog.wasMaybeEdited(job))
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
 }
 
 // Expectation: A backlog warning should be thrown when the backlog is growing.
@@ -4102,7 +4102,7 @@ func Test_Service_considerBacklog_InsufficientCapacity_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -4138,7 +4138,7 @@ func Test_Service_considerBacklog_NoDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -4179,7 +4179,7 @@ func Test_Service_considerDurations_FirstJobUnknownDuration_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -4213,7 +4213,7 @@ func Test_Service_considerDurations_FirstJobExceedsDuration_Success(t *testing.T
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -4247,7 +4247,7 @@ func Test_Service_considerDurations_SubsequentJobsUnknownDuration_Success(t *tes
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -4288,7 +4288,7 @@ func Test_Service_considerDurations_AllJobsKnownDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -4330,7 +4330,7 @@ func Test_Service_considerDurations_NoMaxDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -4364,7 +4364,7 @@ func Test_Service_considerDurations_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{}
 	args := Options{}

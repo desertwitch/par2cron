@@ -27,7 +27,7 @@ func Test_Service_Stats_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	timeA := time.Now().Add(-5 * time.Minute)
 	timeB := time.Now().Add(-10 * time.Minute)
@@ -98,7 +98,7 @@ func Test_Service_Stats_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	js := prog.Stats([]*JobMeta{})
 
@@ -126,7 +126,7 @@ func Test_Service_Stats_WithUnknownDurations_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	metas := []*JobMeta{
 		{
@@ -163,7 +163,7 @@ func Test_Service_Stats_IdentifyLargestDuration_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	meta1 := &JobMeta{
 		&schema.JobMeta{

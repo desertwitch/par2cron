@@ -93,10 +93,11 @@ type Service struct {
 	runner  schema.CommandRunner
 	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
+	par2er  schema.Par2Handler
 	cacher  schema.CacheHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, cacher schema.CacheHandler) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, par2er schema.Par2Handler, cacher schema.CacheHandler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -110,6 +111,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 		runner:  runner,
 		walker:  walker,
 		bundler: bundler,
+		par2er:  par2er,
 		cacher:  cacher,
 	}
 }
@@ -647,7 +649,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 		job.manifest.Verification.TimeLastHealthy = job.manifest.Verification.Time
 	} else {
 		// Determine if the files may have intentionally been edited.
-		job.manifest.Verification.MaybeEdited = prog.wasMaybeEdited(job)
+		job.manifest.Verification.MaybeEdited = prog.wasMaybeEdited(ctx, job)
 	}
 
 	job.manifest.Verification.Count++
@@ -704,28 +706,33 @@ func (prog *Service) parseExitCode(job *Job, err error) error {
 
 // wasMaybeEdited is a best-effort heuristic: it stays silent when unsure,
 // as the contract of the program (and PAR2 in general) is mostly WORM files.
-func (prog *Service) wasMaybeEdited(job *Job) bool {
-	if job.manifest.Creation == nil {
+func (prog *Service) wasMaybeEdited(_ context.Context, job *Job) bool {
+	if (job.manifest.Creation == nil || job.manifest.Creation.Time.IsZero()) &&
+		job.manifest.Verification.TimeLastHealthy.IsZero() {
 		return false
 	}
 
-	if job.manifest.Creation.Time.IsZero() && job.manifest.Verification.TimeLastHealthy.IsZero() {
-		return false
+	var paths []string
+
+	if job.manifest.Creation != nil {
+		for _, e := range job.manifest.Creation.Elements {
+			// Empty names resolve to the working directory, and
+			// directory mtimes reflect entry changes, not edits.
+			if e.Name == "" || e.IsDir {
+				continue
+			}
+			paths = append(paths, filepath.Join(job.workingDir, e.Name))
+		}
 	}
 
 	ref := job.manifest.Verification.TimeLastHealthy
 	if job.manifest.Verification.TimeLastHealthy.IsZero() {
+		// Guaranteed to exist here with entry barrier of function.
 		ref = job.manifest.Creation.Time
 	}
 
-	for _, e := range job.manifest.Creation.Elements {
-		// Empty names resolve to the working directory, and
-		// directory mtimes reflect entry changes, not edits.
-		if e.Name == "" || e.IsDir {
-			continue
-		}
-
-		info, err := util.LstatIfPossible(prog.fsys, filepath.Join(job.workingDir, e.Name))
+	for _, path := range paths {
+		info, err := util.LstatIfPossible(prog.fsys, path)
 		if err != nil {
 			continue
 		}

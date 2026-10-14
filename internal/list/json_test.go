@@ -121,7 +121,7 @@ func Test_Service_openCacheJSON_NoCacheDir_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: ""}
 	prog.openCacheJSON("/data", opts, &Result{})
@@ -156,7 +156,7 @@ func Test_Service_openCacheJSON_WithCacheDir_LoadsCacheFromDisk_Success(t *testi
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	prog.openCacheJSON("/data", opts, &Result{})
@@ -188,7 +188,7 @@ func Test_Service_openCacheJSON_LoadError_SetsWarning_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	result := &Result{}
@@ -222,7 +222,7 @@ func Test_Service_openCacheJSON_LoadErrNotExist_NoWarning_Success(t *testing.T) 
 		},
 	}
 
-	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fsys, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 
 	opts := Options{CacheDir: "/cache"}
 	result := &Result{}
@@ -248,7 +248,7 @@ func Test_Service_PrintJSON_NoJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{}))
 
 	require.Contains(t, stdoutBuf.String(), `"jobs": []`)
@@ -289,7 +289,7 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{}))
 
 	var result Result
@@ -330,7 +330,7 @@ func Test_Service_PrintJSON_UnverifiedJob_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{}))
 
 	require.NotContains(t, stdoutBuf.String(), `"verification":`)
@@ -372,7 +372,7 @@ func Test_Service_PrintJSON_SortedBySeverity_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{}))
 
 	var result Result
@@ -418,7 +418,7 @@ func Test_Service_PrintJSON_MultiRoot_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data", "/data2"}, Options{}))
 
 	var result Result
@@ -446,7 +446,7 @@ func Test_Service_PrintJSON_WithOptions_Success(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 
 	args := Options{SkipNotCreated: true, CacheDir: "/cache"}
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
@@ -478,7 +478,7 @@ func Test_Service_PrintJSON_CtxCancel_Error(t *testing.T) {
 	}
 	_ = ls.LogLevel.Set("info")
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockCacheHandler{})
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
 	err := prog.PrintJSON(ctx, []string{"/data"}, Options{})
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -516,7 +516,7 @@ func Test_Service_PrintJSON_WithoutCacheDir_NotLoadsCache_Success(t *testing.T) 
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{CacheDir: ""}))
 
 	require.False(t, loadCalled)
@@ -554,7 +554,7 @@ func Test_Service_PrintJSON_WithCacheDir_LoadsCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{CacheDir: "/cache"}))
 
 	require.True(t, loadCalled)
@@ -589,7 +589,7 @@ func Test_Service_PrintJSON_PrunesCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{CacheDir: "/cache"}))
 
 	require.True(t, pruneCalled)
@@ -627,7 +627,7 @@ func Test_Service_PrintJSON_DoesNotSaveCache_Success(t *testing.T) {
 		},
 	}
 
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, cacher)
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, cacher)
 	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{CacheDir: "/cache"}))
 
 	require.False(t, saveCalled)

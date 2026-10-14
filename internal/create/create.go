@@ -665,7 +665,7 @@ func (prog *Service) runCreate(ctx context.Context, job *Job, elements []schema.
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.cacher)
+		vs := verify.NewService(prog.fsys, prog.log, prog.runner, prog.bundler, prog.par2er, prog.cacher)
 		vj := verify.NewJob(job.par2Path, verify.Options{}, mf, job.asBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {
