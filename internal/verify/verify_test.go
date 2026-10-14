@@ -15,6 +15,7 @@ import (
 
 	"github.com/desertwitch/par2cron/internal/bundle"
 	"github.com/desertwitch/par2cron/internal/logging"
+	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
 	"github.com/desertwitch/par2cron/internal/util"
@@ -3737,7 +3738,7 @@ func Test_Service_parseExitCode_UnhandledCode_Error(t *testing.T) {
 	require.Equal(t, 99, job.manifest.Verification.ExitCode)
 }
 
-// Expectation: A set without creation manifest should never be considered edited.
+// Expectation: A set without creation manifest (and without a parseable PAR2 set) should not be considered edited.
 func Test_Service_wasMaybeEdited_NoCreation_Success(t *testing.T) {
 	t.Parallel()
 
@@ -4086,6 +4087,273 @@ func Test_Service_wasMaybeEdited_EmptyElementName_Success(t *testing.T) {
 	job := &Job{workingDir: "/data", manifest: mf}
 
 	require.False(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// wmService returns a [Service] with the given PAR2 and bundle handlers, logging to nowhere.
+func wmService(fs afero.Fs, par2er schema.Par2Handler, bundler schema.BundleHandler) *Service {
+	ls := logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard}
+
+	return NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, par2er, &testutil.MockCacheHandler{})
+}
+
+// wmSet returns a complete [par2.Set] with the given recovery file names.
+func wmSet(names ...string) par2.Set {
+	s := par2.Set{SetID: par2.Hash{1}, MainPacket: &par2.MainPacket{SetID: par2.Hash{1}}}
+	for _, name := range names {
+		s.RecoverySet = append(s.RecoverySet, par2.FilePacket{SetID: par2.Hash{1}, Name: name})
+	}
+
+	return s
+}
+
+// wmIndex returns a [testutil.MockPar2Handler] whose index parses to the given sets.
+func wmIndex(t *testing.T, sets ...par2.Set) *testutil.MockPar2Handler {
+	t.Helper()
+
+	return &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, path string, _ bool) (*par2.File, error) {
+			require.Equal(t, "/data/test"+schema.Par2Extension, path)
+
+			return &par2.File{Sets: sets}, nil
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return &par2.FileSet{SetsMerged: sets}, nil
+		},
+	}
+}
+
+// Expectation: A file of the PAR2 set (not in the creation manifest) newer than the reference time should be considered edited.
+func Test_Service_wasMaybeEdited_SetFileNewer_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	prog := wmService(fs, wmIndex(t, wmSet("file.txt")), &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: A file of the PAR2 set older than the reference time should not be considered edited.
+func Test_Service_wasMaybeEdited_SetFileOlder_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(-time.Hour), base.Add(-time.Hour)))
+
+	prog := wmService(fs, wmIndex(t, wmSet("file.txt")), &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: Files of the creation manifest and of the PAR2 set should both be considered (also when listed in both).
+func Test_Service_wasMaybeEdited_CreationAndSetFiles_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/old.txt", []byte("old"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/old.txt", base.Add(-time.Hour), base.Add(-time.Hour)))
+	require.NoError(t, afero.WriteFile(fs, "/data/new.txt", []byte("new"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/new.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	prog := wmService(fs, wmIndex(t, wmSet("old.txt", "new.txt")), &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "old.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: PAR2 set file names with Windows separators should be resolved within the working directory.
+func Test_Service_wasMaybeEdited_SetFileWindowsSeparators_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data/sub", 0o755))
+	require.NoError(t, afero.WriteFile(fs, "/data/sub/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/sub/file.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	prog := wmService(fs, wmIndex(t, wmSet(`sub\file.txt`)), &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: PAR2 set file names escaping the working directory should be skipped.
+func Test_Service_wasMaybeEdited_SetFileEscapes_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, fs.MkdirAll("/data", 0o755))
+	for _, path := range []string{"/outside.txt", "/abs.txt"} {
+		require.NoError(t, afero.WriteFile(fs, path, []byte("content"), 0o644))
+		require.NoError(t, fs.Chtimes(path, base.Add(time.Second), base.Add(time.Second)))
+	}
+
+	prog := wmService(fs, wmIndex(t, wmSet("../outside.txt", "/abs.txt", "", ".")), &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: The files of a confirmed, but incomplete PAR2 set should still be considered.
+func Test_Service_wasMaybeEdited_IncompleteSetFile_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	incomplete := wmSet("file.txt")
+	incomplete.MissingRecoveryPackets = []par2.Hash{{0xff}}
+
+	prog := wmService(fs, wmIndex(t, incomplete), &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: The files of an unconfirmed PAR2 set (unreadable index, set from the volumes) should not be considered.
+func Test_Service_wasMaybeEdited_UnconfirmedSetFile_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return nil, errors.New("simulated parse failure")
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return &par2.FileSet{SetsMerged: []par2.Set{wmSet("file.txt")}}, nil
+		},
+	}
+	prog := wmService(fs, par2er, &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	require.False(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: The files of a bundle's PAR2 set should be considered.
+func Test_Service_wasMaybeEdited_BundleSetFile_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFunc: func(_ io.ReadSeeker, _ bool) ([]par2.Set, error) {
+			return []par2.Set{wmSet("file.txt")}, nil
+		},
+	}
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, path string) (schema.Bundle, error) {
+			require.Equal(t, "/data/test"+schema.BundleExtension+schema.Par2Extension, path)
+
+			return &testutil.MockBundle{
+				RecoverySetIDValue: par2.Hash{1},
+				EntriesFunc: func() []bundle.IndexEntry {
+					return []bundle.IndexEntry{{Name: "test" + schema.Par2Extension, DataLength: 10}}
+				},
+				ExtractEntryFunc: func(_ bundle.IndexEntry, w io.Writer) error {
+					_, err := w.Write([]byte("index data"))
+
+					return err
+				},
+			}, nil
+		},
+	}
+	prog := wmService(fs, par2er, bundler)
+
+	mf := schema.NewManifest("test" + schema.BundleExtension + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.BundleExtension + schema.Par2Extension, manifest: mf}
+
+	require.True(t, prog.wasMaybeEdited(t.Context(), job))
+}
+
+// Expectation: A cancelled context should still have the partial files tested for mtimes.
+func Test_Service_wasMaybeEdited_CtxCancelled_Success(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	fs := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(fs, "/data/file.txt", []byte("content"), 0o644))
+	require.NoError(t, fs.Chtimes("/data/file.txt", base.Add(time.Second), base.Add(time.Second)))
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return nil, fmt.Errorf("wrapped: %w", context.Canceled) // As the real handler on cancellation.
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			require.Fail(t, "should not merge after cancellation")
+
+			return nil, errors.New("unexpected call")
+		},
+	}
+	prog := wmService(fs, par2er, &testutil.MockBundleHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Creation = &schema.CreationManifest{Time: base.Add(-24 * time.Hour), Elements: []schema.FsElement{{Name: "file.txt"}}}
+	mf.Verification = &schema.VerificationManifest{TimeLastHealthy: base}
+
+	job := &Job{workingDir: "/data", par2Name: "test" + schema.Par2Extension, manifest: mf}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	require.True(t, prog.wasMaybeEdited(ctx, job))
 }
 
 // Expectation: A backlog warning should be thrown when the backlog is growing.

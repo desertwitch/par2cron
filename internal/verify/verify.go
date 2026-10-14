@@ -706,13 +706,13 @@ func (prog *Service) parseExitCode(job *Job, err error) error {
 
 // wasMaybeEdited is a best-effort heuristic: it stays silent when unsure,
 // as the contract of the program (and PAR2 in general) is mostly WORM files.
-func (prog *Service) wasMaybeEdited(_ context.Context, job *Job) bool {
+func (prog *Service) wasMaybeEdited(ctx context.Context, job *Job) bool {
 	if (job.manifest.Creation == nil || job.manifest.Creation.Time.IsZero()) &&
 		job.manifest.Verification.TimeLastHealthy.IsZero() {
 		return false
 	}
 
-	var paths []string
+	paths := make(map[string]struct{})
 
 	if job.manifest.Creation != nil {
 		for _, e := range job.manifest.Creation.Elements {
@@ -721,7 +721,25 @@ func (prog *Service) wasMaybeEdited(_ context.Context, job *Job) bool {
 			if e.Name == "" || e.IsDir {
 				continue
 			}
-			paths = append(paths, filepath.Join(job.workingDir, e.Name))
+			paths[filepath.Join(job.workingDir, e.Name)] = struct{}{}
+		}
+	}
+
+	// The PAR2 set is parsed here as well, as failed verifications are rare
+	// and worth the cost; in the future, this should come from the manifest.
+	set, _, _ := util.ParsePar2Set(ctx, prog.fsys,
+		job.par2Name, job.workingDir, prog.par2er, prog.bundler)
+	if set != nil {
+		for _, f := range set.RecoverySet {
+			cleaned, err := util.SanitizePar2Path(f.Name)
+			if err != nil {
+				continue
+			}
+			cleaned, err = util.JailedJoinPath(job.workingDir, cleaned)
+			if err != nil {
+				continue
+			}
+			paths[cleaned] = struct{}{}
 		}
 	}
 
@@ -731,7 +749,7 @@ func (prog *Service) wasMaybeEdited(_ context.Context, job *Job) bool {
 		ref = job.manifest.Creation.Time
 	}
 
-	for _, path := range paths {
+	for path := range paths {
 		info, err := util.LstatIfPossible(prog.fsys, path)
 		if err != nil {
 			continue
