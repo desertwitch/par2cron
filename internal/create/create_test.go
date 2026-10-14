@@ -3388,6 +3388,62 @@ func Test_Service_createNested_UnsupportedName_Error(t *testing.T) {
 	require.Equal(t, []string{"/data/folder/good/good" + schema.Par2Extension}, called)
 }
 
+// Expectation: The function should fail only the subjobs whose folder name would be classified as a volume.
+func Test_Service_createNested_VolumeNamedFolder_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+	for _, dir := range []string{"sub.vol00+01", "sub.VOL00-01", "good"} {
+		require.NoError(t, fs.MkdirAll("/data/folder/"+dir, 0o755))
+		require.NoError(t, afero.WriteFile(fs, "/data/folder/"+dir+"/file.txt", []byte("content"), 0o644))
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called []string
+	runner := &testutil.MockRunner{
+		RunFunc: func(_ context.Context, _ string, args []string, _ string, _ io.Writer, _ io.Writer) error {
+			called = append(called, args[slices.Index(args, "--")+1])
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	job := &Job{
+		workingDir:   "/data/folder",
+		markerPath:   "/data/folder/_par2cron",
+		par2Mode:     schema.CreateNestedMode,
+		par2Name:     "folder" + schema.Par2Extension,
+		par2Path:     "/data/folder/folder" + schema.Par2Extension,
+		par2Args:     []string{"-r10"},
+		par2Glob:     "*",
+		lockPath:     "/data/folder/folder" + schema.Par2Extension + schema.LockExtension,
+		manifestName: "folder" + schema.Par2Extension + schema.ManifestExtension,
+		manifestPath: "/data/folder/folder" + schema.Par2Extension + schema.ManifestExtension,
+	}
+
+	files := []schema.FsElement{
+		{Path: "/data/folder/sub.vol00+01/file.txt", Name: "file.txt"},
+		{Path: "/data/folder/sub.VOL00-01/file.txt", Name: "file.txt"},
+		{Path: "/data/folder/good/file.txt", Name: "file.txt"},
+	}
+
+	err := prog.createNested(t.Context(), job, files)
+	require.ErrorContains(t, err, "2/3 subjobs failed")
+	require.ErrorIs(t, err, errUnsupportedName)
+	require.ErrorContains(t, err, "/data/folder/sub.vol00+01/sub.vol00+01"+schema.Par2Extension)
+	require.ErrorContains(t, err, "/data/folder/sub.VOL00-01/sub.VOL00-01"+schema.Par2Extension)
+	require.Equal(t, []string{"/data/folder/good/good" + schema.Par2Extension}, called)
+}
+
 // Expectation: The function should respect cancellation and return the correct error.
 func Test_Service_createNested_CtxCancel_Error(t *testing.T) {
 	t.Parallel()
