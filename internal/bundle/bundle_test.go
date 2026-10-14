@@ -633,6 +633,34 @@ func Test_Bundle_ManifestName_Success(t *testing.T) {
 	require.Equal(t, fixture.manifest.Name, b.ManifestName())
 }
 
+// Expectation: RecoverySetID should return the recovery set ID the bundle was packed with.
+func Test_Bundle_RecoverySetID_Success(t *testing.T) {
+	t.Parallel()
+
+	b, _ := openTestBundle(t)
+
+	require.Equal(t, testRecoverySetID, b.RecoverySetID())
+}
+
+// Expectation: RecoverySetID should still be known after the index was reconstructed.
+func Test_Bundle_RecoverySetID_ReconstructedIndex_Success(t *testing.T) {
+	t.Parallel()
+
+	fixture := newTestBundleFixture(t)
+	overwriteBundleBytes(t, fixture.fs, fixture.bundlePath, func(raw []byte) {
+		raw[0] ^= 0xFF
+	})
+
+	b, err := Open(t.Context(), fixture.fs, fixture.bundlePath)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, b.Close())
+	})
+
+	require.NotZero(t, b.Index.Flags&FlagIndexRebuilt)
+	require.Equal(t, testRecoverySetID, b.RecoverySetID())
+}
+
 // Expectation: Validate should succeed on a clean bundle.
 func Test_Bundle_Validate_Success(t *testing.T) {
 	t.Parallel()
