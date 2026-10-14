@@ -25,7 +25,7 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string, opts Options
 		var sets []par2.Set
 
 		if !opts.ParseAll && util.IsPar2Bundle(path) {
-			s, err := util.ParseBundlePar2Index(ctx, prog.fsys, path, prog.par2er, prog.bundler)
+			s, _, err := util.ParseBundlePar2Index(ctx, prog.fsys, path, prog.par2er, prog.bundler)
 			if err == nil {
 				sets = s
 			} else {

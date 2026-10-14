@@ -836,6 +836,26 @@ func Test_MockBundle_ManifestName_WithValue_Error(t *testing.T) {
 	require.Equal(t, "test.json", b.ManifestName())
 }
 
+// Expectation: The mock bundle should return nil when no RecoverySetID value is provided.
+func Test_MockBundle_RecoverySetID_NoValue_Success(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{}
+
+	require.Zero(t, b.RecoverySetID())
+}
+
+// Expectation: The mock bundle should return the value from the RecoverySetID value.
+func Test_MockBundle_RecoverySetID_WithValue_Success(t *testing.T) {
+	t.Parallel()
+
+	b := &MockBundle{
+		RecoverySetIDValue: [16]byte{1},
+	}
+
+	require.Equal(t, [16]byte{1}, b.RecoverySetIDValue)
+}
+
 // Expectation: The mock bundle should call the provided Update function.
 func Test_MockBundle_Update_WithFunc_Success(t *testing.T) {
 	t.Parallel()

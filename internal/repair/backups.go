@@ -42,7 +42,7 @@ func newBackupManager(ctx context.Context, job *Job, fsys afero.Fs, par2er schem
 		if len(sets) == 0 {
 			return nil, fmt.Errorf("failed to parse par2: %w", err)
 		}
-		log.Debug("Using incomplete PAR2 sets for backup handling", "error", err)
+		log.Debug("Using incomplete or unconfirmed PAR2 sets for backup handling", "error", err)
 	}
 
 	man := &backupManager{log: log, fsys: fsys}

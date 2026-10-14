@@ -156,6 +156,11 @@ func (b *Bundle) Manifest(ctx context.Context) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// RecoverySetID returns the recovery set ID of the bundle.
+func (b *Bundle) RecoverySetID() [16]byte {
+	return b.Index.RecoverySetID
+}
+
 // ManifestName returns the filename of the manifest.
 // The name is given as-is and not sanitized by this function.
 func (b *Bundle) ManifestName() string {

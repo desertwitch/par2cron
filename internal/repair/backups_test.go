@@ -224,6 +224,32 @@ func Test_newBackupManager_NonRecoverySet_Ignored(t *testing.T) {
 	require.Contains(t, man.snapshot, dir+"/a.txt")
 }
 
+// Expectation: The constructor should still use unconfirmed sets (unreadable index, sets from the volumes).
+func Test_newBackupManager_UnconfirmedSets_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	dir := t.TempDir()
+	require.NoError(t, afero.WriteFile(fs, dir+"/a.txt", []byte("a"), 0o644))
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return nil, errors.New("simulated parse failure")
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return &par2.FileSet{SetsMerged: bmRecoverySets("a.txt")}, nil
+		},
+	}
+	log := logging.NewLogger(logging.Options{Logout: io.Discard, Stdout: io.Discard, Stderr: io.Discard})
+	job := &Job{workingDir: dir, par2Name: "test" + schema.Par2Extension, par2Path: dir + "/test" + schema.Par2Extension}
+
+	man, err := newBackupManager(t.Context(), job, fs, par2er, &testutil.MockBundleHandler{}, log)
+
+	require.NoError(t, err)
+	require.Len(t, man.snapshot, 1)
+	require.Contains(t, man.snapshot, dir+"/a.txt")
+}
+
 // Expectation: The constructor should return an error when the PAR2 file cannot be parsed.
 func Test_newBackupManager_ParseError_Error(t *testing.T) {
 	t.Parallel()
@@ -551,7 +577,7 @@ func Test_newBackupManager_IncompleteSets_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Contains(t, man.snapshot, dir+"/a.txt")
-	require.Contains(t, logBuf.String(), "Using incomplete PAR2 sets for backup handling")
+	require.Contains(t, logBuf.String(), "Using incomplete or unconfirmed PAR2 sets for backup handling")
 }
 
 // Expectation: The constructor should return an error when neither the bundled index nor the bundle file can be parsed.

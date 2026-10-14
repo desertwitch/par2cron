@@ -17,74 +17,83 @@ import (
 const maxIndexSize = 100 * 1024 * 1024 // 100MiB
 
 var (
-	ErrNoCompleteSet      = errors.New("no complete par2 set found")
+	ErrNoCompleteSet      = errors.New("no both confirmed and complete par2 set")
+	ErrNoConfirmedSetID   = errors.New("index or bundle yielded no par2 set ID")
 	errMultipleIndexFiles = errors.New("multiple index files in bundle")
 )
 
-// ParsePar2Set parses the PAR2 set of a job, given by the name of its index
-// (or bundle) file in workingDir.
+// ParsePar2Set parses the PAR2 set of indexName (an index or bundle file) in
+// workingDir, returning the "best" (most trustworthy) set and all sets found.
 //
-// The job's own file is tried first: for a bundle its embedded index, then
-// the file itself. If it yields a complete set (main packet present and no
-// missing file packets), that is used and no other files are read. Otherwise
-// the index is assumed damaged (PAR2 parsing skips unreadable packets, so a
-// damaged index parses with less rather than failing), and it is merged with
-// the other set members found in workingDir (volume files), the index first.
-// Bundles are never merged, as they already contain all files of their set.
+// The best set is what par2cmdline locks onto when given indexName, which has
+// the set ID of the first packet it reads: for an index file, the index's first
+// set; for a bundle, the bundle's recovery set ID (its own packets come first
+// and carry that set ID). As indexName itself names that set, it is "confirmed".
+//
+// indexName is parsed first (for a bundle: index first, on error the bundle
+// as a whole). If the best set is complete there (main packet present and no
+// missing file packets), no other files are read. Otherwise the index is
+// assumed damaged (PAR2 parsing skips unreadable packets, so a damaged index
+// parses with less rather than failing), and it is merged with the other set
+// members in workingDir (volume files), the index first. Bundles are never
+// merged, as they are self-contained (already contain all files of their set).
 //
 // Since members are matched by file name, they may contain other sets (e.g.
-// stale volume files from an earlier version of the set). If the index still
-// shows its set ID, only a set with that ID is a candidate for the best set,
-// as that is the set par2cmdline locks onto when given the index. Only if the
-// index yields no set ID at all are all merged sets candidates for best set.
+// stale volume files from an earlier version of the set). These never become
+// the best set, even if they are more complete. If indexName yields no set ID
+// at all (an unreadable index or one without any set, or a bundle that cannot
+// be opened), there is no best set: par2cmdline then locks onto the first
+// readable packet of the other files (read in directory order), but we make
+// no recommendation or assumption about which one that would be.
 //
-// It returns the best set and all sets found (in parse order, i.e. the job's
-// own file first, then the volume files by name, including sets with other set
-// IDs). The best set is the most useful candidate: the first complete one, else
-// the first with a main packet, else the first one at all.
+// The returned pointer is a copy of the best set, it does not point into the
+// returned slice. The slice holds all sets found in parse order (indexName
+// first, then the volume files by name), including sets with other set IDs.
+// It may or may not include the sets only found in the volume files, depending
+// on whether the other set member files (volumes) were merged in (see above).
 //
-// [ErrNoCompleteSet] is returned together with all sets found and either an
-// incomplete best set, or a nil best set if there was no candidate: either no
-// sets were found at all (the set slice is then empty), or the index showed
-// its set ID but only sets with other set IDs were found. Other errors (e.g.
-// cancellation, a parser panic, or no file being parseable) are returned
-// without any sets. A nil error guarantees a non-nil and complete best set.
+// [ErrNoCompleteSet] is returned together with all sets found and either the
+// incomplete best set, or a nil best set if there is none (the confirmed set ID
+// was not among the sets found, or no set ID could be confirmed). If indexName
+// was too damaged to yield a set ID to confirm, error [ErrNoConfirmedSetID] is
+// wrapped together with [ErrNoCompleteSet]. Other errors (e.g. cancellation, a
+// parser panic, or no file being parseable) are returned without any sets.
+//
+// A nil error guarantees a non-nil and complete best set, confirmed by
+// indexName as the set par2cmdline locks onto (and typically the only set).
 func ParsePar2Set(ctx context.Context, fsys afero.Fs, indexName string, workingDir string, p schema.Par2Handler, b schema.BundleHandler) (*par2.Set, []par2.Set, error) {
 	par2Path := filepath.Join(workingDir, indexName)
 
 	if IsPar2Bundle(indexName) {
-		if sets, err := ParseBundlePar2Index(ctx, fsys, par2Path, p, b); err == nil {
-			if best, complete := selectSet(sets, nil); complete {
-				return best, sets, nil
+		sets, setID, err := ParseBundlePar2Index(ctx, fsys, par2Path, p, b)
+		if err == nil && setID != nil {
+			if best, all, perr := pickSet(sets, setID); perr == nil {
+				// A complete set was found in the embedded index.
+				return best, all, nil
 			}
 		}
-	}
 
-	ids := map[par2.Hash]struct{}{}
-
-	f, err := p.ParseFile(ctx, fsys, par2Path, true)
-	if err == nil {
-		if best, complete := selectSet(f.Sets, nil); complete {
-			// A complete set was found in the index.
-			return best, f.Sets, nil
-		}
-		for _, s := range f.Sets {
-			// Damaged index, but its set IDs can be trusted.
-			ids[s.SetID] = struct{}{}
-		}
-	} else if isFatalParseErr(ctx, err) {
-		return nil, nil, fmt.Errorf("failed to parse file: %w", err)
-	}
-
-	// A bundle contains all files of its set, there's nothing to merge.
-	if IsPar2Bundle(indexName) {
+		// The embedded index is unusable, so parse the bundle as a whole.
+		f, err := p.ParseFile(ctx, fsys, par2Path, true)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to parse file: %w", err)
 		}
 
-		best, _ := selectSet(f.Sets, nil)
+		return pickSet(f.Sets, setID)
+	}
 
-		return best, f.Sets, ErrNoCompleteSet
+	var setID *par2.Hash
+
+	f, err := p.ParseFile(ctx, fsys, par2Path, true)
+	if err != nil && isFatalParseErr(ctx, err) {
+		return nil, nil, fmt.Errorf("failed to parse file: %w", err)
+	}
+	if err == nil && len(f.Sets) > 0 {
+		// Even a damaged index can be trusted with the set IDs it still shows.
+		setID = &f.Sets[0].SetID
+		if isCompleteSet(f.Sets[0]) {
+			return pickSet(f.Sets, setID)
+		}
 	}
 
 	// The index is unreadable or incomplete, so merge in the other set members.
@@ -92,20 +101,36 @@ func ParsePar2Set(ctx context.Context, fsys afero.Fs, indexName string, workingD
 	if ferr != nil {
 		if err == nil && !isFatalParseErr(ctx, ferr) {
 			// Merging did not help, keep what the index had.
-			best, _ := selectSet(f.Sets, nil)
-
-			return best, f.Sets, ErrNoCompleteSet
+			return pickSet(f.Sets, setID)
 		}
 
 		return nil, nil, fmt.Errorf("failed to parse file set: %w", ferr)
 	}
 
-	best, complete := selectSet(fs.SetsMerged, ids)
-	if !complete {
-		return best, fs.SetsMerged, ErrNoCompleteSet
+	return pickSet(fs.SetsMerged, setID)
+}
+
+// pickSet returns the set with the confirmed setID as best set, along with all
+// sets and an error as described for [ParsePar2Set]. If setID is nil (no set ID
+// was confirmed), there is no best set.
+func pickSet(sets []par2.Set, setID *par2.Hash) (*par2.Set, []par2.Set, error) {
+	if setID == nil {
+		return nil, sets, fmt.Errorf("%w: %w", ErrNoCompleteSet, ErrNoConfirmedSetID)
 	}
 
-	return best, fs.SetsMerged, nil
+	i := slices.IndexFunc(sets, func(s par2.Set) bool {
+		return s.SetID == *setID
+	})
+	if i < 0 {
+		return nil, sets, ErrNoCompleteSet
+	}
+
+	best := sets[i] // Copy, so the caller doesn't hold a pointer into the slice.
+	if !isCompleteSet(best) {
+		return &best, sets, ErrNoCompleteSet
+	}
+
+	return &best, sets, nil
 }
 
 // isFatalParseErr reports if an error must not be handled by falling back.
@@ -125,50 +150,6 @@ func isCompleteSet(s par2.Set) bool {
 	return s.MainPacket != nil &&
 		len(s.MissingRecoveryPackets) == 0 &&
 		len(s.MissingNonRecoveryPackets) == 0
-}
-
-// Ranks of sets for [selectSet], from least to most useful.
-const (
-	setRankAny      = iota + 1 // Neither main packet nor complete
-	setRankMain                // Main packet, but with missing files
-	setRankComplete            // Main packet and no missing files
-)
-
-// selectSet returns the most useful set, restricted to the given set IDs if
-// any: the first complete set, else the first with a main packet, else the
-// first set at all. Sets are in parse order, so the job's own file comes
-// first. It also reports if the returned set is complete, the set is nil
-// if there are no candidates.
-func selectSet(sets []par2.Set, ids map[par2.Hash]struct{}) (*par2.Set, bool) {
-	best, bestRank := -1, 0
-	for i, s := range sets {
-		if _, ok := ids[s.SetID]; len(ids) > 0 && !ok {
-			continue
-		}
-
-		rank := setRankAny
-		if s.MainPacket != nil {
-			rank = setRankMain
-		}
-		if isCompleteSet(s) {
-			rank = setRankComplete
-		}
-
-		// Strictly greater, so that the earlier set wins on equal ranks.
-		if rank > bestRank {
-			best, bestRank = i, rank
-		}
-		if bestRank == setRankComplete {
-			break
-		}
-	}
-	if best < 0 {
-		return nil, false
-	}
-
-	s := sets[best] // Copy, so the caller doesn't hold a pointer into the slice.
-
-	return &s, bestRank == setRankComplete
 }
 
 // par2SetMemberPaths returns the set member paths, with par2Path first.
@@ -195,19 +176,23 @@ func par2SetMemberPaths(fsys afero.Fs, workingDir, par2Name, par2Path string) []
 	return paths
 }
 
-// ParseBundlePar2Index tries to parse only the index file from a bundle.
-// Bundles with more than one index file are rejected, those are better
-// handled by parsing the bundle as a whole (as par2cmdline would see it).
-func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p schema.Par2Handler, b schema.BundleHandler) ([]par2.Set, error) {
+// ParseBundlePar2Index is a fast-path function that tries to parse only the
+// index file from a bundle. Bundles with more than one index file are rejected,
+// those are better handled by parsing the bundle as a whole (as par2cmdline
+// would see it). It also returns the bundle's recovery set ID once the bundle
+// could be opened (even on later errors), else it is nil.
+func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p schema.Par2Handler, b schema.BundleHandler) ([]par2.Set, *par2.Hash, error) {
 	if !IsPar2Bundle(path) {
-		return nil, errors.New("not a bundle file")
+		return nil, nil, errors.New("not a bundle file")
 	}
 
 	bun, err := b.Open(ctx, fsys, path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open bundle: %w", err)
+		return nil, nil, fmt.Errorf("failed to open bundle: %w", err)
 	}
 	defer bun.Close()
+
+	setID := par2.Hash(bun.RecoverySetID())
 
 	var index *bundle.IndexEntry
 	for _, e := range bun.Entries() {
@@ -215,30 +200,30 @@ func ParseBundlePar2Index(ctx context.Context, fsys afero.Fs, path string, p sch
 			continue
 		}
 		if index != nil {
-			return nil, errMultipleIndexFiles
+			return nil, &setID, errMultipleIndexFiles
 		}
 		index = &e
 	}
 	if index == nil {
-		return nil, errors.New("no index file in bundle")
+		return nil, &setID, errors.New("no index file in bundle")
 	}
 
 	if index.DataLength > maxIndexSize {
-		return nil, errors.New("index file too large")
+		return nil, &setID, errors.New("index file too large")
 	}
 
 	var buf bytes.Buffer
 	if err := bun.ExtractEntry(ctx, *index, &buf); err != nil {
-		return nil, fmt.Errorf("failed to extract index file: %w", err)
+		return nil, &setID, fmt.Errorf("failed to extract index file: %w", err)
 	}
 
 	sets, err := p.Parse(ctx, bytes.NewReader(buf.Bytes()), true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse index file: %w", err)
+		return nil, &setID, fmt.Errorf("failed to parse index file: %w", err)
 	}
 	if len(sets) == 0 {
-		return nil, errors.New("no sets in index file")
+		return nil, &setID, errors.New("no sets in index file")
 	}
 
-	return sets, nil
+	return sets, &setID, nil
 }

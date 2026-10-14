@@ -219,17 +219,18 @@ func (m *MockBundleHandler) Pack(_ context.Context, fsys afero.Fs, bundlePath st
 
 // MockBundle is a mock implementation of schema.Bundle.
 type MockBundle struct {
-	CloseFunc         func() error
-	EntriesFunc       func() []bundle.IndexEntry
-	ExtractEntryFunc  func(e bundle.IndexEntry, w io.Writer) error
-	IsRebuiltValue    *bool
-	ManifestFunc      func() ([]byte, error)
-	ManifestNameValue *string
-	MarshalJSONValue  []byte
-	UnpackFunc        func(fsys afero.Fs, destDir string, strict bool) ([]string, error)
-	UpdateFunc        func(manifest []byte) error
-	ValidateFunc      func(strict bool) error
-	ValidateIndexFunc func() error
+	CloseFunc          func() error
+	EntriesFunc        func() []bundle.IndexEntry
+	ExtractEntryFunc   func(e bundle.IndexEntry, w io.Writer) error
+	IsRebuiltValue     *bool
+	ManifestFunc       func() ([]byte, error)
+	ManifestNameValue  *string
+	MarshalJSONValue   []byte
+	RecoverySetIDValue [16]byte
+	UnpackFunc         func(fsys afero.Fs, destDir string, strict bool) ([]string, error)
+	UpdateFunc         func(manifest []byte) error
+	ValidateFunc       func(strict bool) error
+	ValidateIndexFunc  func() error
 }
 
 func (m *MockBundle) Close() error {
@@ -246,6 +247,10 @@ func (m *MockBundle) Manifest(_ context.Context) ([]byte, error) {
 	}
 
 	return nil, errors.New("not implemented")
+}
+
+func (m *MockBundle) RecoverySetID() [16]byte {
+	return m.RecoverySetIDValue
 }
 
 func (m *MockBundle) ManifestName() string {
