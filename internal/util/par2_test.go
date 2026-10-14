@@ -125,15 +125,11 @@ func Test_ParsePar2Set_MergedOtherSetID_NoCompleteSet_Error(t *testing.T) {
 	require.Equal(t, merged, all)
 }
 
-// Expectation: With an unreadable index, the first complete merged set should be selected.
-func Test_ParsePar2Set_UnreadableIndex_FirstComplete_Success(t *testing.T) {
+// Expectation: With an unreadable index, there should be no best set, even if a merged set is complete.
+func Test_ParsePar2Set_UnreadableIndex_NoBest_Unconfirmed_Error(t *testing.T) {
 	t.Parallel()
 
-	merged := []par2.Set{
-		psSet(1, false, "a.txt", "b.txt", "c.txt"), // First, but incomplete.
-		psSet(2, true, "a.txt"),
-		psSet(3, true, "a.txt", "b.txt"), // More files, but later.
-	}
+	merged := []par2.Set{psSet(1, false, "a.txt"), psSet(2, true, "a.txt")}
 	par2er := &testutil.MockPar2Handler{
 		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
 			return nil, errors.New("simulated parse failure")
@@ -145,33 +141,9 @@ func Test_ParsePar2Set_UnreadableIndex_FirstComplete_Success(t *testing.T) {
 
 	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
 
-	require.NoError(t, err)
-	require.Equal(t, &merged[1], best)
-	require.Equal(t, merged, all)
-}
-
-// Expectation: Without a complete candidate, the first candidate with a main packet should be the best set.
-func Test_ParsePar2Set_NoCompleteSet_BestHasMainPacket_Error(t *testing.T) {
-	t.Parallel()
-
-	merged := []par2.Set{
-		psSet(1, false, "a.txt", "b.txt"), // First, but without main packet.
-		psMissing(2, "a.txt"),
-		psMissing(3, "a.txt", "b.txt"), // Same rank, but later.
-	}
-	par2er := &testutil.MockPar2Handler{
-		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
-			return nil, errors.New("simulated parse failure")
-		},
-		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
-			return &par2.FileSet{SetsMerged: merged}, nil
-		},
-	}
-
-	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
-
+	require.ErrorIs(t, err, ErrNoConfirmedSetID)
 	require.ErrorIs(t, err, ErrNoCompleteSet)
-	require.Equal(t, &merged[1], best)
+	require.Nil(t, best)
 	require.Equal(t, merged, all)
 }
 
@@ -193,12 +165,13 @@ func Test_ParsePar2Set_NoCandidate_NilBest_Error(t *testing.T) {
 	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
 
 	require.ErrorIs(t, err, ErrNoCompleteSet)
+	require.NotErrorIs(t, err, ErrNoConfirmedSetID)
 	require.Nil(t, best)
 	require.Equal(t, merged, all)
 }
 
 // Expectation: All sets should be returned in their parse order, regardless of which is the best set.
-func Test_ParsePar2Set_AllKeepsParseOrder_Success(t *testing.T) {
+func Test_ParsePar2Set_AllKeepsParseOrder_Error(t *testing.T) {
 	t.Parallel()
 
 	merged := []par2.Set{psSet(3, false, "c.txt"), psSet(1, true, "a.txt"), psSet(2, true, "b.txt")}
@@ -213,8 +186,8 @@ func Test_ParsePar2Set_AllKeepsParseOrder_Success(t *testing.T) {
 
 	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
 
-	require.NoError(t, err)
-	require.Equal(t, &merged[1], best)
+	require.ErrorIs(t, err, ErrNoConfirmedSetID) // Unreadable index.
+	require.Nil(t, best)
 	require.Equal(t, merged, all)
 }
 
@@ -235,6 +208,7 @@ func Test_ParsePar2Set_MergeFailsAfterIndex_KeepsIndexSets_Error(t *testing.T) {
 	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
 
 	require.ErrorIs(t, err, ErrNoCompleteSet)
+	require.NotErrorIs(t, err, ErrNoConfirmedSetID)
 	require.Equal(t, &index[0], best)
 	require.Equal(t, index, all)
 }
@@ -273,6 +247,98 @@ func Test_ParsePar2Set_MissingIndexNoMembers_Error(t *testing.T) {
 	require.NotErrorIs(t, err, ErrNoCompleteSet)
 	require.Nil(t, best)
 	require.Nil(t, all)
+}
+
+// Expectation: The first set of the index should stay the best set, even if a later set is complete (as par2cmdline locks onto it).
+func Test_ParsePar2Set_IndexFirstSetLocked_NoCompleteSet_Error(t *testing.T) {
+	t.Parallel()
+
+	index := []par2.Set{psMissing(1, "a.txt"), psSet(2, true, "b.txt")}
+	merged := []par2.Set{psMissing(1, "a.txt"), psSet(2, true, "b.txt")}
+
+	mergedCalled := false
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return &par2.File{Sets: index}, nil
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			mergedCalled = true
+
+			return &par2.FileSet{SetsMerged: merged}, nil
+		},
+	}
+
+	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
+
+	require.True(t, mergedCalled) // The complete second set must not stop the merge.
+	require.ErrorIs(t, err, ErrNoCompleteSet)
+	require.NotErrorIs(t, err, ErrNoConfirmedSetID)
+	require.Equal(t, &index[0], best)
+	require.Equal(t, merged, all)
+}
+
+// Expectation: The first set of the index should be the best set once merging completes it.
+func Test_ParsePar2Set_IndexFirstSetCompletedByMerge_Success(t *testing.T) {
+	t.Parallel()
+
+	merged := []par2.Set{psSet(1, true, "a.txt"), psSet(2, true, "b.txt")}
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return &par2.File{Sets: []par2.Set{psMissing(1, "a.txt"), psSet(2, true, "b.txt")}}, nil
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return &par2.FileSet{SetsMerged: merged}, nil
+		},
+	}
+
+	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
+
+	require.NoError(t, err)
+	require.Equal(t, &merged[0], best)
+	require.Equal(t, merged, all)
+}
+
+// Expectation: A readable index without any sets should not confirm a merged set.
+func Test_ParsePar2Set_IndexWithoutSets_Unconfirmed_Error(t *testing.T) {
+	t.Parallel()
+
+	merged := []par2.Set{psSet(2, true, "a.txt")}
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return &par2.File{}, nil
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return &par2.FileSet{SetsMerged: merged}, nil
+		},
+	}
+
+	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
+
+	require.ErrorIs(t, err, ErrNoConfirmedSetID)
+	require.ErrorIs(t, err, ErrNoCompleteSet)
+	require.Nil(t, best)
+	require.Equal(t, merged, all)
+}
+
+// Expectation: Without a readable index or merge, both errors should be returned without any sets.
+func Test_ParsePar2Set_IndexWithoutSetsMergeFails_Error(t *testing.T) {
+	t.Parallel()
+
+	par2er := &testutil.MockPar2Handler{
+		ParseFileFunc: func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+			return &par2.File{}, nil
+		},
+		ParseFileSetFunc: func(_ afero.Fs, _ []string, _ bool) (*par2.FileSet, error) {
+			return nil, errors.New("simulated merge failure")
+		},
+	}
+
+	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.par2", "/data", par2er, &testutil.MockBundleHandler{})
+
+	require.ErrorIs(t, err, ErrNoConfirmedSetID)
+	require.ErrorIs(t, err, ErrNoCompleteSet)
+	require.Nil(t, best)
+	require.Empty(t, all)
 }
 
 // Expectation: Cancellation and panics while parsing the index should be returned without falling back.
@@ -358,11 +424,13 @@ func Test_ParsePar2Set_MergeFatalError_NoIndexFallback_Error(t *testing.T) {
 	}
 }
 
-// psBundleHandler returns a [testutil.MockBundleHandler] for a bundle with a single index entry.
+// psBundleHandler returns a [testutil.MockBundleHandler] for a bundle with a
+// single index entry, and the recovery set ID of set 1 (see [psSet]).
 func psBundleHandler() *testutil.MockBundleHandler {
 	return &testutil.MockBundleHandler{
 		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
 			return &testutil.MockBundle{
+				RecoverySetIDValue: par2.Hash{1},
 				EntriesFunc: func() []bundle.IndexEntry {
 					return []bundle.IndexEntry{{Name: "file.par2", DataLength: 10}}
 				},
@@ -496,6 +564,7 @@ func Test_ParsePar2Set_BundleMultipleIndexes_ParsesBundle_Success(t *testing.T) 
 	bundler := &testutil.MockBundleHandler{
 		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
 			return &testutil.MockBundle{
+				RecoverySetIDValue: par2.Hash{1},
 				EntriesFunc: func() []bundle.IndexEntry {
 					return []bundle.IndexEntry{{Name: "file.par2", DataLength: 10}, {Name: "FILE.par2", DataLength: 10}}
 				},
@@ -551,6 +620,7 @@ func Test_ParsePar2Set_BundleEmpty_NoMerge_Error(t *testing.T) {
 
 							return err
 						},
+						RecoverySetIDValue: par2.Hash{1},
 					}, nil
 				},
 			}
@@ -563,6 +633,117 @@ func Test_ParsePar2Set_BundleEmpty_NoMerge_Error(t *testing.T) {
 			require.Empty(t, all)
 		})
 	}
+}
+
+// psBundleWithID returns a [testutil.MockBundleHandler] for a bundle with the given recovery set ID,
+// whose embedded index is unusable (so the bundle is parsed as a whole).
+func psBundleWithID(id byte) *testutil.MockBundleHandler {
+	return &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return &testutil.MockBundle{
+				RecoverySetIDValue: par2.Hash{id},
+				EntriesFunc: func() []bundle.IndexEntry {
+					return nil // No index entry.
+				},
+			}, nil
+		},
+	}
+}
+
+// Expectation: A bundle's recovery set ID should decide the best set, not an earlier (stale) complete set.
+func Test_ParsePar2Set_BundleRecoverySetIDLocked_Table(t *testing.T) {
+	t.Parallel()
+
+	var confirmedSet byte = 1
+
+	tests := map[string]struct {
+		sets       []par2.Set
+		want       int // -1 for no best set.
+		noComplete bool
+	}{
+		"confirmed set complete after stale set": {
+			sets: []par2.Set{psSet(2, true, "a.txt"), psSet(1, true, "a.txt")},
+			want: 1,
+		},
+		"confirmed set incomplete after stale set": {
+			sets:       []par2.Set{psSet(2, true, "a.txt"), psMissing(1, "a.txt")},
+			want:       1,
+			noComplete: true,
+		},
+		"only stale set": {
+			sets:       []par2.Set{psSet(2, true, "a.txt")},
+			want:       -1,
+			noComplete: true,
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			par2er := psIndexOnly(t, tc.sets...) // Fails the test on a merge.
+
+			best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.p2c.par2", "/data", par2er, psBundleWithID(confirmedSet))
+
+			require.NotErrorIs(t, err, ErrNoConfirmedSetID)
+			require.Equal(t, tc.noComplete, errors.Is(err, ErrNoCompleteSet))
+			if !tc.noComplete {
+				require.NoError(t, err)
+			}
+			if tc.want < 0 {
+				require.Nil(t, best)
+			} else {
+				require.Equal(t, &tc.sets[tc.want], best)
+			}
+			require.Equal(t, tc.sets, all)
+		})
+	}
+}
+
+// Expectation: A complete embedded index of another set than the bundle's should not be used.
+func Test_ParsePar2Set_BundleIndexOtherSetID_ParsesBundle_Success(t *testing.T) {
+	t.Parallel()
+
+	sets := []par2.Set{psSet(1, true, "a.txt")}
+
+	parsedBundle := false
+	par2er := psIndexOnly(t) // Fails the test on a merge.
+	par2er.ParseFunc = func(_ io.ReadSeeker, _ bool) ([]par2.Set, error) {
+		return []par2.Set{psSet(2, true, "a.txt")}, nil // Complete, but not the confirmed ID.
+	}
+	par2er.ParseFileFunc = func(_ afero.Fs, _ string, _ bool) (*par2.File, error) {
+		parsedBundle = true
+
+		return &par2.File{Sets: sets}, nil // The confirmed ID.
+	}
+
+	// psBundleHandler sets confirmed ID as 1.
+	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.p2c.par2", "/data", par2er, psBundleHandler())
+
+	require.NoError(t, err)
+	require.True(t, parsedBundle)
+	require.Equal(t, &sets[0], best)
+	require.Equal(t, sets, all)
+}
+
+// Expectation: A bundle that cannot be opened should not confirm the set of its parsed contents.
+func Test_ParsePar2Set_BundleOpenFails_Unconfirmed_Error(t *testing.T) {
+	t.Parallel()
+
+	sets := []par2.Set{psSet(1, true, "a.txt")}
+	par2er := psIndexOnly(t, sets...) // Fails the test on a merge.
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return nil, errors.New("simulated open failure")
+		},
+	}
+
+	best, all, err := ParsePar2Set(t.Context(), afero.NewMemMapFs(), "file.p2c.par2", "/data", par2er, bundler)
+
+	require.ErrorIs(t, err, ErrNoConfirmedSetID)
+	require.ErrorIs(t, err, ErrNoCompleteSet)
+	require.Nil(t, best)
+	require.Equal(t, sets, all)
 }
 
 // Expectation: isFatalParseErr should only report cancellations of the given context and parser panics.
@@ -594,46 +775,50 @@ func Test_isCompleteSet_Success(t *testing.T) {
 	require.False(t, isCompleteSet(missingNonRec))
 }
 
-// Expectation: selectSet should return the first complete set, regardless of the number of files.
-func Test_selectSet_FirstComplete_Success(t *testing.T) {
-	t.Parallel()
-
-	larger := psSet(3, true, "a.txt")
-	larger.NonRecoverySet = []par2.FilePacket{{Name: "b.txt"}, {Name: "c.txt"}}
-
-	sets := []par2.Set{psSet(1, false, "a.txt", "b.txt"), psSet(2, true, "a.txt"), larger}
-
-	best, complete := selectSet(sets, nil)
-	require.True(t, complete)
-	require.Equal(t, &sets[1], best)
-}
-
-// Expectation: selectSet should prefer complete sets, then sets with a main packet, then any set, earlier sets winning ties.
-func Test_selectSet_Ranking_Success(t *testing.T) {
+// Expectation: pickSet should pick the set with the confirmed set ID (even if a
+// complete set comes earlier), and no set if there is no confirmed set ID.
+func Test_pickSet_Table(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
-		sets     []par2.Set
-		want     int
-		complete bool
+		sets         []par2.Set
+		setID        *par2.Hash
+		want         int // Index of the expected best set, -1 for none.
+		noComplete   bool
+		notConfirmed bool
 	}{
-		"complete beats earlier main and no-main": {
-			sets:     []par2.Set{psSet(1, false, "a.txt"), psMissing(2, "a.txt"), psSet(3, true, "a.txt")},
-			want:     2,
-			complete: true,
+		"confirmed complete": {
+			sets:  []par2.Set{psSet(2, true, "a.txt"), psSet(1, true, "a.txt")},
+			setID: &par2.Hash{1},
+			want:  1,
 		},
-		"main beats earlier no-main": {
-			sets: []par2.Set{psSet(1, false, "a.txt"), psMissing(2, "a.txt"), psMissing(3, "a.txt", "b.txt")},
-			want: 1,
+		"confirmed incomplete over earlier complete": {
+			sets:       []par2.Set{psSet(2, true, "a.txt"), psMissing(1, "a.txt")},
+			setID:      &par2.Hash{1},
+			want:       1,
+			noComplete: true,
 		},
-		"first of no-main sets": {
-			sets: []par2.Set{psSet(1, false, "a.txt"), psSet(2, false, "a.txt", "b.txt")},
-			want: 0,
+		"confirmed not found": {
+			sets:       []par2.Set{psSet(2, true, "a.txt")},
+			setID:      &par2.Hash{1},
+			want:       -1,
+			noComplete: true,
 		},
-		"first of complete sets": {
-			sets:     []par2.Set{psSet(1, true, "a.txt"), psSet(2, true, "a.txt", "b.txt")},
-			want:     0,
-			complete: true,
+		"confirmed no sets": {
+			setID:      &par2.Hash{1},
+			want:       -1,
+			noComplete: true,
+		},
+		"unconfirmed with complete set": {
+			sets:         []par2.Set{psMissing(1, "a.txt"), psSet(2, true, "a.txt")},
+			want:         -1,
+			noComplete:   true,
+			notConfirmed: true,
+		},
+		"unconfirmed no sets": {
+			want:         -1,
+			noComplete:   true,
+			notConfirmed: true,
 		},
 	}
 
@@ -641,40 +826,32 @@ func Test_selectSet_Ranking_Success(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			best, complete := selectSet(tc.sets, nil)
+			best, all, err := pickSet(tc.sets, tc.setID)
 
-			require.Equal(t, &tc.sets[tc.want], best)
-			require.Equal(t, tc.complete, complete)
+			require.Equal(t, tc.sets, all)
+			if tc.want < 0 {
+				require.Nil(t, best)
+			} else {
+				require.Equal(t, &tc.sets[tc.want], best)
+			}
+			if !tc.noComplete && !tc.notConfirmed {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.noComplete, errors.Is(err, ErrNoCompleteSet))
+			require.Equal(t, tc.notConfirmed, errors.Is(err, ErrNoConfirmedSetID))
 		})
 	}
 }
 
-// Expectation: selectSet should only consider the given set IDs, if any.
-func Test_selectSet_RestrictedToIDs_Success(t *testing.T) {
-	t.Parallel()
-
-	sets := []par2.Set{psSet(1, false, "a.txt"), psSet(2, true, "a.txt", "b.txt")}
-
-	best, complete := selectSet(sets, map[par2.Hash]struct{}{{1}: {}})
-	require.Equal(t, &sets[0], best)
-	require.False(t, complete)
-
-	best, complete = selectSet(sets, map[par2.Hash]struct{}{{3}: {}})
-	require.Nil(t, best)
-	require.False(t, complete)
-
-	best, complete = selectSet(nil, nil)
-	require.Nil(t, best)
-	require.False(t, complete)
-}
-
-// Expectation: selectSet should return a copy, not a pointer into the given slice.
-func Test_selectSet_ReturnsCopy_Success(t *testing.T) {
+// Expectation: pickSet should return a copy, not a pointer into the given slice.
+func Test_pickSet_ReturnsCopy_Success(t *testing.T) {
 	t.Parallel()
 
 	sets := []par2.Set{psSet(1, true, "a.txt")}
 
-	best, _ := selectSet(sets, nil)
+	best, _, err := pickSet(sets, &par2.Hash{1})
+	require.NoError(t, err)
 	best.SetID = par2.Hash{9}
 
 	require.Equal(t, par2.Hash{1}, sets[0].SetID)
@@ -707,11 +884,29 @@ func Test_par2SetMemberPaths_RootCaseSensitive_Success(t *testing.T) {
 	require.Equal(t, []string{"/data/file.par2", "/data/file.VOL0+1.PAR2"}, paths)
 }
 
+// Expectation: ParseBundlePar2Index should return the recovery set ID once the bundle is opened, even on later errors.
+func Test_ParseBundlePar2Index_RecoverySetID_Success(t *testing.T) {
+	t.Parallel()
+
+	_, setID, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, psBundleWithID(7))
+	require.ErrorContains(t, err, "no index file in bundle")
+	require.Equal(t, &par2.Hash{7}, setID)
+
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(_ afero.Fs, _ string) (schema.Bundle, error) {
+			return nil, errors.New("simulated open failure")
+		},
+	}
+	_, setID, err = ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundler)
+	require.ErrorContains(t, err, "simulated open failure")
+	require.Nil(t, setID)
+}
+
 // Expectation: The function should return an error for a non-bundle file.
 func Test_ParseBundlePar2Index_NotBundleFile_Error(t *testing.T) {
 	t.Parallel()
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.txt", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.txt", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -722,7 +917,7 @@ func Test_ParseBundlePar2Index_NotBundleFile_Error(t *testing.T) {
 func Test_ParseBundlePar2Index_PlainPar2NotBundle_Error(t *testing.T) {
 	t.Parallel()
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -733,7 +928,7 @@ func Test_ParseBundlePar2Index_PlainPar2NotBundle_Error(t *testing.T) {
 func Test_ParseBundlePar2Index_Par2VolumeFile_Error(t *testing.T) {
 	t.Parallel()
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.vol0+1.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.vol0+1.par2", &testutil.MockPar2Handler{}, &testutil.MockBundleHandler{})
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -751,7 +946,7 @@ func Test_ParseBundlePar2Index_OpenError_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -777,7 +972,7 @@ func Test_ParseBundlePar2Index_NoIndexEntries_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -799,7 +994,7 @@ func Test_ParseBundlePar2Index_EmptyEntries_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -833,7 +1028,7 @@ func Test_ParseBundlePar2Index_IndexWithoutSets_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -857,7 +1052,7 @@ func Test_ParseBundlePar2Index_IndexTooLarge_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -885,7 +1080,7 @@ func Test_ParseBundlePar2Index_ExtractEntryError_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", &testutil.MockPar2Handler{}, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -921,7 +1116,7 @@ func Test_ParseBundlePar2Index_ParseError_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.Nil(t, sets)
 	require.Error(t, err)
@@ -963,7 +1158,7 @@ func Test_ParseBundlePar2Index_SingleIndexEntry_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
@@ -1000,7 +1195,7 @@ func Test_ParseBundlePar2Index_MultipleIndexEntries_Error(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.ErrorIs(t, err, errMultipleIndexFiles)
 	require.Nil(t, sets)
@@ -1036,7 +1231,7 @@ func Test_ParseBundlePar2Index_IndexAfterVolumes_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
@@ -1075,7 +1270,7 @@ func Test_ParseBundlePar2Index_SkipsVolumeEntries_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
@@ -1110,7 +1305,7 @@ func Test_ParseBundlePar2Index_IndexExactlyAtMaxSize_Success(t *testing.T) {
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
@@ -1152,7 +1347,7 @@ func Test_ParseBundlePar2Index_ExtractedDataPassedToParser_Success(t *testing.T)
 		},
 	}
 
-	sets, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
+	sets, _, err := ParseBundlePar2Index(t.Context(), afero.NewMemMapFs(), "/data/file.p2c.par2", par2Handler, bundleHandler)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSets, sets)
