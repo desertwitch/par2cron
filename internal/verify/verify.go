@@ -727,9 +727,12 @@ func (prog *Service) wasMaybeEdited(ctx context.Context, job *Job) bool {
 
 	// The PAR2 set is parsed here as well, as failed verifications are rare
 	// and worth the cost; in the future, this should come from the manifest.
-	set, _, _ := util.ParsePar2Set(ctx, prog.fsys,
+	set, _, err := util.ParsePar2Set(ctx, prog.fsys,
 		job.par2Name, job.workingDir, prog.par2er, prog.bundler)
-	if set != nil {
+	if set == nil && err != nil {
+		logger := prog.verificationLogger(ctx, job, job.par2Path)
+		logger.Debug("Failed to parse PAR2 set (checking creation manifest only)", "error", err)
+	} else if set != nil {
 		for _, f := range set.RecoverySet {
 			cleaned, err := util.SanitizePar2Path(f.Name)
 			if err != nil {
