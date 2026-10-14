@@ -592,7 +592,7 @@ func (prog *Service) runRepair(ctx context.Context, job *Job) error {
 	}
 
 	if job.par2Verify {
-		vs := verify.NewService(prog.fsys, prog.logbase, prog.runner, prog.bundler, prog.cacher)
+		vs := verify.NewService(prog.fsys, prog.logbase, prog.runner, prog.bundler, prog.par2er, prog.cacher)
 		vj := verify.NewJob(job.par2Path, verify.Options{}, job.manifest, job.isBundle)
 
 		if err := vs.RunVerify(ctx, vj, true); err != nil {

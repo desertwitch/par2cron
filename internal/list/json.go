@@ -136,7 +136,7 @@ func (prog *Service) openCacheJSON(rootDir string, opts Options, result *Result)
 }
 
 func (prog *Service) Result(ctx context.Context, rootDirs []string, opts Options) (*Result, error) {
-	vs := verify.NewService(prog.fsys, prog.logbase, prog.runner, prog.bundler, prog.cacher)
+	vs := verify.NewService(prog.fsys, prog.logbase, prog.runner, prog.bundler, prog.par2er, prog.cacher)
 	va := verify.Options{IncludeExternal: false, SkipNotCreated: opts.SkipNotCreated}
 
 	result := &Result{

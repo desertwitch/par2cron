@@ -93,10 +93,11 @@ type Service struct {
 	runner  schema.CommandRunner
 	walker  schema.FilesystemWalker
 	bundler schema.BundleHandler
+	par2er  schema.Par2Handler
 	cacher  schema.CacheHandler
 }
 
-func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, cacher schema.CacheHandler) *Service {
+func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner, bundler schema.BundleHandler, par2er schema.Par2Handler, cacher schema.CacheHandler) *Service {
 	var walker schema.FilesystemWalker
 	if _, ok := fsys.(*afero.OsFs); ok {
 		walker = util.OSWalker{}
@@ -110,6 +111,7 @@ func NewService(fsys afero.Fs, log *logging.Logger, runner schema.CommandRunner,
 		runner:  runner,
 		walker:  walker,
 		bundler: bundler,
+		par2er:  par2er,
 		cacher:  cacher,
 	}
 }
@@ -647,7 +649,7 @@ func (prog *Service) RunVerify(ctx context.Context, job *Job, isPreLocked bool) 
 		job.manifest.Verification.TimeLastHealthy = job.manifest.Verification.Time
 	} else {
 		// Determine if the files may have intentionally been edited.
-		job.manifest.Verification.MaybeEdited = prog.wasMaybeEdited(job)
+		job.manifest.Verification.MaybeEdited = prog.wasMaybeEdited(ctx, job)
 	}
 
 	job.manifest.Verification.Count++
@@ -704,28 +706,54 @@ func (prog *Service) parseExitCode(job *Job, err error) error {
 
 // wasMaybeEdited is a best-effort heuristic: it stays silent when unsure,
 // as the contract of the program (and PAR2 in general) is mostly WORM files.
-func (prog *Service) wasMaybeEdited(job *Job) bool {
-	if job.manifest.Creation == nil {
+func (prog *Service) wasMaybeEdited(ctx context.Context, job *Job) bool {
+	if (job.manifest.Creation == nil || job.manifest.Creation.Time.IsZero()) &&
+		job.manifest.Verification.TimeLastHealthy.IsZero() {
 		return false
 	}
 
-	if job.manifest.Creation.Time.IsZero() && job.manifest.Verification.TimeLastHealthy.IsZero() {
-		return false
+	paths := make(map[string]struct{})
+
+	if job.manifest.Creation != nil {
+		for _, e := range job.manifest.Creation.Elements {
+			// Empty names resolve to the working directory, and
+			// directory mtimes reflect entry changes, not edits.
+			if e.Name == "" || e.IsDir {
+				continue
+			}
+			paths[filepath.Join(job.workingDir, e.Name)] = struct{}{}
+		}
+	}
+
+	// The PAR2 set is parsed here as well, as failed verifications are rare
+	// and worth the cost; in the future, this should come from the manifest.
+	set, _, err := util.ParsePar2Set(ctx, prog.fsys,
+		job.par2Name, job.workingDir, prog.par2er, prog.bundler)
+	if set == nil && err != nil {
+		logger := prog.verificationLogger(ctx, job, job.par2Path)
+		logger.Debug("Failed to parse PAR2 set (checking creation manifest only)", "error", err)
+	} else if set != nil {
+		for _, f := range set.RecoverySet {
+			cleaned, err := util.SanitizePar2Path(f.Name)
+			if err != nil {
+				continue
+			}
+			cleaned, err = util.JailedJoinPath(job.workingDir, cleaned)
+			if err != nil {
+				continue
+			}
+			paths[cleaned] = struct{}{}
+		}
 	}
 
 	ref := job.manifest.Verification.TimeLastHealthy
 	if job.manifest.Verification.TimeLastHealthy.IsZero() {
+		// Guaranteed to exist here with entry barrier of function.
 		ref = job.manifest.Creation.Time
 	}
 
-	for _, e := range job.manifest.Creation.Elements {
-		// Empty names resolve to the working directory, and
-		// directory mtimes reflect entry changes, not edits.
-		if e.Name == "" || e.IsDir {
-			continue
-		}
-
-		info, err := util.LstatIfPossible(prog.fsys, filepath.Join(job.workingDir, e.Name))
+	for path := range paths {
+		info, err := util.LstatIfPossible(prog.fsys, path)
 		if err != nil {
 			continue
 		}
