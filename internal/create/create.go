@@ -686,7 +686,7 @@ func (prog *Service) packAsBundle(ctx context.Context, job *Job, mf *schema.Mani
 		return fmt.Errorf("failed to find created files: %w", err)
 	}
 
-	p, err := prog.par2er.ParseFile(ctx, prog.fsys, job.par2Path, false)
+	p, err := prog.par2er.ParseFile(ctx, prog.fsys, job.par2Path, true)
 	if err != nil {
 		return fmt.Errorf("failed to parse index par2: %w", err)
 	}
