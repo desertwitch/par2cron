@@ -1,6 +1,0 @@
-kind: Fixed
-body: stricter validation of file names when unpacking bundles
-time: 2026-10-11T15:21:12.02461952+02:00
-custom:
-    Issue: ""
-    PR: "99"

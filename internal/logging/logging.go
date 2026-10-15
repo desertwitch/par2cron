@@ -35,22 +35,30 @@ type Logger struct {
 func NewLogger(opts Options) *Logger {
 	var logger *slog.Logger
 
+	var addSource bool
+	if opts.LogLevel.Value == slog.LevelDebug {
+		addSource = true
+	}
+
 	var consoleHandler slog.Handler
 	switch {
 	case opts.WantJSON:
 		consoleHandler = slog.NewJSONHandler(opts.Logout, &slog.HandlerOptions{
-			Level: opts.LogLevel.Value,
+			Level:     opts.LogLevel.Value,
+			AddSource: addSource,
 		})
 
 	case opts.NoColor:
 		consoleHandler = slog.NewTextHandler(opts.Logout, &slog.HandlerOptions{
-			Level: opts.LogLevel.Value,
+			Level:     opts.LogLevel.Value,
+			AddSource: addSource,
 		})
 
 	default:
 		consoleHandler = tint.NewTextHandler(opts.Logout, &tint.Options{
 			Level:      opts.LogLevel.Value,
 			TimeFormat: time.TimeOnly,
+			AddSource:  addSource,
 		})
 	}
 

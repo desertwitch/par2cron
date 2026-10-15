@@ -260,8 +260,8 @@ func Test_Service_OutputMD5_ParseError_MultiplePaths_ContinuesProcessing_Error(t
 	require.Contains(t, stderr.String(), "/bad2.par2")
 }
 
-// Expectation: OutputMD5 should pass panicAsErr=false to ParseFile.
-func Test_Service_OutputMD5_ParseFile_PanicAsErrFalse_Success(t *testing.T) {
+// Expectation: OutputMD5 should pass panicAsErr=true to ParseFile.
+func Test_Service_OutputMD5_ParseFile_PanicAsErrTrue_Success(t *testing.T) {
 	t.Parallel()
 
 	stdout := &testutil.SafeBuffer{}
@@ -280,7 +280,7 @@ func Test_Service_OutputMD5_ParseFile_PanicAsErrFalse_Success(t *testing.T) {
 	err := svc.OutputMD5(t.Context(), []string{"/test.par2"}, Options{})
 
 	require.NoError(t, err)
-	require.False(t, capturedPanicAsErr)
+	require.True(t, capturedPanicAsErr)
 }
 
 // Expectation: OutputMD5 should return nil for an empty paths slice.

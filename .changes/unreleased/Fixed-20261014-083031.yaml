@@ -1,6 +1,0 @@
-kind: Fixed
-body: '`--skip-maybe-edited` also checks the files listed in the PAR2 set (covering sets not created by par2cron)'
-time: 2026-10-14T08:30:31.503370391+02:00
-custom:
-    Issue: ""
-    PR: "103"

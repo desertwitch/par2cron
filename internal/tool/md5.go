@@ -39,7 +39,7 @@ func (prog *Service) OutputMD5(ctx context.Context, paths []string, opts Options
 		}
 
 		if len(sets) == 0 {
-			f, err := prog.par2er.ParseFile(ctx, prog.fsys, path, false)
+			f, err := prog.par2er.ParseFile(ctx, prog.fsys, path, true)
 			if err == nil {
 				sets = f.Sets
 			} else {
