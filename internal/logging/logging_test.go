@@ -109,6 +109,60 @@ func Test_NewLogger_AllLevels_Success(t *testing.T) {
 	}
 }
 
+// Expectation: The source location of the log call should only be added at debug level, for all handlers.
+func Test_NewLogger_AddSource_Table(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		level      string
+		wantJSON   bool
+		noColor    bool
+		wantSource bool
+	}{
+		{"tint debug", "debug", false, false, true},
+		{"tint info", "info", false, false, false},
+		{"tint warn", "warn", false, false, false},
+		{"tint error", "error", false, false, false},
+		{"json debug", "debug", true, false, true},
+		{"json info", "info", true, false, false},
+		{"json warn", "warn", true, false, false},
+		{"json error", "error", true, false, false},
+		{"no color debug", "debug", false, true, true},
+		{"no color info", "info", false, true, false},
+		{"no color warn", "warn", false, true, false},
+		{"no color error", "error", false, true, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := &testutil.SafeBuffer{}
+			ls := Options{
+				Logout:   buf,
+				WantJSON: tt.wantJSON,
+				NoColor:  tt.noColor,
+			}
+			require.NoError(t, ls.LogLevel.Set(tt.level))
+
+			logger := NewLogger(ls)
+			logger.Error("hello world")
+
+			output := buf.String()
+			require.Contains(t, output, "hello world")
+
+			// The source is the log call in this file, not the logging package itself.
+			if tt.wantSource {
+				require.Contains(t, output, "logging_test.go")
+			} else {
+				require.NotContains(t, output, "logging_test.go")
+			}
+			require.NotContains(t, output, "logging.go")
+		})
+	}
+}
+
 // Expectation: With should return a new Logger with added attributes while preserving Options.
 func Test_Logger_With_Success(t *testing.T) {
 	t.Parallel()
