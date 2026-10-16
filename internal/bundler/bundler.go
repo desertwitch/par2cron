@@ -220,6 +220,9 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 		if err := rf(ctx, job); err == nil {
 			logger.Info("Job completed with success")
 			results.Success++
+		} else if errors.Is(err, schema.ErrFileIsLocked) {
+			logger.Warn("Job unavailable (will retry next run)", "error", err)
+			results.Skipped++
 		} else {
 			logger.Error("Job failure (skipping)", "error", err)
 			errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, err))
