@@ -359,7 +359,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string) (*Job
 
 	manifestPath := par2path + schema.ManifestExtension
 
-	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
+	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); errors.Is(err, fs.ErrNotExist) {
 		logger := prog.repairLogger(ctx, nil, manifestPath)
 		logger.Debug("Failed to find par2cron manifest (will retry next run)", "error", err)
 
