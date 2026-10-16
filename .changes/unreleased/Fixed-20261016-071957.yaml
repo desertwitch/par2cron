@@ -1,0 +1,6 @@
+kind: Fixed
+body: do not reset manifest on transient I/O errors
+time: 2026-10-16T07:19:57.043783696+02:00
+custom:
+    Issue: ""
+    PR: "105"

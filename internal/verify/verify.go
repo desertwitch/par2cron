@@ -384,7 +384,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 
 	manifestPath := par2path + schema.ManifestExtension
 
-	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
+	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); errors.Is(err, fs.ErrNotExist) {
 		if !opts.IncludeExternal {
 			logger := prog.verificationLogger(ctx, nil, manifestPath)
 			logger.Debug("No manifest found (skipping)")
