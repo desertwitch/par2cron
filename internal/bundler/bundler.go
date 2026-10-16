@@ -380,10 +380,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 	if path, exists, err := prog.existingSetMember(job, true); err != nil {
 		return fmt.Errorf("failed to check existence: %w", err)
 	} else if exists {
-		logger := prog.bundleLogger(ctx, job, path)
-		logger.Warn("Same-named bundle already exists in folder (not overwriting)")
-
-		return errors.New("conflicting bundle already exists in folder")
+		return fmt.Errorf("conflicting bundle already exists: %s", path)
 	}
 
 	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
@@ -510,10 +507,7 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	if path, exists, err := prog.existingSetMember(job, false); err != nil {
 		return fmt.Errorf("failed to check existence: %w", err)
 	} else if exists {
-		logger := prog.bundleLogger(ctx, job, path)
-		logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-
-		return errors.New("conflicting par2 files already exist in folder")
+		return fmt.Errorf("conflicting par2 file already exists: %s", path)
 	}
 
 	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)

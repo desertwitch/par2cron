@@ -214,7 +214,7 @@ func Test_Service_processMode_Pack_BundleExists_Error(t *testing.T) {
 	require.Equal(t, 0, results.Skipped)
 	require.Equal(t, 1, results.Error)
 
-	require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
+	require.Contains(t, logBuf.String(), "already exists")
 }
 
 // Expectation: An unpack job next to already existing PAR2 files should be counted as error.
@@ -260,7 +260,7 @@ func Test_Service_processMode_Unpack_Par2Exists_Error(t *testing.T) {
 	require.Equal(t, 0, results.Skipped)
 	require.Equal(t, 1, results.Error)
 
-	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+	require.Contains(t, logBuf.String(), "already exists")
 }
 
 // Expectation: Multiple root directories should be processed.
@@ -1217,8 +1217,9 @@ func Test_Service_packBundle_BundleExists_Error(t *testing.T) {
 
 			err := prog.packBundle(t.Context(), job)
 			require.NotErrorIs(t, err, schema.ErrSilentSkip)
+			require.ErrorContains(t, err, "already exists")
+			require.ErrorContains(t, err, existing)
 			require.False(t, packCalled)
-			require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
 
 			// Existing bundle and loose files should be left untouched.
 			data, err := afero.ReadFile(fs, "/data/folder/"+existing)
@@ -2044,8 +2045,9 @@ func Test_Service_unpackBundle_Par2Exists_Error(t *testing.T) {
 
 			err := prog.unpackBundle(t.Context(), job)
 			require.NotErrorIs(t, err, schema.ErrSilentSkip)
+			require.ErrorContains(t, err, "already exists")
+			require.ErrorContains(t, err, existing)
 			require.False(t, openCalled)
-			require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 
 			// Existing file and bundle should be left untouched.
 			data, err := afero.ReadFile(fs, "/data/folder/"+existing)

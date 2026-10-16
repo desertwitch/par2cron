@@ -1504,7 +1504,7 @@ func Test_Service_Enumerate_InvalidManifest_Error(t *testing.T) {
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Empty(t, jobs)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }
@@ -1918,7 +1918,7 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Error(t *testing.T) {
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Empty(t, jobs)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }
