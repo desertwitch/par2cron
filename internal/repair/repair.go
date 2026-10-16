@@ -393,9 +393,9 @@ func (prog *Service) processManifest(ctx context.Context, par2path string) (*Job
 	mf := &schema.Manifest{}
 	if err := json.Unmarshal(data, mf); err != nil {
 		logger := prog.repairLogger(ctx, nil, manifestPath)
-		logger.Warn("Failed to unmarshal par2cron manifest (will retry next run)", "error", err)
+		logger.Error("Failed to unmarshal par2cron manifest (will retry next run)", "error", err)
 
-		return nil, schema.ErrSilentSkip
+		return nil, schema.ErrNonFatal
 	}
 
 	return NewJobMeta(schema.NewJobMeta(par2path, mf, false)), nil
@@ -441,7 +441,7 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 		logger := prog.repairLogger(ctx, nil, bundlePath)
 		logger.Error("Failed to unmarshal par2cron manifest (will retry next run)", "error", err)
 
-		return nil, schema.ErrSilentSkip
+		return nil, schema.ErrNonFatal
 	}
 
 	return NewJobMeta(schema.NewJobMeta(bundlePath, mf, true)), nil

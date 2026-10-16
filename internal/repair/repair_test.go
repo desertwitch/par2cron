@@ -1483,7 +1483,7 @@ func Test_Service_Enumerate_NoManifestFile_Success(t *testing.T) {
 }
 
 // Expectation: No job should be returned when manifest is invalid JSON.
-func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
+func Test_Service_Enumerate_InvalidManifest_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1504,7 +1504,7 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Empty(t, jobs)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }
@@ -1883,8 +1883,8 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Error(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Failed to read par2cron manifest")
 }
 
-// Expectation: The bundle should be silently skipped when the manifest is invalid JSON.
-func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
+// Expectation: The bundle should be error'd when the manifest is invalid JSON.
+func Test_Service_Enumerate_Bundle_InvalidManifest_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1918,7 +1918,7 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.Empty(t, jobs)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }

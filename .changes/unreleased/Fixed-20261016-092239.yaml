@@ -1,0 +1,6 @@
+kind: Fixed
+body: '`repair` unmarshal failures should be an error'
+time: 2026-10-16T09:22:39.053593364+02:00
+custom:
+    Issue: ""
+    PR: "105"
