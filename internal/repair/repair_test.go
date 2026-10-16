@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -453,6 +454,79 @@ func Test_Service_Repair_FileLocked_Success(t *testing.T) {
 
 	require.True(t, called)
 	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
+}
+
+// Expectation: A manifest locked by another instance at job start should be skipped without running par2.
+func Test_Service_Repair_ManifestLocked_Skipped(t *testing.T) {
+	t.Parallel()
+
+	for _, isBundle := range []bool{false, true} {
+		t.Run(fmt.Sprintf("IsBundle=%t", isBundle), func(t *testing.T) {
+			t.Parallel()
+
+			fs := afero.NewOsFs()
+			rootDir := t.TempDir()
+
+			par2Path := filepath.Join(rootDir, "test"+schema.Par2Extension)
+			lockPath := par2Path + schema.LockExtension
+			if isBundle {
+				par2Path = filepath.Join(rootDir, "test"+schema.BundleExtension+schema.Par2Extension)
+				lockPath = par2Path
+			}
+			require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2data"), 0o644))
+
+			// Lock after the (cached) enumeration, before the job loads its manifest.
+			unlock, err := util.AcquireLock(fs, lockPath, false)
+			require.NoError(t, err)
+			defer unlock()
+
+			cache := &testutil.MockCache{
+				GetFunc: func(key string) (*schema.JobMeta, bool) {
+					return &schema.JobMeta{
+						Par2Path:        key,
+						IsBundle:        isBundle,
+						HasManifest:     true,
+						HasVerification: true,
+						RepairNeeded:    true,
+						RepairPossible:  true,
+					}, true
+				},
+			}
+			cacher := &testutil.MockCacheHandler{
+				NewCacheFunc: func(fsys afero.Fs, cacheDir string, cacheName string) schema.Cache {
+					return cache
+				},
+			}
+
+			var logBuf testutil.SafeBuffer
+			ls := logging.Options{
+				Logout: &logBuf,
+				Stdout: io.Discard,
+				Stderr: io.Discard,
+			}
+			_ = ls.LogLevel.Set("info")
+
+			var called bool
+			runner := &testutil.MockRunner{
+				RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+					called = true
+
+					return nil
+				},
+			}
+
+			prog := NewService(fs, logging.NewLogger(ls), runner, &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{}, cacher)
+
+			results, err := prog.Repair(t.Context(), []string{rootDir}, Options{Par2Args: []string{"-v"}})
+			require.NoError(t, err)
+
+			require.False(t, called)
+			require.Equal(t, 1, results.Selected)
+			require.Equal(t, 1, results.Skipped)
+			require.Equal(t, 0, results.Error)
+			require.Contains(t, logBuf.String(), "Manifest unavailable (will retry next run)")
+		})
+	}
 }
 
 // Expectation: The program should run the repair with the correct outcome on generic error.
@@ -3366,6 +3440,49 @@ func Test_Service_runRepair_Success(t *testing.T) {
 
 	manifestExists, _ := afero.Exists(fs, job.manifestPath)
 	require.True(t, manifestExists)
+}
+
+// Expectation: runRepair should return a lock error without running par2 or writing the manifest when locked.
+func Test_Service_runRepair_Locked_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	par2Path := filepath.Join(t.TempDir(), "test"+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2data"), 0o644))
+
+	unlock, err := util.AcquireLock(fs, par2Path+schema.LockExtension, false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var called bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called = true
+
+			return nil
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	job := NewJob(par2Path, Options{}, mf, false)
+
+	err = prog.runRepair(t.Context(), job)
+	require.ErrorIs(t, err, schema.ErrFileIsLocked)
+	require.False(t, called)
+
+	exists, err := afero.Exists(fs, par2Path+schema.ManifestExtension)
+	require.NoError(t, err)
+	require.False(t, exists)
 }
 
 // Expectation: The repair should still run and succeed when the backup manager cannot be created.

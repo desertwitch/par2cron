@@ -220,6 +220,43 @@ func Test_Service_Info_MultiRoot_Success(t *testing.T) {
 	require.Contains(t, stdoutBuf.String(), "Scanning filesystem '/data2' for jobs")
 }
 
+// Expectation: Unreadable manifests should not fail info, but be reported as a warning.
+func Test_Service_Info_PartialEnumerate_Warning(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
+
+	manifest := schema.NewManifest("good" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now(),
+		Duration: 5 * time.Minute,
+	}
+	for _, name := range []string{"good", "bad"} {
+		require.NoError(t, afero.WriteFile(baseFs, "/data/"+name+schema.Par2Extension, []byte("par2"), 0o644))
+		require.NoError(t, writeTestManifest(t, baseFs, "/data/"+name+schema.Par2Extension+schema.ManifestExtension, manifest))
+	}
+
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "bad" + schema.Par2Extension + schema.ManifestExtension}
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.Info(t.Context(), []string{"/data"}, args))
+
+	require.Contains(t, stdoutBuf.String(), "Warning: Not all manifests could be read for '/data'")
+}
+
 // Expectation: Info should dispatch to the Prometheus exporter and write only metrics to standard output.
 func Test_Service_Info_Prometheus_Success(t *testing.T) {
 	t.Parallel()

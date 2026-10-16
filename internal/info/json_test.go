@@ -304,6 +304,48 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 	require.NotZero(t, *result.Summary.LastVerification)
 }
 
+// Expectation: Unreadable manifests should not fail the JSON output, but set its warning.
+func Test_Service_PrintJSON_PartialEnumerate_Warning(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
+
+	manifest := schema.NewManifest("good" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now(),
+		Duration: 5 * time.Minute,
+	}
+	for _, name := range []string{"good", "bad"} {
+		require.NoError(t, afero.WriteFile(baseFs, "/data/"+name+schema.Par2Extension, []byte("par2"), 0o644))
+		require.NoError(t, writeTestManifest(t, baseFs, "/data/"+name+schema.Par2Extension+schema.ManifestExtension, manifest))
+	}
+
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "bad" + schema.Par2Extension + schema.ManifestExtension}
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, args))
+
+	var result Result
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+
+	require.Contains(t, result.Warning, "Not all manifests could be read")
+	require.NotNil(t, result.Summary)
+	require.Equal(t, 1, result.Summary.JobCount)
+}
+
 // Expectation: The JSON output should be valid and decode back to the Result struct.
 func Test_Service_PrintJSON_WithJobs_ZeroLastVerified_Success(t *testing.T) {
 	t.Parallel()

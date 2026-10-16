@@ -310,6 +310,46 @@ func Test_Service_PrintJSON_WithJobs_Success(t *testing.T) {
 	require.False(t, job.Verification.RepairNeeded)
 }
 
+// Expectation: Unreadable manifests should not fail the JSON output, but set its warning.
+func Test_Service_PrintJSON_PartialEnumerate_Warning(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
+
+	manifest := schema.NewManifest("good" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now(),
+		Duration: 5 * time.Minute,
+	}
+	for _, name := range []string{"good", "bad"} {
+		require.NoError(t, afero.WriteFile(baseFs, "/data/"+name+schema.Par2Extension, []byte("par2"), 0o644))
+		require.NoError(t, writeTestManifest(t, baseFs, "/data/"+name+schema.Par2Extension+schema.ManifestExtension, manifest))
+	}
+
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "bad" + schema.Par2Extension + schema.ManifestExtension}
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	require.NoError(t, prog.PrintJSON(t.Context(), []string{"/data"}, Options{}))
+
+	var result Result
+	require.NoError(t, json.Unmarshal(stdoutBuf.Bytes(), &result))
+
+	require.Contains(t, result.Warning, "Not all manifests could be read")
+	require.Len(t, result.Jobs, 1)
+	require.Equal(t, "/data/good"+schema.Par2Extension, result.Jobs[0].Path)
+}
+
 // Expectation: An unverified job should have no verification section.
 func Test_Service_PrintJSON_UnverifiedJob_Success(t *testing.T) {
 	t.Parallel()

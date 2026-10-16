@@ -369,6 +369,54 @@ func Test_Service_Create_FileLocked_Success(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
 }
 
+// Expectation: A job whose PAR2 is locked by another instance should be skipped without running par2.
+func Test_Service_Create_Locked_Skipped(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	folder := filepath.Join(t.TempDir(), "folder")
+	require.NoError(t, fs.MkdirAll(folder, 0o755))
+	require.NoError(t, afero.WriteFile(fs, filepath.Join(folder, createMarkerPathPrefix), []byte(""), 0o644))
+	require.NoError(t, afero.WriteFile(fs, filepath.Join(folder, "file.txt"), []byte("content"), 0o644))
+
+	unlock, err := util.AcquireLock(fs, filepath.Join(folder, "folder"+schema.Par2Extension+schema.LockExtension), false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var called bool
+	runner := &testutil.MockRunner{
+		RunFunc: func(ctx context.Context, cmd string, args []string, workingDir string, stdout io.Writer, stderr io.Writer) error {
+			called = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), runner, &util.BundleHandler{}, &util.Par2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-r10"}, Par2Glob: "*"}
+	results, err := prog.Create(t.Context(), []string{filepath.Dir(folder)}, args)
+	require.NoError(t, err)
+
+	require.False(t, called)
+	require.Equal(t, 1, results.Skipped)
+	require.Equal(t, 0, results.Error)
+	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
+
+	// The marker should be kept for the next run.
+	exists, err := afero.Exists(fs, filepath.Join(folder, createMarkerPathPrefix))
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
 // Expectation: The program should handle a single job that fails.
 func Test_Service_Create_Generic_Error(t *testing.T) {
 	t.Parallel()
