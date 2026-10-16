@@ -1,10 +1,14 @@
 package cache
 
 import (
+	"bytes"
+	"encoding/gob"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/desertwitch/par2cron/internal/schema"
+	"github.com/klauspost/compress/zstd"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -524,6 +528,49 @@ func Test_GobCache_Load_CorruptZstd_Error(t *testing.T) {
 	err := c.Load()
 
 	require.Error(t, err)
+}
+
+// Expectation: Load should return an error when the cache file was truncated mid-stream.
+func Test_GobCache_Load_TruncatedFile_Error(t *testing.T) {
+	t.Parallel()
+
+	dir := "/"
+	fsys := afero.NewMemMapFs()
+
+	c := NewGobCache(fsys, dir, "test")
+	for i := range 10000 { // spans multiple compressed blocks
+		path := fmt.Sprintf("/data/%05d.par2", i)
+		c.Set(path, &schema.JobMeta{Par2Path: path, CountCorrupted: i})
+	}
+	require.NoError(t, c.Save())
+
+	data, err := afero.ReadFile(fsys, c.path)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(fsys, c.path, data[:len(data)/2], 0o666))
+
+	c2 := NewGobCache(fsys, dir, "test")
+	require.Error(t, c2.Load())
+}
+
+// Expectation: Load should return an error when the cache file declares a negative entry count.
+func Test_GobCache_Load_NegativeCount_Error(t *testing.T) {
+	t.Parallel()
+
+	dir := "/"
+	fsys := afero.NewMemMapFs()
+
+	c := NewGobCache(fsys, dir, "test")
+
+	var buf bytes.Buffer
+	zw, err := zstd.NewWriter(&buf)
+	require.NoError(t, err)
+	require.NoError(t, gob.NewEncoder(zw).Encode(-1))
+	require.NoError(t, zw.Close())
+	require.NoError(t, afero.WriteFile(fsys, c.path, buf.Bytes(), 0o666))
+
+	err = c.Load()
+
+	require.ErrorContains(t, err, "invalid cache entry count")
 }
 
 // Expectation: Save should return an error when the cache directory does not exist.

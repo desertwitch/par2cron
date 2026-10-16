@@ -263,6 +263,47 @@ func Test_Service_exportPrometheus_WithJobs_Success(t *testing.T) {
 	require.False(t, hasPromFamily(out, "par2cron_sets_cached"))
 }
 
+// Expectation: Unreadable manifests should not fail the export, but be counted as an incomplete root.
+func Test_Service_exportPrometheus_PartialEnumerate_IncompleteRoots(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
+
+	manifest := schema.NewManifest("good" + schema.Par2Extension)
+	manifest.Verification = &schema.VerificationManifest{
+		Time:     time.Now(),
+		Duration: 5 * time.Minute,
+	}
+	for _, name := range []string{"good", "bad"} {
+		require.NoError(t, afero.WriteFile(baseFs, "/data/"+name+schema.Par2Extension, []byte("par2"), 0o644))
+		require.NoError(t, writeTestManifest(t, baseFs, "/data/"+name+schema.Par2Extension+schema.ManifestExtension, manifest))
+	}
+
+	fs := &testutil.FailingOpenFs{Fs: baseFs, FailPattern: "bad" + schema.Par2Extension + schema.ManifestExtension}
+
+	var stdoutBuf testutil.SafeBuffer
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: &stdoutBuf,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Prometheus: true}
+	_ = args.RunInterval.Set("24h")
+	require.NoError(t, prog.exportPrometheus(t.Context(), []string{"/data"}, args))
+
+	out := string(stdoutBuf.Bytes())
+	checkExposition(t, out)
+
+	require.Contains(t, out, "par2cron_scan_incomplete_roots 1\n")
+	require.Contains(t, logBuf.String(), "Not all manifests could be read")
+}
+
 // Expectation: exportPrometheus should omit the duration-based metrics and log a warning when no duration data exists.
 func Test_Service_exportPrometheus_NoKnownDurations_Success(t *testing.T) {
 	t.Parallel()

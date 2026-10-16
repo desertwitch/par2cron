@@ -36,7 +36,7 @@ func Test_LstatIfPossible_NoLstater_FileNotFound_ReturnsStatError(t *testing.T) 
 	fsys := afero.NewMemMapFs()
 	_, err := LstatIfPossible(fsys, "/nonexistent.txt")
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	require.Contains(t, err.Error(), "stat:")
 }
 
@@ -62,7 +62,7 @@ func Test_LstatIfPossible_WithLstater_FileNotFound_ReturnsLstatError(t *testing.
 	fsys := afero.NewOsFs()
 	_, err := LstatIfPossible(fsys, "/nonexistent_path_that_should_not_exist.txt")
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 	require.Contains(t, err.Error(), "lstat:")
 }
 
@@ -81,6 +81,66 @@ func Test_LstatIfPossible_WithLstater_Symlink_ReturnsSymlinkInfo(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotZero(t, fi.Mode()&fs.ModeSymlink, "expected symlink mode bit to be set")
+}
+
+// Expectation: LstatIfPossible should keep fs.ErrNotExist matchable on the Stat fallback (no Lstater).
+func Test_LstatIfPossible_StatFallback_FileNotFound_ErrNotExist(t *testing.T) {
+	t.Parallel()
+
+	fsys := &testutil.FailingStatFs{Fs: afero.NewMemMapFs(), FailPattern: "never-matches"}
+
+	_, err := LstatIfPossible(fsys, "/nonexistent.txt")
+
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	require.Contains(t, err.Error(), "stat:")
+}
+
+// Expectation: LstatIfPossible should not report a non-existence error for other Stat fallback failures.
+func Test_LstatIfPossible_StatFallback_StatFails_NotErrNotExist(t *testing.T) {
+	t.Parallel()
+
+	base := afero.NewMemMapFs()
+	require.NoError(t, afero.WriteFile(base, "/testfile.txt", []byte("hello"), 0o644))
+	fsys := &testutil.FailingStatFs{Fs: base, FailPattern: "testfile.txt"}
+
+	_, err := LstatIfPossible(fsys, "/testfile.txt")
+
+	require.Error(t, err)
+	require.NotErrorIs(t, err, fs.ErrNotExist)
+}
+
+// Expectation: AcquireLock should report a held lock as ErrFileIsLocked and allow locking again after release.
+func Test_AcquireLock_Contended_Error(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewOsFs()
+	lockPath := filepath.Join(t.TempDir(), "test"+schema.Par2Extension+schema.LockExtension)
+
+	unlock, err := AcquireLock(fsys, lockPath, false)
+	require.NoError(t, err)
+
+	_, err = AcquireLock(fsys, lockPath, false)
+	require.ErrorIs(t, err, schema.ErrFileIsLocked)
+
+	unlock()
+
+	unlock2, err := AcquireLock(fsys, lockPath, false)
+	require.NoError(t, err)
+	unlock2()
+}
+
+// Expectation: AcquireLock should return an error that is not ErrFileIsLocked when the lock file cannot be opened.
+func Test_AcquireLock_OpenFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fsys := afero.NewOsFs()
+	lockPath := filepath.Join(t.TempDir(), "test"+schema.Par2Extension+schema.LockExtension)
+	require.NoError(t, fsys.MkdirAll(lockPath, 0o755)) // as dir to fail
+
+	_, err := AcquireLock(fsys, lockPath, false)
+
+	require.Error(t, err)
+	require.NotErrorIs(t, err, schema.ErrFileIsLocked)
 }
 
 // Expectation: The function should hash the file as requested.
@@ -789,6 +849,13 @@ func Test_HasGlobSymlinks_MemMapFs_NoLstat_Table(t *testing.T) {
 			workingDir: "/project",
 			dirs:       []string{"/project"},
 			pattern:    "/project/nonexistent/deep/path/**/*.go",
+			want:       false,
+		},
+		{
+			name:       "pattern outside working dir",
+			workingDir: "/project",
+			dirs:       []string{"/project", "/other"},
+			pattern:    "/project/../other/*.go",
 			want:       false,
 		},
 	}
