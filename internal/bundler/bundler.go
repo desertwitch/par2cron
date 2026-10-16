@@ -220,8 +220,6 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 		if err := rf(ctx, job); err == nil {
 			logger.Info("Job completed with success")
 			results.Success++
-		} else if errors.Is(err, schema.ErrSilentSkip) {
-			results.Skipped++
 		} else {
 			logger.Error("Job failure (skipping)", "error", err)
 			errs = append(errs, fmt.Errorf("%s: %w", job.par2Path, err))
@@ -382,7 +380,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 		logger := prog.bundleLogger(ctx, job, path)
 		logger.Warn("Same-named bundle already exists in folder (not overwriting)")
 
-		return fmt.Errorf("%w: bundle already exists", schema.ErrSilentSkip)
+		return errors.New("conflicting bundle already exists in folder")
 	}
 
 	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
@@ -512,7 +510,7 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 		logger := prog.bundleLogger(ctx, job, path)
 		logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
 
-		return fmt.Errorf("%w: par2 files already exist", schema.ErrSilentSkip)
+		return errors.New("conflicting par2 files already exist in folder")
 	}
 
 	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)

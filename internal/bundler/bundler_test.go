@@ -162,8 +162,8 @@ func Test_Service_processMode_Unpack_Success(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Job completed with success")
 }
 
-// Expectation: A pack job for an already existing bundle should be counted as skipped.
-func Test_Service_processMode_Pack_BundleExists_Skipped(t *testing.T) {
+// Expectation: A pack job for an already existing bundle should be counted as error.
+func Test_Service_processMode_Pack_BundleExists_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -207,18 +207,18 @@ func Test_Service_processMode_Pack_BundleExists_Skipped(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
 
 	results, err := prog.Pack(t.Context(), []string{"/data"}, Options{})
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.False(t, packCalled)
 	require.Equal(t, 1, results.Selected)
 	require.Equal(t, 0, results.Success)
-	require.Equal(t, 1, results.Skipped)
-	require.Equal(t, 0, results.Error)
+	require.Equal(t, 0, results.Skipped)
+	require.Equal(t, 1, results.Error)
 
 	require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
 }
 
-// Expectation: An unpack job next to already existing PAR2 files should be counted as skipped.
-func Test_Service_processMode_Unpack_Par2Exists_Skipped(t *testing.T) {
+// Expectation: An unpack job next to already existing PAR2 files should be counted as error.
+func Test_Service_processMode_Unpack_Par2Exists_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -253,12 +253,12 @@ func Test_Service_processMode_Unpack_Par2Exists_Skipped(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
 	results, err := prog.Unpack(t.Context(), []string{"/data"}, Options{})
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.False(t, openCalled)
 	require.Equal(t, 1, results.Selected)
 	require.Equal(t, 0, results.Success)
-	require.Equal(t, 1, results.Skipped)
-	require.Equal(t, 0, results.Error)
+	require.Equal(t, 0, results.Skipped)
+	require.Equal(t, 1, results.Error)
 
 	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 }
@@ -1165,8 +1165,8 @@ func Test_Service_packBundle_NilManifest_Success(t *testing.T) {
 	require.True(t, bundleExists)
 }
 
-// Expectation: The function should skip without packing when a same-named bundle already exists.
-func Test_Service_packBundle_BundleExists_Skip(t *testing.T) {
+// Expectation: The function should error without packing when a same-named bundle already exists.
+func Test_Service_packBundle_BundleExists_Error(t *testing.T) {
 	t.Parallel()
 
 	for _, existing := range []string{
@@ -1216,7 +1216,7 @@ func Test_Service_packBundle_BundleExists_Skip(t *testing.T) {
 			job := NewJob("/data/folder/test"+schema.Par2Extension, Options{}, nil, false)
 
 			err := prog.packBundle(t.Context(), job)
-			require.ErrorIs(t, err, schema.ErrSilentSkip)
+			require.NotErrorIs(t, err, schema.ErrSilentSkip)
 			require.False(t, packCalled)
 			require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
 
@@ -1996,8 +1996,8 @@ func Test_Service_unpackBundle_Success(t *testing.T) {
 	require.False(t, bundleExists)
 }
 
-// Expectation: The function should skip without unpacking when same-named PAR2 files already exist.
-func Test_Service_unpackBundle_Par2Exists_Skip(t *testing.T) {
+// Expectation: The function should error without unpacking when same-named PAR2 files already exist.
+func Test_Service_unpackBundle_Par2Exists_Error(t *testing.T) {
 	t.Parallel()
 
 	for _, existing := range []string{
@@ -2043,7 +2043,7 @@ func Test_Service_unpackBundle_Par2Exists_Skip(t *testing.T) {
 			job := NewJob("/data/folder/test"+schema.BundleExtension+schema.Par2Extension, Options{}, nil, true)
 
 			err := prog.unpackBundle(t.Context(), job)
-			require.ErrorIs(t, err, schema.ErrSilentSkip)
+			require.NotErrorIs(t, err, schema.ErrSilentSkip)
 			require.False(t, openCalled)
 			require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 
