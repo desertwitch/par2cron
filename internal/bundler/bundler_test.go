@@ -642,37 +642,6 @@ func Test_Service_packEnumerate_ReadFailure_PartialErrors(t *testing.T) {
 	require.Empty(t, jobs)
 }
 
-// Expectation: Fatal manifest-processing errors should stop enumeration.
-func Test_Service_packEnumerate_FailedToProcessManifest_Error(t *testing.T) {
-	t.Parallel()
-
-	fs := afero.NewOsFs()
-	rootDir := t.TempDir()
-
-	par2Path := filepath.Join(rootDir, "test"+schema.Par2Extension)
-	require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2data"), 0o644))
-
-	mf := &schema.Manifest{Name: "test" + schema.Par2Extension}
-	mfData, err := json.Marshal(mf)
-	require.NoError(t, err)
-	require.NoError(t, afero.WriteFile(fs, par2Path+schema.ManifestExtension, mfData, 0o644))
-	require.NoError(t, fs.MkdirAll(par2Path+schema.LockExtension, 0o755)) // as dir to fail
-
-	var logBuf testutil.SafeBuffer
-	ls := logging.Options{
-		Logout: &logBuf,
-		Stdout: io.Discard,
-		Stderr: io.Discard,
-	}
-	_ = ls.LogLevel.Set("info")
-
-	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
-
-	jobs, err := prog.packEnumerate(t.Context(), rootDir, Options{})
-	require.ErrorContains(t, err, "failed to process manifest")
-	require.Nil(t, jobs)
-}
-
 // Expectation: Elements in directories with an ignore file should be skipped.
 func Test_Service_packEnumerate_IgnoreFile_Success(t *testing.T) {
 	t.Parallel()

@@ -324,7 +324,10 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 			return nil, schema.ErrSilentSkip
 		}
 
-		return nil, fmt.Errorf("failed to lock: %w", err)
+		logger := prog.bundleLogger(ctx, nil, manifestPath)
+		logger.Error("Failed to lock par2cron manifest (will retry next run)", "error", err)
+
+		return nil, schema.ErrNonFatal
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
