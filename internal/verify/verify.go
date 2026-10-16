@@ -384,7 +384,7 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 
 	manifestPath := par2path + schema.ManifestExtension
 
-	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
+	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); errors.Is(err, fs.ErrNotExist) {
 		if !opts.IncludeExternal {
 			logger := prog.verificationLogger(ctx, nil, manifestPath)
 			logger.Debug("No manifest found (skipping)")
@@ -409,7 +409,10 @@ func (prog *Service) processManifest(ctx context.Context, par2path string, opts 
 			return nil, schema.ErrSilentSkip
 		}
 
-		return nil, fmt.Errorf("failed to lock: %w", err)
+		logger := prog.verificationLogger(ctx, nil, manifestPath)
+		logger.Error("Failed to lock par2cron manifest (will retry next run)", "error", err)
+
+		return nil, schema.ErrNonFatal
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
@@ -451,7 +454,10 @@ func (prog *Service) processBundleManifest(ctx context.Context, bundlePath strin
 			return nil, schema.ErrSilentSkip
 		}
 
-		return nil, fmt.Errorf("failed to lock: %w", err)
+		logger := prog.verificationLogger(ctx, nil, bundlePath)
+		logger.Error("Failed to lock bundle (will retry next run)", "error", err)
+
+		return nil, schema.ErrNonFatal
 	}
 	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)
 	if err != nil {

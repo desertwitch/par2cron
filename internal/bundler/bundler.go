@@ -220,7 +220,8 @@ func (prog *Service) processMode(ctx context.Context, rootDirs []string, opts Op
 		if err := rf(ctx, job); err == nil {
 			logger.Info("Job completed with success")
 			results.Success++
-		} else if errors.Is(err, schema.ErrSilentSkip) {
+		} else if errors.Is(err, schema.ErrFileIsLocked) {
+			logger.Warn("Job unavailable (will retry next run)", "error", err)
 			results.Skipped++
 		} else {
 			logger.Error("Job failure (skipping)", "error", err)
@@ -299,7 +300,7 @@ func (prog *Service) packEnumerate(ctx context.Context, rootDir string, opts Opt
 func (prog *Service) packProcessManifest(ctx context.Context, par2path string, opts Options) (*Job, error) {
 	manifestPath := par2path + schema.ManifestExtension
 
-	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); err != nil {
+	if _, err := util.LstatIfPossible(prog.fsys, manifestPath); errors.Is(err, fs.ErrNotExist) {
 		if !opts.IncludeExternal {
 			logger := prog.bundleLogger(ctx, nil, manifestPath)
 			logger.Debug("No manifest found (skipping)")
@@ -324,7 +325,10 @@ func (prog *Service) packProcessManifest(ctx context.Context, par2path string, o
 			return nil, schema.ErrSilentSkip
 		}
 
-		return nil, fmt.Errorf("failed to lock: %w", err)
+		logger := prog.bundleLogger(ctx, nil, manifestPath)
+		logger.Error("Failed to lock par2cron manifest (will retry next run)", "error", err)
+
+		return nil, schema.ErrNonFatal
 	}
 	data, err := afero.ReadFile(prog.fsys, manifestPath)
 	if err != nil {
@@ -376,10 +380,7 @@ func (prog *Service) packBundle(ctx context.Context, job *Job) error {
 	if path, exists, err := prog.existingSetMember(job, true); err != nil {
 		return fmt.Errorf("failed to check existence: %w", err)
 	} else if exists {
-		logger := prog.bundleLogger(ctx, job, path)
-		logger.Warn("Same-named bundle already exists in folder (not overwriting)")
-
-		return fmt.Errorf("%w: bundle already exists", schema.ErrSilentSkip)
+		return fmt.Errorf("conflicting bundle already exists: %s", path)
 	}
 
 	files, err := util.FindBundleableFiles(prog.fsys, job.par2Name, job.workingDir)
@@ -506,10 +507,7 @@ func (prog *Service) unpackBundle(ctx context.Context, job *Job) error {
 	if path, exists, err := prog.existingSetMember(job, false); err != nil {
 		return fmt.Errorf("failed to check existence: %w", err)
 	} else if exists {
-		logger := prog.bundleLogger(ctx, job, path)
-		logger.Warn("Same-named PAR2 already exists in folder (not overwriting)")
-
-		return fmt.Errorf("%w: par2 files already exist", schema.ErrSilentSkip)
+		return fmt.Errorf("conflicting par2 file already exists: %s", path)
 	}
 
 	bun, err := prog.bundler.Open(ctx, prog.fsys, bundlePath)

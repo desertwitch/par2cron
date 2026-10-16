@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/desertwitch/par2cron/internal/par2"
 	"github.com/desertwitch/par2cron/internal/schema"
 	"github.com/desertwitch/par2cron/internal/testutil"
+	"github.com/desertwitch/par2cron/internal/util"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/require"
 )
@@ -162,8 +164,8 @@ func Test_Service_processMode_Unpack_Success(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Job completed with success")
 }
 
-// Expectation: A pack job for an already existing bundle should be counted as skipped.
-func Test_Service_processMode_Pack_BundleExists_Skipped(t *testing.T) {
+// Expectation: A pack job for an already existing bundle should be counted as error.
+func Test_Service_processMode_Pack_BundleExists_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -207,18 +209,18 @@ func Test_Service_processMode_Pack_BundleExists_Skipped(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, par2er)
 
 	results, err := prog.Pack(t.Context(), []string{"/data"}, Options{})
-	require.NoError(t, err)
+	require.Error(t, err)
 	require.False(t, packCalled)
 	require.Equal(t, 1, results.Selected)
 	require.Equal(t, 0, results.Success)
-	require.Equal(t, 1, results.Skipped)
-	require.Equal(t, 0, results.Error)
+	require.Equal(t, 0, results.Skipped)
+	require.Equal(t, 1, results.Error)
 
-	require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
+	require.Contains(t, logBuf.String(), "already exists")
 }
 
-// Expectation: An unpack job next to already existing PAR2 files should be counted as skipped.
-func Test_Service_processMode_Unpack_Par2Exists_Skipped(t *testing.T) {
+// Expectation: An unpack job next to already existing PAR2 files should be counted as error.
+func Test_Service_processMode_Unpack_Par2Exists_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -253,6 +255,50 @@ func Test_Service_processMode_Unpack_Par2Exists_Skipped(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
 
 	results, err := prog.Unpack(t.Context(), []string{"/data"}, Options{})
+	require.Error(t, err)
+	require.False(t, openCalled)
+	require.Equal(t, 1, results.Selected)
+	require.Equal(t, 0, results.Success)
+	require.Equal(t, 0, results.Skipped)
+	require.Equal(t, 1, results.Error)
+
+	require.Contains(t, logBuf.String(), "already exists")
+}
+
+// Expectation: An unpack job for a bundle locked by another instance should be counted as skipped.
+func Test_Service_processMode_Unpack_BundleLocked_Skipped(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	bundlePath := filepath.Join(rootDir, "test"+schema.BundleExtension+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, bundlePath, []byte("bundledata"), 0o644))
+
+	unlock, err := util.AcquireLock(fs, bundlePath, false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var openCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return nil, errors.New("should not be called")
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	results, err := prog.Unpack(t.Context(), []string{rootDir}, Options{})
 	require.NoError(t, err)
 	require.False(t, openCalled)
 	require.Equal(t, 1, results.Selected)
@@ -260,7 +306,11 @@ func Test_Service_processMode_Unpack_Par2Exists_Skipped(t *testing.T) {
 	require.Equal(t, 1, results.Skipped)
 	require.Equal(t, 0, results.Error)
 
-	require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
+	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
+
+	exists, err := afero.Exists(fs, bundlePath)
+	require.NoError(t, err)
+	require.True(t, exists)
 }
 
 // Expectation: Multiple root directories should be processed.
@@ -438,6 +488,45 @@ func Test_Service_processMode_JobFailureSkipping_Error(t *testing.T) {
 	require.Equal(t, 0, results.Success)
 	require.Equal(t, 1, results.Error)
 	require.Contains(t, logBuf.String(), "Job failure (skipping)")
+}
+
+// Expectation: A locked job should be counted as skipped and not fail the run.
+func Test_Service_processMode_JobLocked_Skipped(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewMemMapFs()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	results, err := prog.processMode(
+		t.Context(),
+		[]string{"/data"},
+		Options{},
+		func(ctx context.Context, rootDir string, opts Options) ([]*Job, error) {
+			return []*Job{
+				{par2Path: "/data/test" + schema.Par2Extension},
+			}, nil
+		},
+		func(ctx context.Context, job *Job) error {
+			return fmt.Errorf("failed to lock: %w", schema.ErrFileIsLocked)
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, results.Selected)
+	require.Equal(t, 0, results.Success)
+	require.Equal(t, 1, results.Skipped)
+	require.Equal(t, 0, results.Error)
+	require.Contains(t, logBuf.String(), "Job unavailable (will retry next run)")
+	require.NotContains(t, logBuf.String(), "Job failure")
 }
 
 // Expectation: Mixed job outcomes should report one success and one partial failure.
@@ -642,21 +731,19 @@ func Test_Service_packEnumerate_ReadFailure_PartialErrors(t *testing.T) {
 	require.Empty(t, jobs)
 }
 
-// Expectation: Fatal manifest-processing errors should stop enumeration.
-func Test_Service_packEnumerate_FailedToProcessManifest_Error(t *testing.T) {
+// Expectation: A manifest lock failure should be non-fatal and not stop enumeration.
+func Test_Service_packEnumerate_LockFailure_PartialErrors(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewOsFs()
 	rootDir := t.TempDir()
 
-	par2Path := filepath.Join(rootDir, "test"+schema.Par2Extension)
-	require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2data"), 0o644))
-
-	mf := &schema.Manifest{Name: "test" + schema.Par2Extension}
-	mfData, err := json.Marshal(mf)
-	require.NoError(t, err)
-	require.NoError(t, afero.WriteFile(fs, par2Path+schema.ManifestExtension, mfData, 0o644))
-	require.NoError(t, fs.MkdirAll(par2Path+schema.LockExtension, 0o755)) // as dir to fail
+	for _, name := range []string{"good", "bad"} {
+		par2Path := filepath.Join(rootDir, name+schema.Par2Extension)
+		require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2data"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, par2Path+schema.ManifestExtension, []byte("{}"), 0o644))
+	}
+	require.NoError(t, fs.MkdirAll(filepath.Join(rootDir, "bad"+schema.Par2Extension+schema.LockExtension), 0o755)) // as dir to fail
 
 	var logBuf testutil.SafeBuffer
 	ls := logging.Options{
@@ -669,8 +756,45 @@ func Test_Service_packEnumerate_FailedToProcessManifest_Error(t *testing.T) {
 	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
 
 	jobs, err := prog.packEnumerate(t.Context(), rootDir, Options{})
-	require.ErrorContains(t, err, "failed to process manifest")
-	require.Nil(t, jobs)
+	require.ErrorIs(t, err, schema.ErrNonFatal)
+	require.ErrorContains(t, err, "manifests failed to read")
+	require.Len(t, jobs, 1)
+	require.Equal(t, filepath.Join(rootDir, "good"+schema.Par2Extension), jobs[0].par2Path)
+	require.Contains(t, logBuf.String(), "Failed to lock par2cron manifest")
+}
+
+// Expectation: A manifest locked by another instance should be silently skipped.
+func Test_Service_packEnumerate_Locked_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	for _, name := range []string{"good", "locked"} {
+		par2Path := filepath.Join(rootDir, name+schema.Par2Extension)
+		require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2data"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, par2Path+schema.ManifestExtension, []byte("{}"), 0o644))
+	}
+
+	unlock, err := util.AcquireLock(fs, filepath.Join(rootDir, "locked"+schema.Par2Extension+schema.LockExtension), false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+	jobs, err := prog.packEnumerate(t.Context(), rootDir, Options{})
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	require.Equal(t, filepath.Join(rootDir, "good"+schema.Par2Extension), jobs[0].par2Path)
+	require.Contains(t, logBuf.String(), "Manifest is locked by another instance")
 }
 
 // Expectation: Elements in directories with an ignore file should be skipped.
@@ -870,6 +994,45 @@ func Test_Service_packProcessManifest_ReadFails_Error(t *testing.T) {
 	job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{})
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Nil(t, job)
+}
+
+// Expectation: A transient manifest stat error should not skip or reset the manifest.
+func Test_Service_packProcessManifest_StatFails_Success(t *testing.T) {
+	t.Parallel()
+
+	for _, includeExternal := range []bool{false, true} {
+		t.Run(fmt.Sprintf("IncludeExternal=%t", includeExternal), func(t *testing.T) {
+			t.Parallel()
+
+			baseFs := afero.NewMemMapFs()
+			require.NoError(t, baseFs.MkdirAll("/data", 0o755))
+			require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension, []byte("par2data"), 0o644))
+
+			mf := &schema.Manifest{Name: "test" + schema.Par2Extension}
+			mfData, err := json.Marshal(mf)
+			require.NoError(t, err)
+			require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+			fs := &testutil.FailingStatFs{Fs: baseFs, FailPattern: schema.ManifestExtension}
+
+			var logBuf testutil.SafeBuffer
+			ls := logging.Options{
+				Logout: &logBuf,
+				Stdout: io.Discard,
+				Stderr: io.Discard,
+			}
+			_ = ls.LogLevel.Set("debug")
+
+			prog := NewService(fs, logging.NewLogger(ls), &testutil.MockBundleHandler{}, &testutil.MockPar2Handler{})
+
+			job, err := prog.packProcessManifest(t.Context(), "/data/test"+schema.Par2Extension, Options{IncludeExternal: includeExternal})
+			require.NoError(t, err)
+			require.NotNil(t, job)
+			require.NotNil(t, job.manifest)
+			require.Equal(t, "test"+schema.Par2Extension, job.manifest.Name)
+			require.NotContains(t, logBuf.String(), "resetting manifest")
+		})
+	}
 }
 
 // Expectation: IncludeExternal=true should return a job even when no manifest file exists.
@@ -1196,8 +1359,8 @@ func Test_Service_packBundle_NilManifest_Success(t *testing.T) {
 	require.True(t, bundleExists)
 }
 
-// Expectation: The function should skip without packing when a same-named bundle already exists.
-func Test_Service_packBundle_BundleExists_Skip(t *testing.T) {
+// Expectation: The function should error without packing when a same-named bundle already exists.
+func Test_Service_packBundle_BundleExists_Error(t *testing.T) {
 	t.Parallel()
 
 	for _, existing := range []string{
@@ -1247,9 +1410,10 @@ func Test_Service_packBundle_BundleExists_Skip(t *testing.T) {
 			job := NewJob("/data/folder/test"+schema.Par2Extension, Options{}, nil, false)
 
 			err := prog.packBundle(t.Context(), job)
-			require.ErrorIs(t, err, schema.ErrSilentSkip)
+			require.NotErrorIs(t, err, schema.ErrSilentSkip)
+			require.ErrorContains(t, err, "already exists")
+			require.ErrorContains(t, err, existing)
 			require.False(t, packCalled)
-			require.Contains(t, logBuf.String(), "Same-named bundle already exists in folder")
 
 			// Existing bundle and loose files should be left untouched.
 			data, err := afero.ReadFile(fs, "/data/folder/"+existing)
@@ -1263,6 +1427,50 @@ func Test_Service_packBundle_BundleExists_Skip(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Expectation: The function should return a lock error without packing when the files are locked.
+func Test_Service_packBundle_Locked_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	par2Path := filepath.Join(rootDir, "test"+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, par2Path, []byte("par2index"), 0o644))
+
+	unlock, err := util.AcquireLock(fs, par2Path+schema.LockExtension, false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var packCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		PackFunc: func(fsys afero.Fs, bundlePath string, recoverySetID [16]byte, manifest bundle.ManifestInput, files []bundle.FileInput) error {
+			packCalled = true
+
+			return nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	job := NewJob(par2Path, Options{}, nil, false)
+
+	err = prog.packBundle(t.Context(), job)
+	require.ErrorIs(t, err, schema.ErrFileIsLocked)
+	require.False(t, packCalled)
+
+	exists, err := afero.Exists(fs, par2Path)
+	require.NoError(t, err)
+	require.True(t, exists)
 }
 
 // Expectation: The function should pack when only bundles of other roots exist.
@@ -2027,8 +2235,8 @@ func Test_Service_unpackBundle_Success(t *testing.T) {
 	require.False(t, bundleExists)
 }
 
-// Expectation: The function should skip without unpacking when same-named PAR2 files already exist.
-func Test_Service_unpackBundle_Par2Exists_Skip(t *testing.T) {
+// Expectation: The function should error without unpacking when same-named PAR2 files already exist.
+func Test_Service_unpackBundle_Par2Exists_Error(t *testing.T) {
 	t.Parallel()
 
 	for _, existing := range []string{
@@ -2074,9 +2282,10 @@ func Test_Service_unpackBundle_Par2Exists_Skip(t *testing.T) {
 			job := NewJob("/data/folder/test"+schema.BundleExtension+schema.Par2Extension, Options{}, nil, true)
 
 			err := prog.unpackBundle(t.Context(), job)
-			require.ErrorIs(t, err, schema.ErrSilentSkip)
+			require.NotErrorIs(t, err, schema.ErrSilentSkip)
+			require.ErrorContains(t, err, "already exists")
+			require.ErrorContains(t, err, existing)
 			require.False(t, openCalled)
-			require.Contains(t, logBuf.String(), "Same-named PAR2 already exists in folder")
 
 			// Existing file and bundle should be left untouched.
 			data, err := afero.ReadFile(fs, "/data/folder/"+existing)
@@ -2088,6 +2297,110 @@ func Test_Service_unpackBundle_Par2Exists_Skip(t *testing.T) {
 			require.True(t, exists)
 		})
 	}
+}
+
+// Expectation: The function should return a lock error without unpacking when the bundle is locked.
+func Test_Service_unpackBundle_Locked_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	bundlePath := filepath.Join(rootDir, "test"+schema.BundleExtension+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, bundlePath, []byte("bundledata"), 0o644))
+
+	unlock, err := util.AcquireLock(fs, bundlePath, false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	var openCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return nil, errors.New("should not be called")
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	job := NewJob(bundlePath, Options{}, nil, true)
+
+	err = prog.unpackBundle(t.Context(), job)
+	require.ErrorIs(t, err, schema.ErrFileIsLocked)
+	require.False(t, openCalled)
+
+	exists, err := afero.Exists(fs, bundlePath)
+	require.NoError(t, err)
+	require.True(t, exists)
+}
+
+// Expectation: The function should return a lock error without unpacking when the in-flight files are locked.
+func Test_Service_unpackBundle_InFlightLocked_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	bundlePath := filepath.Join(rootDir, "test"+schema.BundleExtension+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, bundlePath, []byte("bundledata"), 0o644))
+
+	lockPath := filepath.Join(rootDir, "test"+schema.Par2Extension+schema.LockExtension)
+	unlock, err := util.AcquireLock(fs, lockPath, false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("info")
+
+	manifestName := "test" + schema.Par2Extension + schema.ManifestExtension
+
+	var unpackCalled bool
+	bndlr := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			return &testutil.MockBundle{
+				ManifestNameValue: &manifestName,
+				UnpackFunc: func(fsys afero.Fs, destDir string, strict bool) ([]string, error) {
+					unpackCalled = true
+
+					return nil, nil
+				},
+				CloseFunc: func() error {
+					return nil
+				},
+			}, nil
+		},
+	}
+
+	prog := NewService(fs, logging.NewLogger(ls), bndlr, &testutil.MockPar2Handler{})
+
+	job := NewJob(bundlePath, Options{}, nil, true)
+
+	err = prog.unpackBundle(t.Context(), job)
+	require.ErrorIs(t, err, schema.ErrFileIsLocked)
+	require.False(t, unpackCalled)
+
+	// The other instance's lock file should not be cleaned up.
+	exists, err := afero.Exists(fs, lockPath)
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	exists, err = afero.Exists(fs, bundlePath)
+	require.NoError(t, err)
+	require.True(t, exists)
 }
 
 // Expectation: The function should unpack when only other bundles or other roots' files exist.

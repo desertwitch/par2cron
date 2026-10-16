@@ -1483,7 +1483,7 @@ func Test_Service_Enumerate_NoManifestFile_Success(t *testing.T) {
 }
 
 // Expectation: No job should be returned when manifest is invalid JSON.
-func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
+func Test_Service_Enumerate_InvalidManifest_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1504,7 +1504,7 @@ func Test_Service_Enumerate_InvalidManifest_Success(t *testing.T) {
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
-	require.NoError(t, err)
+	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Empty(t, jobs)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }
@@ -1587,6 +1587,130 @@ func Test_Service_Enumerate_ReadManifestFailure_Error(t *testing.T) {
 
 	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Contains(t, logBuf.String(), "Failed to read par2cron manifest")
+}
+
+// Expectation: A transient manifest stat error should not skip the manifest.
+func Test_Service_Enumerate_StatManifestFailure_Success(t *testing.T) {
+	t.Parallel()
+
+	baseFs := afero.NewMemMapFs()
+	require.NoError(t, baseFs.MkdirAll("/data", 0o755))
+	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension, []byte("par2"), 0o644))
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+	require.NoError(t, afero.WriteFile(baseFs, "/data/test"+schema.Par2Extension+schema.ManifestExtension, mfData, 0o644))
+
+	fs := &testutil.FailingStatFs{
+		Fs:          baseFs,
+		FailPattern: schema.ManifestExtension,
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	metas, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Len(t, metas, 1)
+	require.Equal(t, "/data/test"+schema.Par2Extension, metas[0].Par2Path)
+	require.NotContains(t, logBuf.String(), "Failed to find par2cron manifest")
+}
+
+// Expectation: A manifest lock failure should be non-fatal and not stop enumeration.
+func Test_Service_Enumerate_LockManifestFailure_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	for _, name := range []string{"good", "bad"} {
+		require.NoError(t, afero.WriteFile(fs, filepath.Join(rootDir, name+schema.Par2Extension), []byte("par2"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, filepath.Join(rootDir, name+schema.Par2Extension+schema.ManifestExtension), mfData, 0o644))
+	}
+	require.NoError(t, fs.MkdirAll(filepath.Join(rootDir, "bad"+schema.Par2Extension+schema.LockExtension), 0o755)) // as dir to fail
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	metas, err := prog.Enumerate(t.Context(), rootDir, args, &testutil.MockCache{})
+
+	require.ErrorIs(t, err, schema.ErrNonFatal)
+	require.Len(t, metas, 1)
+	require.Equal(t, filepath.Join(rootDir, "good"+schema.Par2Extension), metas[0].Par2Path)
+	require.Contains(t, logBuf.String(), "Failed to lock par2cron manifest")
+}
+
+// Expectation: A manifest locked by another instance should be silently skipped.
+func Test_Service_Enumerate_ManifestLocked_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	mf := schema.NewManifest("test" + schema.Par2Extension)
+	mf.Verification = &schema.VerificationManifest{
+		RepairNeeded:   true,
+		RepairPossible: true,
+	}
+	mfData, err := json.Marshal(mf)
+	require.NoError(t, err)
+
+	for _, name := range []string{"good", "locked"} {
+		require.NoError(t, afero.WriteFile(fs, filepath.Join(rootDir, name+schema.Par2Extension), []byte("par2"), 0o644))
+		require.NoError(t, afero.WriteFile(fs, filepath.Join(rootDir, name+schema.Par2Extension+schema.ManifestExtension), mfData, 0o644))
+	}
+
+	unlock, err := util.AcquireLock(fs, filepath.Join(rootDir, "locked"+schema.Par2Extension+schema.LockExtension), false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, &util.BundleHandler{}, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	metas, err := prog.Enumerate(t.Context(), rootDir, args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Len(t, metas, 1)
+	require.Equal(t, filepath.Join(rootDir, "good"+schema.Par2Extension), metas[0].Par2Path)
+	require.Contains(t, logBuf.String(), "Manifest is locked by another instance")
 }
 
 // Expectation: An empty slice should be returned if no PAR2 files are found.
@@ -1844,6 +1968,89 @@ func Test_Service_Enumerate_Bundle_OpenFails_Error(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Failed to open bundle")
 }
 
+// Expectation: A bundle lock failure should be non-fatal and not stop enumeration.
+func Test_Service_Enumerate_Bundle_LockFails_Error(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	// A bundle symlinked to a directory is walked as a file, but cannot be opened for locking.
+	require.NoError(t, fs.MkdirAll(filepath.Join(rootDir, "target"), 0o755))
+	if err := os.Symlink(filepath.Join(rootDir, "target"), filepath.Join(rootDir, "test"+schema.BundleExtension+schema.Par2Extension)); err != nil {
+		t.Skipf("symlinks not supported: %v", err)
+	}
+
+	var openCalled bool
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return nil, errors.New("should not be called")
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	metas, err := prog.Enumerate(t.Context(), rootDir, args, &testutil.MockCache{})
+
+	require.ErrorIs(t, err, schema.ErrNonFatal)
+	require.Empty(t, metas)
+	require.False(t, openCalled)
+	require.Contains(t, logBuf.String(), "Failed to lock bundle")
+}
+
+// Expectation: A bundle locked by another instance should be silently skipped.
+func Test_Service_Enumerate_Bundle_Locked_Success(t *testing.T) {
+	t.Parallel()
+
+	fs := afero.NewOsFs()
+	rootDir := t.TempDir()
+
+	bundlePath := filepath.Join(rootDir, "test"+schema.BundleExtension+schema.Par2Extension)
+	require.NoError(t, afero.WriteFile(fs, bundlePath, []byte("bundledata"), 0o644))
+
+	unlock, err := util.AcquireLock(fs, bundlePath, false)
+	require.NoError(t, err)
+	defer unlock()
+
+	var openCalled bool
+	bundler := &testutil.MockBundleHandler{
+		OpenFunc: func(fsys afero.Fs, bundlePath string) (schema.Bundle, error) {
+			openCalled = true
+
+			return nil, errors.New("should not be called")
+		},
+	}
+
+	var logBuf testutil.SafeBuffer
+	ls := logging.Options{
+		Logout: &logBuf,
+		Stdout: io.Discard,
+		Stderr: io.Discard,
+	}
+	_ = ls.LogLevel.Set("debug")
+
+	prog := NewService(fs, logging.NewLogger(ls), &testutil.MockRunner{}, bundler, &testutil.MockPar2Handler{}, &testutil.MockCacheHandler{})
+
+	args := Options{Par2Args: []string{"-v"}}
+	metas, err := prog.Enumerate(t.Context(), rootDir, args, &testutil.MockCache{})
+
+	require.NoError(t, err)
+	require.Empty(t, metas)
+	require.False(t, openCalled)
+	require.Contains(t, logBuf.String(), "Bundle is locked by another instance")
+}
+
 // Expectation: The bundle should return a non-fatal error when the manifest cannot be read.
 func Test_Service_Enumerate_Bundle_ManifestReadFails_Error(t *testing.T) {
 	t.Parallel()
@@ -1883,8 +2090,8 @@ func Test_Service_Enumerate_Bundle_ManifestReadFails_Error(t *testing.T) {
 	require.Contains(t, logBuf.String(), "Failed to read par2cron manifest")
 }
 
-// Expectation: The bundle should be silently skipped when the manifest is invalid JSON.
-func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
+// Expectation: The bundle should be error'd when the manifest is invalid JSON.
+func Test_Service_Enumerate_Bundle_InvalidManifest_Error(t *testing.T) {
 	t.Parallel()
 
 	fs := afero.NewMemMapFs()
@@ -1918,7 +2125,7 @@ func Test_Service_Enumerate_Bundle_InvalidManifest_Success(t *testing.T) {
 	args := Options{Par2Args: []string{"-v"}}
 	jobs, err := prog.Enumerate(t.Context(), "/data", args, &testutil.MockCache{})
 
-	require.NoError(t, err)
+	require.ErrorIs(t, err, schema.ErrNonFatal)
 	require.Empty(t, jobs)
 	require.Contains(t, logBuf.String(), "Failed to unmarshal par2cron manifest")
 }

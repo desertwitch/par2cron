@@ -1,0 +1,6 @@
+kind: Fixed
+body: lock failures should be non-fatal to the larger operation
+time: 2026-10-16T07:50:43.906986367+02:00
+custom:
+    Issue: ""
+    PR: "105"
