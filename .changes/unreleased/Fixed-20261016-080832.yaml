@@ -1,6 +1,0 @@
-kind: Fixed
-body: '`bundle` should hard-fail existing conflicting files'
-time: 2026-10-16T08:08:32.049325861+02:00
-custom:
-    Issue: ""
-    PR: "105"
